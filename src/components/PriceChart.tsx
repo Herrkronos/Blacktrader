@@ -141,7 +141,7 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
       }
     }
     if (plan) {
-      linesRef.current.push(s.candle.createPriceLine({ price: plan.entry, color: "#34d399", lineStyle: LineStyle.Solid, lineWidth: 2, axisLabelVisible: true, title: "Trading-Einstieg" }));
+      linesRef.current.push(s.candle.createPriceLine({ price: plan.entry, color: plan.direction === "short" ? "#f87171" : "#34d399", lineStyle: LineStyle.Solid, lineWidth: 2, axisLabelVisible: true, title: plan.direction === "short" ? "Verkauf" : "Kauf" }));
       if (simple) {
         linesRef.current.push(s.candle.createPriceLine({ price: plan.stop, color: WINE, lineStyle: LineStyle.Dashed, lineWidth: 2, axisLabelVisible: true, title: "Stop" }));
         plan.targets.forEach((t, i) =>

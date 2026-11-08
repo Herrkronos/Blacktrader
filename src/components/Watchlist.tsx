@@ -42,7 +42,7 @@ export function Watchlist() {
                 </div>
               </div>
               {a?.result && a.result.decision.level !== "neutral" && (
-                <p className={`mt-2 rounded-md border px-2 py-1 text-sm font-medium ${a.result.plan?.direction === "short" ? "border-red-500/50 bg-red-950/40 text-red-200" : "trade-bg text-emerald-100"}`}>{a.result.commentary.summary}</p>
+                <p className={`mt-2 rounded-md border px-2 py-1 text-sm font-medium ${a.result.plan?.direction === "short" ? "sell-bg text-red-100" : "trade-bg text-emerald-100"}`}>{a.result.commentary.summary}</p>
               )}
               {a?.core && (
                 <p className={`mt-2 rounded-md border px-2 py-1 text-xs ${a.core.state === "hold" ? "core-bg text-sky-100" : "border-stone-700 text-stone-400"}`}>
@@ -101,7 +101,7 @@ export function Watchlist() {
                       </div>
                     )}
                     {a?.result && a.result.decision.level !== "neutral" && (
-                      <div className={`mt-1 max-w-[340px] rounded px-1.5 py-0.5 text-xs ${a.result.plan?.direction === "short" ? "bg-red-950/50 text-red-200" : "trade-tag"}`}>{a.result.commentary.summary}</div>
+                      <div className={`mt-1 max-w-[340px] rounded px-1.5 py-0.5 text-xs ${a.result.plan?.direction === "short" ? "sell-tag" : "trade-tag"}`}>{a.result.commentary.summary}</div>
                     )}
                   </Link>
                 </td>

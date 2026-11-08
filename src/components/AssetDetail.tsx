@@ -153,7 +153,7 @@ export function AssetDetail() {
           <p className="px-2 pb-1 text-[11px] text-stone-500">
             {settings.expertMode
               ? "Gold = Primärzählung, gestrichelt = Alternative. Linien: Kursziele (gold), Retracements (grau), Invalidierung (rot). Unten: RSI(14)."
-              : "Grün = Trading-Einstieg, Blau = Einstieg der Kernposition, Rot = Stop (Verlustgrenze), grün gestrichelt = Kursziele. Unten: Stärke-Anzeige (über 70 = heiß gelaufen, unter 30 = stark gefallen)."}
+              : "Grün = Kauf-Einstieg, Rot (durchgezogen) = Verkaufs-Einstieg, Blau = Einstieg der Kernposition, Rot = Stop (Verlustgrenze), grün gestrichelt = Kursziele. Unten: Stärke-Anzeige (über 70 = heiß gelaufen, unter 30 = stark gefallen)."}
           </p>
         </div>
         {analysis ? <SignalCard a={analysis} onTrade={() => setTrade(true)} /> : <div className="panel p-4 text-sm text-stone-400">{candles.length > 0 && candles.length < 30 ? "Zu wenig Historie für eine Analyse." : "Analyse wird berechnet …"}</div>}

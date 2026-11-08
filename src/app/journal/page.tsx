@@ -137,11 +137,11 @@ export default function JournalPage() {
               const ret = t.status === "closed" ? t.returnPct : t.status === "open" && cur ? tradeReturnPct(t.direction, t.entry, cur) : undefined;
               return (
                 <Fragment key={t.id}>
-                  <tr className={`cursor-pointer hover:brightness-125 ${t.strategy === "core" ? "core-row" : "trade-row"}`} onClick={() => setOpen(open === t.id ? null : t.id)}>
+                  <tr className={`cursor-pointer hover:brightness-125 ${t.strategy === "core" ? "core-row" : t.direction === "short" ? "sell-row" : "trade-row"}`} onClick={() => setOpen(open === t.id ? null : t.id)}>
                     <td className="px-3 py-2">
                       <div className="font-semibold text-gold-light">{t.symbol}</div>
                       <div className="mt-0.5">
-                        {t.strategy === "core" ? <span className="core-tag">Kernposition</span> : <span className="trade-tag">Trading {t.direction === "long" ? "↑" : "↓"}</span>}
+                        {t.strategy === "core" ? <span className="core-tag">Kernposition</span> : t.direction === "short" ? <span className="sell-tag">Verkauf ↓</span> : <span className="trade-tag">Kauf ↑</span>}
                       </div>
                     </td>
                     <td className="px-2 py-2 text-xs text-stone-400">{new Date(t.openedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</td>

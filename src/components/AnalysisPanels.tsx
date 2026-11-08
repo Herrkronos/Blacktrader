@@ -17,10 +17,15 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
   const sum = w.elliott + w.fundamental + w.volume || 1;
   const expert = useAppData((d) => d.settings.expertMode);
   return (
-    <div className={`panel space-y-3 p-4 ${a.plan && a.decision.level !== "neutral" ? "trade-bg" : ""}`}>
+    <div className={`panel space-y-3 p-4 ${a.plan && a.decision.level !== "neutral" ? (a.plan.direction === "short" ? "sell-bg" : "trade-bg") : ""}`}>
       <div className="flex items-center justify-between">
         <span className="panel-title">
-          Signal <span className="trade-tag ml-1 align-middle normal-case tracking-normal">Trading-Einstieg</span>
+          Signal{" "}
+          {a.plan?.direction === "short" && a.decision.level !== "neutral" ? (
+            <span className="sell-tag ml-1 align-middle normal-case tracking-normal">Verkauf</span>
+          ) : (
+            <span className="trade-tag ml-1 align-middle normal-case tracking-normal">Kauf</span>
+          )}
         </span>
         <SignalBadge level={a.decision.level} />
       </div>
