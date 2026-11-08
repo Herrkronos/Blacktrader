@@ -1,6 +1,7 @@
 "use client";
 // Chancen-Scanner: durchsucht bekannte Aktien und Coins in allen drei Zeithorizonten nach Einstiegssignalen.
 import { useEffect, useState } from "react";
+import { TradeBox, simpleReason } from "@/components/TradeBox";
 import { TradeDialog } from "@/components/TradeDialog";
 import { SignalBadge } from "@/components/ui";
 import { analyze, type AnalysisResult } from "@/lib/analysis/analyze";
@@ -176,26 +177,29 @@ export default function ChancenPage() {
             <div key={`${h.asset.symbol}-${h.res.horizon}`} className={`panel space-y-2 p-4 ${h.res.plan?.direction === "short" ? "sell-bg" : "trade-bg"}`}>
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <div className="font-semibold text-gold-light">
-                    {h.asset.name} <span className="text-xs font-normal text-stone-400">{h.asset.symbol}</span>
-                  </div>
-                  <div className="text-xs text-stone-400">
-                    {HORIZON_LABEL[h.res.horizon]} ({h.res.interval}) · {h.res.total.toFixed(0)} Punkte
-                  </div>
+                  <div className="text-lg font-semibold text-gold-light">{h.asset.name}</div>
+                  <div className="text-xs text-stone-400">{HORIZON_LABEL[h.res.horizon]}</div>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  {h.res.plan?.direction === "short" ? <span className="sell-tag">Verkauf</span> : <span className="trade-tag">Kauf</span>}
-                  <SignalBadge level={h.res.decision.level} />
-                  {distance(h) === 0 ? (
-                    <span className="chip border-emerald-500/50 text-emerald-300">Jetzt in der Zone</span>
-                  ) : (
-                    <span className="chip border-amber-500/50 text-amber-300">wartet · noch {distance(h).toFixed(1).replace(".", ",")} %</span>
-                  )}
-                </div>
+                {h.res.plan?.direction === "short" ? <span className="sell-tag text-sm">Verkaufen</span> : <span className="trade-tag text-sm">Kaufen</span>}
               </div>
-              <p className={`font-semibold ${h.res.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{c.summary}</p>
-              <p className="text-sm text-stone-200">{c.reason}</p>
-              {c.risk && <p className="text-xs text-stone-400">{c.risk}</p>}
+              {distance(h) === 0 ? (
+                <p className="text-sm font-medium text-emerald-300">● Jetzt einsteigen – der Kurs ist im richtigen Bereich.</p>
+              ) : (
+                <p className="text-sm font-medium text-amber-300">◷ Noch warten – der Kurs ist {distance(h).toFixed(1).replace(".", ",")} % entfernt.</p>
+              )}
+              {h.res.plan && <TradeBox plan={h.res.plan} currency={h.asset.currency} />}
+              {h.res.plan && <p className="text-sm text-stone-200">{simpleReason(h.res.plan, h.asset.currency)}</p>}
+              <details className="text-xs text-stone-400">
+                <summary className="cursor-pointer text-gold/80">Mehr erfahren</summary>
+                <div className="mt-2 space-y-1">
+                  <p>{c.summary}</p>
+                  <p>{c.reason}</p>
+                  {c.risk && <p>{c.risk}</p>}
+                  <p>
+                    {h.asset.symbol} · Kerzen {h.res.interval} · {h.res.total.toFixed(0)} Punkte · Signal: <SignalBadge level={h.res.decision.level} small />
+                  </p>
+                </div>
+              </details>
               <div className="flex flex-wrap gap-2 pt-1">
                 {open ? (
                   <span className="chip border-gold/40 text-gold-light">Trade läuft (Journal)</span>

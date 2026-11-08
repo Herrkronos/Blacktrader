@@ -1,6 +1,21 @@
 "use client";
 import Link from "next/link";
-import { fmtPrice } from "@/lib/analysis/persona";
+import { fmtPrice, money } from "@/lib/analysis/persona";
+import type { CoreStatus } from "@/lib/analysis/core";
+import { simpleLine } from "./TradeBox";
+
+/** Kernposition in einem Satz – mit Kaufdatum, Kaufkurs und aktuellem Stand. */
+function coreLine(core: CoreStatus, price: number | undefined, currency?: string): string {
+  const date = core.last ? new Date(core.last.time * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "";
+  if (core.state === "hold") {
+    if (!core.last) return "Kernposition halten";
+    const perf = price ? ((price - core.last.price) / core.last.price) * 100 : null;
+    return `Kernposition halten · gekauft am ${date} bei ${money(core.last.price, currency)}${perf != null ? ` · jetzt ${perf >= 0 ? "+" : ""}${perf.toFixed(1).replace(".", ",")} %` : ""}`;
+  }
+  if (core.state === "wait-bottom")
+    return `Kernposition: Gewinn mitgenommen${core.last ? ` am ${date} bei ${money(core.last.price, currency)}` : ""} – warten auf Boden`;
+  return "Kernposition: nicht investiert – kein Aufwärtstrend";
+}
 import { instrumentKey, itemHorizon, useMarket } from "@/lib/client/market";
 import { actions, useAppData } from "@/lib/store/store";
 import { HorizonToggle, ScoreBar, SignalBadge, StatusDot, Change } from "./ui";
@@ -42,11 +57,13 @@ export function Watchlist() {
                 </div>
               </div>
               {a?.result && a.result.decision.level !== "neutral" && (
-                <p className={`mt-2 rounded-md border px-2 py-1 text-sm font-medium ${a.result.plan?.direction === "short" ? "sell-bg text-red-100" : "trade-bg text-emerald-100"}`}>{a.result.commentary.summary}</p>
+                <p className={`mt-2 rounded-md border px-2 py-1 text-sm font-medium ${a.result.plan?.direction === "short" ? "sell-bg text-red-100" : "trade-bg text-emerald-100"}`}>
+                  {a.result.plan ? simpleLine(a.result.plan, lv?.currency ?? w.currency) : a.result.commentary.summary}
+                </p>
               )}
               {a?.core && (
                 <p className={`mt-2 rounded-md border px-2 py-1 text-xs ${a.core.state === "hold" ? "core-bg text-sky-100" : "border-stone-700 text-stone-400"}`}>
-                  Kernposition: {a.core.state === "hold" ? "Halten" : a.core.state === "wait-bottom" ? "Gewinne mitgenommen – warten auf Boden" : "nicht investiert"}
+                  {coreLine(a.core, lv?.price, lv?.currency ?? w.currency)}
                 </p>
               )}
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -97,11 +114,11 @@ export function Watchlist() {
                     </div>
                     {a?.core && (
                       <div className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[11px] ${a.core.state === "hold" ? "core-tag" : "text-stone-400"}`}>
-                        Kern: {a.core.state === "hold" ? "Halten" : a.core.state === "wait-bottom" ? "Gewinne mitgenommen, warten auf Boden" : "nicht investiert"}
+                        {coreLine(a.core, lv?.price, lv?.currency ?? w.currency)}
                       </div>
                     )}
                     {a?.result && a.result.decision.level !== "neutral" && (
-                      <div className={`mt-1 max-w-[340px] rounded px-1.5 py-0.5 text-xs ${a.result.plan?.direction === "short" ? "sell-tag" : "trade-tag"}`}>{a.result.commentary.summary}</div>
+                      <div className={`mt-1 max-w-[340px] rounded px-1.5 py-0.5 text-xs ${a.result.plan?.direction === "short" ? "sell-tag" : "trade-tag"}`}>{a.result.plan ? simpleLine(a.result.plan, lv?.currency ?? w.currency) : a.result.commentary.summary}</div>
                     )}
                   </Link>
                 </td>
