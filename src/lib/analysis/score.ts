@@ -1,4 +1,5 @@
 // Gesamtberechnung, Signalstufen und Trade-Plan.
+import { LOCKED } from "./locked-config";
 import type { WaveCount } from "./elliott";
 
 export interface Weights {
@@ -7,7 +8,7 @@ export interface Weights {
   volume: number;
 }
 
-export const DEFAULT_WEIGHTS: Weights = { elliott: 60, fundamental: 20, volume: 20 };
+export const DEFAULT_WEIGHTS: Weights = { ...LOCKED.weights };
 
 export type SignalLevel = "strong-buy" | "buy" | "neutral" | "sell" | "strong-sell";
 
@@ -55,7 +56,7 @@ export interface TradePlan {
   trailDistance?: number;
 }
 
-export const MIN_RISK_REWARD = 1.5;
+export const MIN_RISK_REWARD = LOCKED.minRiskReward;
 
 /** Plan aus der besten Zählung: Stop = Invalidierung, Ziele = Fibo-Ziele jenseits des Einstiegs. */
 export function buildPlan(count: WaveCount | undefined, price: number, minStopDistance = 0): TradePlan | null {

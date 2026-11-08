@@ -1,13 +1,21 @@
 // EchoChart für Zielzonen: wartende Limit-Order in der Zone, Einstieg nur bei Erreichen.
 import type { Candle } from "../types";
 import type { BacktestResult, BacktestTrade } from "./backtest";
+import { LOCKED } from "./locked-config";
 import { MIN_RISK_REWARD } from "./score";
 import { atr } from "./indicators";
 import { performance, tradeReturnPct } from "./stats";
-import { DEFAULT_ZONE_OPTIONS, findZoneSetup, type ZoneOptions } from "./zones";
+import { DEFAULT_ZONE_OPTIONS, findZoneSetup, type ZoneOptions, type ZoneSetup } from "./zones";
 
 export interface ZoneBacktestOptions {
   zone?: Partial<ZoneOptions>;
+  /**
+   * Eigene Signalquelle (z. B. vollständige Analyse mit lernbaren Werten). Erhält NUR Kerzen bis zum
+   * aktuellen Zeitpunkt (kein Blick in die Zukunft). Standard: Zielzonen-Erkennung.
+   */
+  signalAt?: (hist: Candle[]) => ZoneSetup | null;
+  /** Wird für jedes erzeugte Signal aufgerufen (Signal-Protokoll, Tests auf Look-ahead-Freiheit) */
+  onSignal?: (s: { index: number; time: number; setup: ZoneSetup }) => void;
   warmup?: number;
   step?: number;
   window?: number;
@@ -34,11 +42,11 @@ function* steps(candles: Candle[], opts: ZoneBacktestOptions): Generator<number,
   const warmup = opts.warmup ?? 120;
   const step = opts.step ?? Math.max(1, Math.ceil((candles.length - warmup) / 5000));
   const window = opts.window ?? 400;
-  const maxWait = opts.maxWait ?? 60;
-  const maxHold = opts.maxHold ?? 200;
+  const maxWait = opts.maxWait ?? LOCKED.trade.maxWaitBars;
+  const maxHold = opts.maxHold ?? LOCKED.trade.maxHoldBars;
   const ti = opts.targetIndex ?? 0;
-  const exitMode = opts.exitMode ?? "trail"; // gemessen: Prüfdaten Gewinnfaktor 1,59 (fixed: 1,18)
-  const trailAtr = opts.trailAtr ?? 4;
+  const exitMode = opts.exitMode ?? LOCKED.trade.exitMode; // gemessen: Prüfdaten Gewinnfaktor 1,59 (fixed: 1,18)
+  const trailAtr = opts.trailAtr ?? LOCKED.trade.trailAtr;
   const atrs = atr(candles);
   const trades: BacktestTrade[] = [];
   let evaluated = 0;
@@ -46,7 +54,9 @@ function* steps(candles: Candle[], opts: ZoneBacktestOptions): Generator<number,
   while (i < candles.length - 1) {
     if (evaluated % 50 === 0) yield (i - warmup) / Math.max(1, candles.length - 1 - warmup);
     evaluated++;
-    const setup = findZoneSetup(candles.slice(Math.max(0, i + 1 - window), i + 1), zo);
+    const hist = candles.slice(Math.max(0, i + 1 - window), i + 1);
+    const setup = opts.signalAt ? opts.signalAt(hist) : findZoneSetup(hist, zo);
+    if (setup && setup.riskReward >= MIN_RISK_REWARD) opts.onSignal?.({ index: i, time: candles[i].time, setup });
     if (!setup || setup.riskReward < MIN_RISK_REWARD) {
       i += step;
       continue;

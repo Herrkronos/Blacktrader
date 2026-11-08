@@ -1,8 +1,10 @@
 // Fasst alle Analyse-Module zu einem Ergebnis zusammen.
 import { HORIZON_LABEL, type Candle, type Fundamentals, type Horizon, type Interval, type NewsItem } from "../types";
-import { analyzeElliott, type ElliottResult } from "./elliott";
+import { analyzeElliott, degreesFrom, type ElliottResult } from "./elliott";
 import { atr, ema } from "./indicators";
-import { findZoneSetup } from "./zones";
+import { DEFAULT_ZONE_OPTIONS, findZoneSetup } from "./zones";
+import { DEFAULT_PARAMS, type LearnableParams } from "./params";
+import { withFibToleranceScale } from "./elliott/fib";
 import { analyzeFundamentals, type FundamentalResult } from "./fundamental";
 import { writeCommentary, type Commentary } from "./persona";
 import { DEFAULT_WEIGHTS, MIN_RISK_REWARD, type SignalDecision, type TradePlan, type Weights, buildPlan, decideSignal, levelFromScore, totalScore } from "./score";
@@ -54,6 +56,8 @@ export interface AnalyzeInput {
   filters?: Partial<AnalyzerFilters>;
   /** "zone" = Zielzonen-Einstieg (Standard), "elliott" = alter Sofort-Einstieg (nur für Vergleichsmessungen) */
   mode?: "zone" | "elliott";
+  /** Lernbare Stellschrauben (Trainer). Fehlt = Standardwerte (identisch zum bisherigen Verhalten). */
+  params?: Partial<LearnableParams>;
   kind?: "stock" | "crypto" | "commodity";
   /** Währung für Texte, z. B. EUR */
   currency?: string;
@@ -73,15 +77,29 @@ export function analyze(input: AnalyzeInput): AnalysisResult | null {
     candles = [...candles.slice(0, -1), last];
   }
   const price = candles[candles.length - 1].close;
-  const elliott = analyzeElliott(candles);
-  const fundamental = analyzeFundamentals(input.fundamentals ?? null, input.news ?? [], input.now);
-  const volume = analyzeVolumeRsi(candles, elliott.best);
+  const P: LearnableParams = { ...DEFAULT_PARAMS, ...(input.params ?? {}) };
+  const elliott = withFibToleranceScale(P.fibToleranceScale, () =>
+    analyzeElliott(candles, degreesFrom(P.elliottDegrees), { fibWeight: P.rankFibWeight, contextStrength: P.rankContextStrength }),
+  );
+  const fundamental = analyzeFundamentals(input.fundamentals ?? null, input.news ?? [], input.now, {
+    fundamentalWeights: P.fundamentalWeights,
+    newsShare: P.newsShare,
+    newsHalfLifeHours: P.newsHalfLifeHours,
+  });
+  const volume = analyzeVolumeRsi(candles, elliott.best, {
+    rsiOverbought: P.rsiOverbought,
+    rsiOversold: P.rsiOversold,
+    divergenceRecentBars: P.divergenceRecentBars,
+    relVolHigh: P.relVolHigh,
+    relVolBreakout: P.relVolBreakout,
+    relVolLow: P.relVolLow,
+  });
   const total = totalScore({ elliott: elliott.score, fundamental: fundamental.score, volume: volume.score }, input.weights ?? DEFAULT_WEIGHTS);
   const f = { ...DEFAULT_FILTERS, ...(input.filters ?? {}) };
   const closes = candles.map((c) => c.close);
   const atrNow = atr(candles)[candles.length - 1] ?? price * 0.01;
   if ((input.mode ?? "zone") === "zone") {
-    const zone = findZoneSetup(candles.slice(-400)); // gleiches Fenster wie im EchoChart gemessen
+    const zone = findZoneSetup(candles.slice(-400), { ...DEFAULT_ZONE_OPTIONS, atrMult: P.zoneAtrMult }); // gleiches Fenster wie im EchoChart gemessen
     const plan: TradePlan | null = zone
       ? {
           direction: zone.direction,
@@ -103,6 +121,11 @@ export function analyze(input: AnalyzeInput): AnalysisResult | null {
       const trend = e200 == null || e50 == null ? 0 : price > e200 && e50 > e200 ? 1 : price < e200 && e50 < e200 ? -1 : 0;
       vetoes.push(trend === 0 ? "Kein klarer übergeordneter Trend" : "Keine Einstiegszone in Reichweite");
     } else if (zone.riskReward < MIN_RISK_REWARD) vetoes.push(`Chance-Risiko ${zone.riskReward.toFixed(2)} unter ${MIN_RISK_REWARD}`);
+    // Lernbare Mindest-Signalstärke (Kauf: Score, Short: 100 − Score); Standard 0 = keine Filterung
+    if (plan && vetoes.length === 0 && P.minStrength > 0) {
+      const strength = plan.direction === "long" ? total : 100 - total;
+      if (strength < P.minStrength) vetoes.push(`Signalstärke ${strength.toFixed(0)} unter ${P.minStrength}`);
+    }
     const ok = !!plan && vetoes.length === 0;
     const level: SignalDecision["level"] = !ok ? "neutral" : plan!.direction === "long" ? (total >= 72 ? "strong-buy" : "buy") : total <= 28 ? "strong-sell" : "sell";
     const decision: SignalDecision = { level, rawLevel: levelFromScore(total), vetoes };

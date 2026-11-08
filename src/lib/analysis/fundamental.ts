@@ -115,27 +115,31 @@ export function scoreCrypto(f: CryptoFundamentals): { items: SubScore[]; warning
 }
 
 /** Gewichtetes Nachrichten-Sentiment (jüngere Meldungen zählen stärker). */
-export function newsSentimentScore(news: NewsItem[], now = Date.now()): number | null {
+export function newsSentimentScore(news: NewsItem[], now = Date.now(), halfLifeHours = 36): number | null {
   const recent = news.filter((n) => now - new Date(n.published).getTime() <= 72 * 3600 * 1000);
   if (recent.length === 0) return null;
   let w = 0;
   let s = 0;
   for (const n of recent) {
     const ageH = Math.max(0, (now - new Date(n.published).getTime()) / 3600000);
-    const weight = Math.exp(-ageH / 36);
+    const weight = Math.exp(-ageH / halfLifeHours);
     w += weight;
     s += weight * n.sentimentScore;
   }
   return Math.round(50 + 45 * (s / (w || 1)));
 }
 
-export function analyzeFundamentals(f: Fundamentals | null, news: NewsItem[], now = Date.now()): FundamentalResult {
+export function analyzeFundamentals(f: Fundamentals | null, news: NewsItem[], now = Date.now(), o: { fundamentalWeights?: Record<string, number>; newsShare?: number; newsHalfLifeHours?: number } = {}): FundamentalResult {
   const { items, warnings } = f ? (f.kind === "stock" ? scoreStock(f, now) : scoreCrypto(f)) : { items: [], warnings: [] };
-  const fundamentalScore = items.length ? Math.round(items.reduce((a, b) => a + b.score, 0) / items.length) : null;
-  const newsScore = newsSentimentScore(news, now);
+  // Gewichte einzelner Kennzahlen innerhalb der 20 % (Standard: alle gleich)
+  const w = (name: string) => o.fundamentalWeights?.[name] ?? 1;
+  const wSum = items.reduce((a, b) => a + w(b.name), 0);
+  const fundamentalScore = items.length && wSum > 0 ? Math.round(items.reduce((a, b) => a + b.score * w(b.name), 0) / wSum) : null;
+  const newsScore = newsSentimentScore(news, now, o.newsHalfLifeHours ?? 36);
   const parts: [number, number][] = [];
-  if (fundamentalScore != null) parts.push([fundamentalScore, 0.6]);
-  if (newsScore != null) parts.push([newsScore, 0.4]);
+  const newsShare = o.newsShare ?? 0.4;
+  if (fundamentalScore != null) parts.push([fundamentalScore, 1 - newsShare]);
+  if (newsScore != null) parts.push([newsScore, newsShare]);
   const score = parts.length ? Math.round(parts.reduce((a, [v, w]) => a + v * w, 0) / parts.reduce((a, [, w]) => a + w, 0)) : 50;
   const newsCount = news.filter((n) => now - new Date(n.published).getTime() <= 72 * 3600 * 1000).length;
   return { score, fundamentalScore, newsScore, items, newsCount, warnings };

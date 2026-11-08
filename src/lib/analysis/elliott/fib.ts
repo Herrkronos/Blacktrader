@@ -6,8 +6,22 @@ export const FIB_RATIOS = [0.382, 0.5, 0.618, 1.0, 1.618, 2.618] as const;
  * Passung eines Verhältnisses an eine Liste von Zielverhältnissen (0 … 1).
  * 1 = exakter Treffer, linear abnehmend bis 0 bei `tolerance` relativer Abweichung.
  */
+let toleranceScale = 1;
+
+/** Führt `fn` mit skalierten Fibonacci-Toleranzbändern aus (lernbar, Standard 1 = unverändert). */
+export function withFibToleranceScale<T>(scale: number, fn: () => T): T {
+  const prev = toleranceScale;
+  toleranceScale = scale;
+  try {
+    return fn();
+  } finally {
+    toleranceScale = prev;
+  }
+}
+
 export function fibFit(ratio: number, targets: readonly number[], tolerance = 0.12): number {
   if (!Number.isFinite(ratio) || ratio <= 0) return 0;
+  tolerance *= toleranceScale;
   let best = 0;
   for (const t of targets) {
     const dev = Math.abs(ratio - t) / t;

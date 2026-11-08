@@ -218,7 +218,25 @@ function contextFactor(ev: PatternEval, pv: Pivot[], candles: Candle[]): number 
 }
 
 /** Analysiert Kerzen und gibt alle gültigen Zählungen sortiert zurück. */
-export function analyzeElliott(candles: Candle[], degrees = DEGREES): ElliottResult {
+export interface RankingOptions {
+  /** Gewicht der Fibo-Passung im Ranking (Standard 0,65) */
+  fibWeight: number;
+  /** Stärke des Kontext-Abschlags (Standard 1) */
+  contextStrength: number;
+}
+
+const DEFAULT_RANKING: RankingOptions = { fibWeight: 0.65, contextStrength: 1 };
+
+/** Wellengrade aus drei ATR-Faktoren (fein, mittel, grob). */
+export function degreesFrom(mults: readonly [number, number, number]) {
+  return [
+    { atrMult: mults[0], name: "fein" },
+    { atrMult: mults[1], name: "mittel" },
+    { atrMult: mults[2], name: "grob" },
+  ];
+}
+
+export function analyzeElliott(candles: Candle[], degrees = DEGREES, ranking: RankingOptions = DEFAULT_RANKING): ElliottResult {
   if (candles.length < 30) return { score: 50, counts: [], contested: false, confidence: 0 };
   const price = candles[candles.length - 1].close;
   const atrs = atr(candles);
@@ -250,9 +268,9 @@ export function analyzeElliott(candles: Candle[], degrees = DEGREES): ElliottRes
         seen.add(key);
         const unconfirmedEnd = !pv[pv.length - 1].confirmed && offset === 0;
         const quality = clamp(
-          (0.35 + 0.65 * ev.fib) *
+          (1 - ranking.fibWeight + ranking.fibWeight * ev.fib) *
             (SPECIFICITY[t.size] ?? 0.7) *
-            contextFactor(ev, pv, candles) *
+            (1 - (1 - contextFactor(ev, pv, candles)) * ranking.contextStrength) *
             (offset === 1 ? 0.9 : 1) *
             (unconfirmedEnd ? 0.92 : 1),
         );

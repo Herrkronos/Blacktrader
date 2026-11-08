@@ -3,6 +3,7 @@
 import type { Candle } from "../types";
 import { analyzeElliott, type WaveCount } from "./elliott";
 import { ema } from "./indicators";
+import { LOCKED } from "./locked-config";
 import { performance, tradeReturnPct, type PerformanceStats } from "./stats";
 
 export type CoreState = "flat" | "hold" | "wait-bottom";
@@ -18,7 +19,7 @@ export interface CoreOptions {
 }
 
 /** Gewählt auf Entwicklungsdaten, bestätigt auf Prüf- und frischen Gold-Daten – siehe scripts/evaluate.ts (CORE). */
-export const DEFAULT_CORE_OPTIONS: CoreOptions = { minQuality: 0.55, degrees: ["grob"], warmup: 200, window: 400 };
+export const DEFAULT_CORE_OPTIONS: CoreOptions = { minQuality: LOCKED.core.minQuality, degrees: [...LOCKED.core.degrees], warmup: 200, window: 400 };
 
 export interface CoreSignal {
   trendUp: boolean;

@@ -4,6 +4,7 @@
 // Kurs die Zone erreicht (Limit-Order). Stop = Invalidierung (Start der Welle), Ziel 1 = letztes Extrem B.
 import type { Candle } from "../types";
 import { atr, ema } from "./indicators";
+import { LOCKED } from "./locked-config";
 import { zigzag, type Pivot } from "./zigzag";
 
 export interface ZoneOptions {
@@ -25,13 +26,15 @@ export interface ZoneOptions {
 
 /** Gewählt auf Entwicklungsdaten, bestätigt auf Prüfdaten (Gewinnfaktor 1,18) – siehe scripts/evaluate.ts. */
 export const DEFAULT_ZONE_OPTIONS: ZoneOptions = {
+  // Pivot-Empfindlichkeit (lernbar, Standard 4) …
   atrMult: 4,
-  entryRetrace: 0.618,
-  zoneDeep: 0.786,
-  stopBufferAtr: 0.25,
-  minWaveAtr: 4,
-  trendFilter: true,
-  target1Ext: 0.272,
+  // … alles andere ist Methode/Risiko und fest (locked-config.ts)
+  entryRetrace: LOCKED.zone.entryRetrace,
+  zoneDeep: LOCKED.zone.zoneDeep,
+  stopBufferAtr: LOCKED.zone.stopBufferAtr,
+  minWaveAtr: LOCKED.zone.minWaveAtr,
+  trendFilter: LOCKED.zone.trendFilter,
+  target1Ext: LOCKED.zone.target1Ext,
 };
 
 export interface ZoneSetup {

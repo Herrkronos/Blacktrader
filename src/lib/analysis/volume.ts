@@ -35,7 +35,23 @@ function slope(values: number[]): number {
 }
 
 /** RSI-Beitrag: Momentum im Bereich 30–70, Umkehrpotenzial in den Extremzonen. */
-export function rsiContribution(r: number): number {
+export interface VolumeRsiOptions {
+  rsiOverbought: number;
+  rsiOversold: number;
+  divergenceRecentBars: number;
+  relVolHigh: number;
+  relVolBreakout: number;
+  relVolLow: number;
+}
+
+export const DEFAULT_VOLUME_OPTIONS: VolumeRsiOptions = { rsiOverbought: 70, rsiOversold: 30, divergenceRecentBars: 20, relVolHigh: 1.5, relVolBreakout: 1.3, relVolLow: 0.6 };
+
+export function rsiContribution(r: number, ob = 70, os = 30): number {
+  if (ob !== 70 || os !== 30) {
+    if (r > ob) return 0.4 - (r - ob) / 15;
+    if (r < os) return -0.4 + (os - r) / 15;
+    return 0.4 * ((2 * (r - os)) / (ob - os) - 1);
+  }
   if (r > 70) return 0.4 - (r - 70) / 15;
   if (r < 30) return -0.4 + (30 - r) / 15;
   return (r - 50) / 50;
@@ -51,7 +67,7 @@ function avgVolume(candles: Candle[], from: number, to: number): number {
   return n ? s / n : 0;
 }
 
-export function analyzeVolumeRsi(candles: Candle[], count?: WaveCount): VolumeRsiResult {
+export function analyzeVolumeRsi(candles: Candle[], count?: WaveCount, vo: VolumeRsiOptions = DEFAULT_VOLUME_OPTIONS): VolumeRsiResult {
   const closes = candles.map((c) => c.close);
   const r = rsi(closes, 14);
   const last = r[r.length - 1] ?? null;
@@ -61,13 +77,13 @@ export function analyzeVolumeRsi(candles: Candle[], count?: WaveCount): VolumeRs
 
   let rsiState: VolumeRsiResult["rsiState"] = "neutral";
   if (last != null) {
-    sum += rsiContribution(last);
-    if (last > 70) rsiState = "überkauft";
-    else if (last < 30) rsiState = "überverkauft";
+    sum += rsiContribution(last, vo.rsiOverbought, vo.rsiOversold);
+    if (last > vo.rsiOverbought) rsiState = "überkauft";
+    else if (last < vo.rsiOversold) rsiState = "überverkauft";
     findings.push(`RSI(14) bei ${last.toFixed(1)} – ${rsiState === "neutral" ? (last >= 50 ? "positives Momentum" : "schwaches Momentum") : rsiState}.`);
   }
 
-  const divs = rsiDivergences(candles, r, 60).filter((d) => d.toIndex >= candles.length - 20);
+  const divs = rsiDivergences(candles, r, 60).filter((d) => d.toIndex >= candles.length - vo.divergenceRecentBars);
   const weights = { bullish: 0.6, bearish: -0.6, "hidden-bullish": 0.3, "hidden-bearish": -0.3 } as const;
   const names = { bullish: "bullische", bearish: "bärische", "hidden-bullish": "versteckte bullische", "hidden-bearish": "versteckte bärische" };
   const latestDiv = divs[divs.length - 1];
@@ -87,10 +103,10 @@ export function analyzeVolumeRsi(candles: Candle[], count?: WaveCount): VolumeRs
     relVol = relativeVolume(candles);
     if (relVol != null) {
       const up = lastC.close >= lastC.open;
-      if (relVol > 1.5) {
+      if (relVol > vo.relVolHigh) {
         sum += up ? 0.3 : -0.3;
         findings.push(`Relatives Volumen ${relVol.toFixed(2)}× – ${up ? "Käufer" : "Verkäufer"} zeigen Präsenz.`);
-      } else if (relVol < 0.6) findings.push(`Dünnes Volumen (${relVol.toFixed(2)}×) – Bewegung ohne Überzeugung.`);
+      } else if (relVol < vo.relVolLow) findings.push(`Dünnes Volumen (${relVol.toFixed(2)}×) – Bewegung ohne Überzeugung.`);
     }
     const o = obv(candles).slice(-20);
     const so = slope(o);
@@ -107,12 +123,12 @@ export function analyzeVolumeRsi(candles: Candle[], count?: WaveCount): VolumeRs
     const lo = Math.min(...prior.map((c) => c.low));
     if (lastC.close > hi) {
       breakout = "up";
-      const conf = (relVol ?? 1) >= 1.3;
+      const conf = (relVol ?? 1) >= vo.relVolBreakout;
       sum += conf ? 0.4 : 0.1;
       findings.push(conf ? "Ausbruch über das 20-Perioden-Hoch mit Volumenbestätigung." : "Ausbruch nach oben – aber ohne Volumen. Misstrauen angebracht.");
     } else if (lastC.close < lo) {
       breakout = "down";
-      const conf = (relVol ?? 1) >= 1.3;
+      const conf = (relVol ?? 1) >= vo.relVolBreakout;
       sum -= conf ? 0.4 : 0.1;
       findings.push(conf ? "Bruch unter das 20-Perioden-Tief mit Volumen." : "Bruch nach unten ohne Volumendruck.");
     }
