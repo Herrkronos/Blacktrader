@@ -62,9 +62,9 @@ export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: str
   const [err, setErr] = useState<string | null>(null);
   const c = a.commentary;
   const sections: [string, string][] = [
-    ["Elliott-Wellen", c.elliott],
-    ["Fundamental & News", c.fundamental],
-    ["Volumen & RSI", c.volume],
+    ["Wellen", c.elliott],
+    ["Fundamental", c.fundamental],
+    ["Volumen/RSI", c.volume],
     ["Plan", c.plan],
     ["Invalidierung", c.invalidation],
   ];
@@ -81,28 +81,30 @@ export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: str
     }
   };
   return (
-    <div className="panel space-y-3 p-4">
+    <div className="panel space-y-2 p-4">
       <div className="flex items-center justify-between gap-2">
-        <span className="panel-title">Begründung des Analysten</span>
+        <span className="panel-title">Begründung</span>
         {hasKey && (
           <button className="btn text-xs" onClick={run} disabled={busy}>
             {busy ? "formuliert …" : "Mit LLM ausformulieren"}
           </button>
         )}
       </div>
-      <p className="font-display text-lg leading-snug text-gold-light">{c.headline}</p>
+      <p className="font-display text-base leading-snug text-gold-light">{c.headline}</p>
       {llm ? (
         <div className="whitespace-pre-wrap text-sm leading-relaxed text-stone-200">{llm}</div>
       ) : (
-        sections.map(([k, v]) => (
-          <div key={k}>
-            <div className="text-[11px] uppercase tracking-wider text-gold/80">{k}</div>
-            <p className="text-sm leading-relaxed text-stone-200">{v}</p>
-          </div>
-        ))
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
+          {sections.map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="pt-0.5 text-[11px] uppercase tracking-wider text-gold/80">{k}</dt>
+              <dd className="text-stone-200">{v}</dd>
+            </div>
+          ))}
+        </dl>
       )}
       {err && <p className="text-xs text-red-400">{err}</p>}
-      <p className="border-t border-gold/15 pt-3 text-sm italic text-stone-300">{c.verdict}</p>
+      <p className="border-t border-gold/15 pt-2 text-xs italic text-stone-400">{c.verdict}</p>
     </div>
   );
 }

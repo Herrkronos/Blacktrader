@@ -30,15 +30,8 @@ export function fmtPrice(x: number): string {
 
 const pct = (x: number) => `${Math.round(x * 100)} %`;
 
-function describeCount(c: WaveCount): string {
-  const hard = c.rules.filter((r) => r.hard);
-  const soft = c.rules.filter((r) => !r.hard && !r.passed);
-  const dir = c.direction === 1 ? "aufwärts" : "abwärts";
-  let s = `${c.patternLabel} (${dir}, Grad ${c.degree}): ${c.phase}. `;
-  s += `${hard.length} harte ${hard.length === 1 ? "Regel" : "Regeln"} geprüft, alle erfüllt. Fibo-Passung ${pct(c.fib)}, Wahrscheinlichkeit ca. ${pct(c.probability)}.`;
-  if (soft.length) s += ` Schönheitsfehler: ${soft.map((r) => r.name).join("; ")}.`;
-  if (c.notes.length) s += ` ${c.notes.join(" ")}`;
-  return s;
+function shortCount(c: WaveCount): string {
+  return `${c.patternLabel} ${c.direction === 1 ? "↑" : "↓"} (${c.degree}): ${c.phase} – ${pct(c.probability)}`;
 }
 
 export function writeCommentary(input: {
@@ -59,93 +52,53 @@ export function writeCommentary(input: {
   const best = elliott.best;
   const label = SIGNAL_LABEL[decision.level];
 
-  // --- Überschrift
+  // --- Überschrift (kurz)
   let headline: string;
-  if (decision.level === "neutral") {
+  if (decision.level === "neutral")
     headline =
       decision.vetoes.length && decision.rawLevel !== "neutral"
-        ? pick(seed, [
-            `Kein Trade. Die Zahlen locken mit „${SIGNAL_LABEL[decision.rawLevel]}“, aber ich kaufe keine Hoffnung.`,
-            `Kein Trade. Ein halbes Setup ist kein Setup – ${decision.vetoes[0]}.`,
-          ])
-        : pick(seed, [
-            "Kein Trade. Das Bild ist unentschieden, und ich zahle nicht für Unklarheit.",
-            "Neutral. Geduld ist hier die einzige professionelle Position.",
-            "Kein Trade. Wer hier handelt, spielt – ich spiele nicht.",
-          ]);
-  } else if (decision.level.includes("buy")) {
-    headline = pick(seed, [
-      `${label}. Struktur, Momentum und Plan stehen – ich gehe long, während die Masse noch zögert.`,
-      `${label}. Das ist ein Setup mit Kante. Ich nehme es, mit klarem Stop.`,
-      `${label}. Die Wellenstruktur spricht eine deutliche Sprache.`,
-    ]);
-  } else {
-    headline = pick(seed, [
-      `${label}. Die Struktur kippt – ich bin auf der Short-Seite oder draußen.`,
-      `${label}. Hier verteidige ich Kapital statt Meinungen.`,
-      `${label}. Wer jetzt noch blind kauft, ignoriert die Wellen.`,
-    ]);
-  }
+        ? `Kein Trade – ${decision.vetoes[0]}.`
+        : pick(seed, ["Kein Trade. Unklares Bild.", "Neutral. Geduld ist die Position.", "Kein Trade. Ich spiele nicht."]);
+  else if (decision.level.includes("buy"))
+    headline = pick(seed, [`${label}. Setup mit Kante – long.`, `${label}. Struktur steht, ich gehe long.`]);
+  else headline = pick(seed, [`${label}. Die Struktur kippt.`, `${label}. Kapital schützen.`]);
 
-  // --- Elliott
-  let ew: string;
-  if (!best) ew = "Keine regelkonforme Wellenzählung. Ich erfinde keine Wellen, wo keine sind.";
-  else {
-    ew = `Primärzählung – ${describeCount(best)}`;
-    if (elliott.alternative) ew += ` Alternative – ${describeCount(elliott.alternative)}`;
-    if (elliott.contested) ew += " Die Alternative ist fast gleichwertig und zeigt in die Gegenrichtung. Das ist ehrlich gesagt ein Münzwurf.";
-    else if (elliott.confidence < 0.35) ew += " Die Zählung ist schwach belegt. Ich nehme sie zur Kenntnis, nicht als Fundament.";
-    else if (elliott.confidence > 0.7) ew += " Saubere Struktur – so sieht Lehrbuch aus.";
-  }
+  // --- Elliott (1–2 Sätze)
+  let ew = best ? shortCount(best) + "." : "Keine regelkonforme Zählung.";
+  if (best && elliott.alternative) ew += ` Alt.: ${elliott.alternative.patternLabel} (${pct(elliott.alternative.probability)}).`;
+  if (elliott.contested) ew += " Münzwurf – Alternative fast gleich stark.";
+  else if (best && elliott.confidence < 0.35) ew += " Schwach belegt.";
 
-  // --- Fundamental & News
+  // --- Fundamental & News (1 Satz)
   const fParts: string[] = [];
-  if (fundamental.items.length) {
-    const strong = fundamental.items.filter((i) => i.score >= 65).map((i) => `${i.name} ${i.value} (${i.comment})`);
-    const weak = fundamental.items.filter((i) => i.score < 45).map((i) => `${i.name} ${i.value} (${i.comment})`);
-    fParts.push(`Fundamentalscore ${fundamental.fundamentalScore}.`);
-    if (strong.length) fParts.push(`Stärken: ${strong.join(", ")}.`);
-    if (weak.length) fParts.push(`Schwächen: ${weak.join(", ")}.`);
-  } else fParts.push("Keine verlässlichen Fundamentaldaten verfügbar – dieser Teil zählt neutral.");
-  const recent = input.news.slice(0, 3);
+  if (fundamental.fundamentalScore != null) {
+    const top = [...fundamental.items].sort((a, b) => b.score - a.score);
+    const strong = top[0]?.score >= 65 ? `+ ${top[0].name} ${top[0].value}` : "";
+    const weak = top[top.length - 1]?.score < 45 ? `− ${top[top.length - 1].name} ${top[top.length - 1].value}` : "";
+    fParts.push(`Score ${fundamental.fundamentalScore}${strong || weak ? ` (${[strong, weak].filter(Boolean).join(", ")})` : ""}.`);
+  } else fParts.push("Keine Fundamentaldaten (neutral).");
   if (fundamental.newsScore != null) {
     const mood = fundamental.newsScore > 58 ? "freundlich" : fundamental.newsScore < 42 ? "belastet" : "gemischt";
-    fParts.push(`Nachrichtenlage der letzten 72 h: ${mood} (${fundamental.newsCount} Meldungen, Score ${fundamental.newsScore}).`);
-    if (recent.length)
-      fParts.push(
-        `Relevant: ${recent.map((n) => `„${n.title}“ (${n.source}, ${n.sentiment === "positive" ? "positiv" : n.sentiment === "negative" ? "negativ" : "neutral"})`).join("; ")}.`,
-      );
-    fParts.push("Schlagzeilen bewegen Kurse kurzfristig – Struktur entscheidet langfristig.");
-  } else fParts.push("Keine frischen Nachrichten. Ruhe ist kein Signal.");
-  if (fundamental.warnings.length) fParts.push(`Achtung: ${fundamental.warnings.join(" ")}`);
+    fParts.push(`News ${mood} (${fundamental.newsCount}).`);
+  }
+  if (fundamental.warnings.length) fParts.push(fundamental.warnings[0]);
 
-  // --- Volumen & RSI
-  const vol = volume.findings.join(" ") || "Keine auswertbaren Volumen-/RSI-Daten.";
+  // --- Volumen & RSI (max. 2 Befunde)
+  const vol = volume.findings.slice(0, 2).join(" ") || "Keine Volumen-/RSI-Daten.";
 
   // --- Plan
-  let planText: string;
-  if (!plan) planText = "Kein belastbarer Plan: Ohne definierten Stop gibt es keinen Trade. Punkt.";
-  else {
-    planText =
-      `${plan.direction === "long" ? "Long" : "Short"} – Einstieg ${fmtPrice(plan.entry)}, Stop-Loss ${fmtPrice(plan.stop)}, ` +
-      `Kursziele ${plan.targets.map(fmtPrice).join(" / ")}. Chance-Risiko ${plan.riskReward.toFixed(2)} : 1. ` +
-      `Teil-Scores: Elliott ${elliott.score}, Fundamental/News ${fundamental.score}, Volumen/RSI ${volume.score} → Gesamt ${total.toFixed(1)}.`;
-    if (plan.riskReward < 1.5) planText += " Das CRV ist mir zu dünn. Mittelmaß handle ich nicht.";
-  }
+  const planText = plan
+    ? `${plan.direction === "long" ? "Long" : "Short"} ${fmtPrice(plan.entry)} · Stop ${fmtPrice(plan.stop)} · Ziel ${plan.targets.slice(0, 2).map(fmtPrice).join(" / ")} · CRV ${plan.riskReward.toFixed(2)}`
+    : "Kein Plan ohne definierten Stop.";
 
   const invalidation = best
-    ? `Invalidierung bei ${fmtPrice(best.stop)}: ${best.bias === 1 ? "Fällt" : "Steigt"} der Kurs ${best.bias === 1 ? "darunter" : "darüber"}, ist die Zählung „${best.patternLabel}“ falsch. Dann bin ich raus – ohne Diskussion, ohne Nachkaufen.`
-    : "Ohne Zählung kein Invalidierungslevel – auch deshalb kein Trade.";
+    ? `${best.bias === 1 ? "Unter" : "Über"} ${fmtPrice(best.stop)} ist die Zählung falsch – dann raus.`
+    : "Kein Invalidierungslevel.";
 
-  let verdict: string;
-  if (decision.level === "neutral") {
-    verdict = decision.vetoes.length
-      ? `Fazit ${input.horizonLabel}: Kein Trade. Gründe: ${decision.vetoes.join("; ")}. Ich warte auf ein Setup, das meinen Ansprüchen genügt.`
-      : `Fazit ${input.horizonLabel}: Neutral (${total.toFixed(1)}). Ich beobachte, ich handle nicht.`;
-  } else {
-    const conf = elliott.confidence > 0.6 ? "hoher" : "mittlerer";
-    verdict = `Fazit ${input.horizonLabel}: ${label} mit ${conf} Überzeugung. Positionsgröße so wählen, dass der Stop schmerzt, aber nicht verletzt. Eigenverantwortung – immer.`;
-  }
+  const verdict =
+    decision.level === "neutral"
+      ? `${input.horizonLabel}: abwarten (${total.toFixed(0)}/100).`
+      : `${input.horizonLabel}: ${label} (${total.toFixed(0)}/100), Konfidenz ${elliott.confidence > 0.6 ? "hoch" : "mittel"}.`;
 
   return { headline, elliott: ew, fundamental: fParts.join(" "), volume: vol, plan: planText, invalidation, verdict };
 }

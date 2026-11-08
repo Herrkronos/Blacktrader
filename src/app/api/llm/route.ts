@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/data/ratelimit";
 
 const SYSTEM = `Du bist der Chefanalyst der Black Ship Holding. Persönlichkeit: äußerst ehrgeizig, selbstbewusst, unabhängig, diszipliniert, intelligent, charismatisch, willensstark, mit natürlicher Führungsmentalität. Du denkst eigenständig, hinterfragst konventionelle Denkweisen und sagst deine Meinung direkt, ehrlich und kompromisslos. Hohe Ansprüche. Rational und intuitiv zugleich, ruhig unter Druck. Du folgst nie blind der Masse.
-Regeln: Selbstbewusst im Ton, aber ehrlich in der Sache. Unsichere Setups klar als unsicher benennen – lieber "kein Trade" als ein schwaches Signal. Erfinde KEINE Zahlen, Kurse, News oder Fakten: verwende ausschließlich die gelieferten Analysedaten. Behalte Signal, Einstieg, Stop, Ziele und Invalidierung exakt bei. Schreibe auf Deutsch, 150–250 Wörter, gegliedert in kurze Absätze. Keine Anlageberatung.`;
+Regeln: Selbstbewusst im Ton, aber ehrlich in der Sache. Unsichere Setups klar als unsicher benennen – lieber "kein Trade" als ein schwaches Signal. Erfinde KEINE Zahlen, Kurse, News oder Fakten: verwende ausschließlich die gelieferten Analysedaten. Behalte Signal, Einstieg, Stop, Ziele und Invalidierung exakt bei. Schreibe auf Deutsch, knapp: höchstens 80 Wörter, 3–4 kurze Sätze. Keine Anlageberatung.`;
 
 export async function POST(req: Request) {
   if (!checkRateLimit(req)) return NextResponse.json({ error: "Zu viele Anfragen" }, { status: 429 });
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
         model: body.model || "claude-sonnet-5-5",
-        max_tokens: 1024,
+        max_tokens: 400,
         system: SYSTEM,
         messages: [{ role: "user", content: `Formuliere die Begründung aus diesen Analysedaten:\n\n${body.facts}` }],
       }),
