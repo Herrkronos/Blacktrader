@@ -106,7 +106,7 @@ export default function JournalPage() {
                   <tr className="cursor-pointer hover:bg-gold/5" onClick={() => setOpen(open === t.id ? null : t.id)}>
                     <td className="px-3 py-2">
                       <div className="font-semibold text-gold-light">{t.symbol}</div>
-                      <div className={`text-xs ${t.direction === "long" ? "text-up" : "text-down"}`}>{t.direction === "long" ? "Long" : "Short"}</div>
+                      <div className={`text-xs ${t.direction === "long" ? "text-up" : "text-down"}`}>{t.direction === "long" ? "Steigend" : "Fallend"}</div>
                     </td>
                     <td className="px-2 py-2 text-xs text-stone-400">{new Date(t.openedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</td>
                     <td className="px-2 py-2 text-xs">{HORIZON_LABEL[t.horizon]} <span className="text-stone-500">{t.interval}</span></td>
@@ -133,7 +133,7 @@ export default function JournalPage() {
                   {open === t.id && (
                     <tr>
                       <td colSpan={11} className="bg-black/40 px-4 py-3 text-xs leading-relaxed whitespace-pre-wrap text-stone-300">
-                        <b className="text-gold">Begründung{t.pattern ? ` · ${t.pattern}` : ""} · Score {t.score.toFixed(0)}</b>
+                        <b className="text-gold">Begründung{t.pattern ? ` · ${t.pattern}` : ""}</b>
                         {"\n"}
                         {t.reason}
                       </td>

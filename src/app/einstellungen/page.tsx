@@ -69,6 +69,13 @@ export default function SettingsPage() {
     <div className="space-y-4">
       <h1 className="text-2xl text-gold sm:text-3xl">Einstellungen</h1>
 
+      <Section title="Ansicht" hint="Einfache Ansicht: kurze, verständliche Sätze ohne Fachbegriffe. Expertenansicht: zusätzlich Wellenzählung, Fibonacci-Linien, Volumen-/RSI-Details.">
+        <label className="flex items-center gap-2 text-sm text-stone-200">
+          <input type="checkbox" className="accent-[#C9A24A]" checked={s.expertMode} onChange={(e) => actions.setSettings({ expertMode: e.target.checked })} />
+          Expertenansicht anzeigen
+        </label>
+      </Section>
+
       <Section title="Gewichtung des Gesamtscores" hint="Gesamtscore = Elliott × w₁ + Fundamental/News × w₂ + Volumen/RSI × w₃. Standard 60 / 20 / 20. Die Werte werden auf 100 % normiert.">
         {(["elliott", "fundamental", "volume"] as const).map((k) => (
           <label key={k} className="block text-sm">

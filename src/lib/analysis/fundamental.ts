@@ -37,31 +37,31 @@ export function scoreStock(f: StockFundamentals, now = Date.now()): { items: Sub
   const warnings: string[] = [];
   if (f.pe != null) {
     const s = f.pe <= 0 ? 25 : f.pe < 12 ? 80 : f.pe < 20 ? 70 : f.pe < 30 ? 55 : f.pe < 50 ? 40 : 25;
-    items.push({ name: "KGV", value: f.pe <= 0 ? "negativ" : num(f.pe), score: s, comment: f.pe <= 0 ? "Verlustzone" : s >= 70 ? "günstig" : s >= 55 ? "fair" : "teuer" });
+    items.push({ name: "KGV", value: f.pe <= 0 ? "negativ" : num(f.pe), score: s, comment: f.pe <= 0 ? "macht Verlust" : s >= 70 ? "günstig" : s >= 55 ? "fair" : "teuer" });
   }
   if (f.ps != null) {
     const s = f.ps < 1 ? 80 : f.ps < 3 ? 65 : f.ps < 6 ? 50 : f.ps < 10 ? 35 : 25;
-    items.push({ name: "KUV", value: num(f.ps, 2), score: s, comment: s >= 65 ? "moderat" : s >= 50 ? "ambitioniert" : "sehr hoch" });
+    items.push({ name: "KUV", value: num(f.ps, 2), score: s, comment: s >= 65 ? "moderat" : s >= 50 ? "hoch" : "sehr hoch" });
   }
   if (f.pb != null) {
     const s = f.pb <= 0 ? 30 : f.pb < 1 ? 75 : f.pb < 3 ? 65 : f.pb < 6 ? 50 : 35;
-    items.push({ name: "KBV", value: num(f.pb, 2), score: s, comment: s >= 65 ? "solide" : "Prämie auf Buchwert" });
+    items.push({ name: "KBV", value: num(f.pb, 2), score: s, comment: s >= 65 ? "solide" : "über Firmenwert" });
   }
   if (f.epsGrowth != null) {
     const s = lerp(f.epsGrowth, -0.2, 0.3, 20, 90);
-    items.push({ name: "EPS-Wachstum", value: pct(f.epsGrowth), score: s, comment: f.epsGrowth > 0.1 ? "kräftig" : f.epsGrowth > 0 ? "verhalten" : "rückläufig" });
+    items.push({ name: "EPS-Wachstum", value: pct(f.epsGrowth), score: s, comment: f.epsGrowth > 0.1 ? "stark" : f.epsGrowth > 0 ? "leicht" : "sinkt" });
   }
   if (f.revenueGrowth != null) {
     const s = lerp(f.revenueGrowth, -0.1, 0.25, 25, 90);
-    items.push({ name: "Umsatzwachstum", value: pct(f.revenueGrowth), score: s, comment: f.revenueGrowth > 0.08 ? "dynamisch" : f.revenueGrowth > 0 ? "leicht positiv" : "schrumpfend" });
+    items.push({ name: "Umsatzwachstum", value: pct(f.revenueGrowth), score: s, comment: f.revenueGrowth > 0.08 ? "stark" : f.revenueGrowth > 0 ? "leicht positiv" : "sinkt" });
   }
   if (f.profitMargin != null) {
     const s = f.profitMargin < 0 ? 25 : lerp(f.profitMargin, 0, 0.25, 45, 85);
-    items.push({ name: "Nettomarge", value: pct(f.profitMargin), score: s, comment: f.profitMargin > 0.15 ? "hohe Preissetzungsmacht" : f.profitMargin > 0 ? "profitabel" : "unprofitabel" });
+    items.push({ name: "Nettomarge", value: pct(f.profitMargin), score: s, comment: f.profitMargin > 0.15 ? "sehr profitabel" : f.profitMargin > 0 ? "profitabel" : "macht Verlust" });
   }
   if (f.debtToEquity != null) {
     const s = f.debtToEquity < 50 ? 80 : f.debtToEquity < 100 ? 65 : f.debtToEquity < 200 ? 45 : 30;
-    items.push({ name: "Verschuldung (D/E)", value: `${num(f.debtToEquity / 100, 2)}×`, score: s, comment: s >= 65 ? "konservativ finanziert" : "hoher Hebel" });
+    items.push({ name: "Verschuldung (D/E)", value: `${num(f.debtToEquity / 100, 2)}×`, score: s, comment: s >= 65 ? "wenig Schulden" : "viele Schulden" });
   }
   if (f.freeCashflow != null) {
     const yld = f.marketCap ? f.freeCashflow / f.marketCap : null;
@@ -70,16 +70,16 @@ export function scoreStock(f: StockFundamentals, now = Date.now()): { items: Sub
       name: "Free Cashflow",
       value: `${compactNumber(f.freeCashflow)}${yld != null ? ` (Rendite ${pct(yld)})` : ""}`,
       score: s,
-      comment: f.freeCashflow > 0 ? "verdient echtes Geld" : "verbrennt Cash",
+      comment: f.freeCashflow > 0 ? "verdient Geld" : "verliert Geld",
     });
   }
   if (f.dividendYield != null && f.dividendYield > 0) {
     const s = f.dividendYield > 0.08 ? 50 : lerp(f.dividendYield, 0, 0.04, 55, 70);
-    items.push({ name: "Dividendenrendite", value: pct(f.dividendYield), score: s, comment: f.dividendYield > 0.08 ? "auffällig hoch – Nachhaltigkeit prüfen" : "Ausschüttung vorhanden" });
+    items.push({ name: "Dividendenrendite", value: pct(f.dividendYield), score: s, comment: f.dividendYield > 0.08 ? "ungewöhnlich hoch" : "zahlt Dividende" });
   }
   if (f.nextEarnings) {
     const days = (new Date(f.nextEarnings).getTime() - now) / 86400000;
-    if (days >= 0 && days <= 7) warnings.push(`Quartalszahlen in ${Math.ceil(days)} Tag(en) – Gap-Risiko.`);
+    if (days >= 0 && days <= 7) warnings.push(`Quartalszahlen in ${Math.ceil(days)} Tag(en) – der Kurs kann dann stark springen.`);
   }
   return { items, warnings };
 }
@@ -90,27 +90,27 @@ export function scoreCrypto(f: CryptoFundamentals): { items: SubScore[]; warning
   if (f.marketCapRank != null || f.marketCap != null) {
     const r = f.marketCapRank ?? 999;
     const s = r <= 10 ? 75 : r <= 50 ? 65 : r <= 200 ? 50 : 35;
-    items.push({ name: "Marktkapitalisierung", value: `${f.marketCap ? compactNumber(f.marketCap) : "–"}${f.marketCapRank ? ` (Rang ${f.marketCapRank})` : ""}`, score: s, comment: s >= 65 ? "etabliert" : "Nebenwert – höheres Risiko" });
+    items.push({ name: "Marktkapitalisierung", value: `${f.marketCap ? compactNumber(f.marketCap) : "–"}${f.marketCapRank ? ` (Rang ${f.marketCapRank})` : ""}`, score: s, comment: s >= 65 ? "groß und etabliert" : "kleiner Wert – höheres Risiko" });
   }
   if (f.volume24h != null && f.marketCap) {
     const r = f.volume24h / f.marketCap;
     const s = r < 0.01 ? 40 : r <= 0.3 ? 65 : r <= 0.6 ? 50 : 40;
-    items.push({ name: "Volumen / Market Cap", value: pct(r), score: s, comment: r < 0.01 ? "illiquide" : r <= 0.3 ? "gesunde Liquidität" : "spekulativ überhitzt" });
+    items.push({ name: "Volumen / Market Cap", value: pct(r), score: s, comment: r < 0.01 ? "wenig gehandelt" : r <= 0.3 ? "gut gehandelt" : "sehr spekulativ" });
   }
   if (f.circulatingSupply != null) {
     if (f.maxSupply) {
       const r = f.circulatingSupply / f.maxSupply;
       const s = r > 0.8 ? 75 : r > 0.5 ? 60 : 40;
-      items.push({ name: "Angebot im Umlauf", value: pct(r), score: s, comment: r > 0.8 ? "geringe Restinflation" : "erhebliche künftige Verwässerung" });
+      items.push({ name: "Angebot im Umlauf", value: pct(r), score: s, comment: r > 0.8 ? "kaum neue Coins" : "viele neue Coins kommen noch" });
     } else {
-      items.push({ name: "Angebot im Umlauf", value: compactNumber(f.circulatingSupply), score: 50, comment: "kein hartes Maximum – Inflation beachten" });
+      items.push({ name: "Angebot im Umlauf", value: compactNumber(f.circulatingSupply), score: 50, comment: "unbegrenzte Menge" });
     }
   }
   if (f.devCommits4w != null) {
     const s = f.devCommits4w > 50 ? 75 : f.devCommits4w > 10 ? 60 : f.devCommits4w > 0 ? 50 : 40;
-    items.push({ name: "Entwicklung (Commits 4 W.)", value: num(f.devCommits4w, 0), score: s, comment: s >= 60 ? "aktiv entwickelt" : "geringe Aktivität" });
+    items.push({ name: "Entwicklung (Commits 4 W.)", value: num(f.devCommits4w, 0), score: s, comment: s >= 60 ? "aktiv entwickelt" : "wenig Aktivität" });
   }
-  if (f.athChangePct != null && f.athChangePct < -85) warnings.push("Mehr als 85 % unter dem Allzeithoch.");
+  if (f.athChangePct != null && f.athChangePct < -85) warnings.push("Mehr als 85 % unter dem Höchststand.");
   return { items, warnings };
 }
 

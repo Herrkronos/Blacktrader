@@ -132,12 +132,26 @@ describe("Kurzbegründung in Alltagssprache", () => {
     expect(money(12.5, "EUR")).toBe("12,50 €");
     expect(money(10, "EUR")).toBe("10,00 €");
     const c = { pattern: "zigzag", complete: true, bias: 1, labels: ["A", "B", "C"] } as unknown as WaveCount;
-    expect(plainReason(c, "die Aktie")).toMatch(/lokalen Boden/);
+    expect(plainReason(c, "die Aktie")).toMatch(/Boden gebildet/);
     const candles = candlesFromWaypoints([150, 130, 138, 100, 124, 109.2, 112], 15, 0.004, 3);
     const res = analyze({ symbol: "T", name: "T", candles, horizon: "medium", interval: "1d", kind: "stock", currency: "EUR" })!;
     if (res.decision.level !== "neutral") {
-      expect(res.commentary.summary).toMatch(/^(Short-)?Einstieg bei .+ € · Stop bei .+ €/);
+      expect(res.commentary.summary).toMatch(/^Einstieg (auf fallende Kurse )?bei .+ € · Stop bei .+ €/);
       expect(res.commentary.reason).toMatch(/die Aktie, da sie /);
-    } else expect(res.commentary.summary).toBe("Kein Einstieg");
+    } else expect(res.commentary.summary).toBe("Kein Einstieg – abwarten");
+  });
+});
+
+describe("Anfängertexte", () => {
+  it("enthalten keine Wellen-Nummern oder Fachbegriffe", async () => {
+    const { plainReason, plainSetup } = await import("../src/lib/analysis/persona");
+    const patterns = ["impulse", "zigzag", "flat-regular", "triangle-contracting", "ending-diagonal", "leading-diagonal", "double-zigzag"];
+    for (const pattern of patterns)
+      for (const n of [2, 3, 4, 5])
+        for (const bias of [1, -1]) {
+          const c = { pattern, complete: n === 5 || pattern !== "impulse", bias, labels: Array.from({ length: n }, (_, i) => String(i + 1)) } as unknown as WaveCount;
+          const txt = `${plainReason(c, "sie")} ${plainSetup(c)}`;
+          expect(txt).not.toMatch(/\d|Welle|Elliott|Impuls|Zigzag|Fibo|Diagonal/);
+        }
   });
 });

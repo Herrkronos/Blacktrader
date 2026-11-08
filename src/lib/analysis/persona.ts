@@ -9,6 +9,8 @@ import type { NewsItem } from "../types";
 export interface Commentary {
   /** Kurzfassung in Alltagssprache, z. B. „Einstieg bei 12,50 € · Stop bei 10,00 €“ */
   summary: string;
+  /** Risiko/Chance in einfachen Worten */
+  risk: string;
   /** Ein-Satz-Begründung, z. B. „Einstieg in die Aktie, da sie einen lokalen Boden ausgebildet hat.“ */
   reason: string;
   headline: string;
@@ -44,38 +46,50 @@ export function money(x: number, currency?: string): string {
 
 export type AssetKindNoun = "stock" | "crypto";
 
-/** Einfacher Grund in Alltagssprache aus der besten Wellenzählung. */
-export function plainReason(c: WaveCount | undefined, it: string): string {
-  if (!c) return `${it} zeigt kein klares Muster`;
+/** Sehr kurze Setup-Beschreibung ohne Fachbegriffe (für Journal, Backtest, Listen). */
+export function plainSetup(c: WaveCount | undefined): string {
+  if (!c) return "Kein klares Bild";
   const up = c.bias === 1;
   const n = c.labels.length;
-  switch (c.pattern) {
-    case "impulse":
-      if (!c.complete && n === 2)
-        return up
-          ? `${it} nach dem Rücksetzer einen lokalen Boden ausgebildet hat – jetzt sollte die stärkste Aufwärtswelle folgen`
-          : `${it} nach der Erholung ein lokales Hoch ausgebildet hat – jetzt sollte die stärkste Abwärtswelle folgen`;
-      if (!c.complete && n === 3) return up ? `${it} nach dem starken Abverkauf vor einer Erholung steht` : `${it} nach dem starken Anstieg eine Verschnaufpause einlegen dürfte`;
-      if (!c.complete && n === 4) return up ? `die Zwischenkorrektur beendet ist und noch eine letzte Aufwärtswelle folgen sollte` : `die Zwischenerholung beendet ist und noch eine letzte Abwärtswelle folgen sollte`;
-      return up ? `der Abwärtstrend ausgelaufen ist und ${it} einen Boden ausbildet` : `der Aufwärtstrend ausgelaufen ist – ein Rücksetzer ist jetzt wahrscheinlich`;
-    case "ending-diagonal":
-      return up ? `sich der Abwärtstrend in einem Keil erschöpft hat – eine Umkehr nach oben ist wahrscheinlich` : `sich der Aufwärtstrend in einem Keil erschöpft hat – eine Umkehr nach unten ist wahrscheinlich`;
-    case "leading-diagonal":
-      return up ? `nach dem ersten Abwärtsschub eine Gegenbewegung nach oben fällig ist` : `nach dem ersten Aufwärtsschub ein Rücksetzer fällig ist`;
-    case "zigzag":
-      if (!c.complete) return up ? `nach dem Rücksetzer noch eine weitere Aufwärtsbewegung folgen sollte` : `nach der Erholung noch eine weitere Abwärtsbewegung folgen sollte`;
-    // fallthrough
-    default:
-      if (c.pattern.startsWith("triangle")) return up ? `die Seitwärtsphase beendet ist – ein Ausbruch nach oben wird erwartet` : `die Seitwärtsphase beendet ist – ein Ausbruch nach unten wird erwartet`;
-      return up ? `die Korrektur abgeschlossen ist und ${it} einen lokalen Boden ausgebildet hat` : `die Erholung ausgelaufen ist und ${it} ein lokales Hoch ausgebildet hat`;
+  if (c.pattern === "impulse" && !c.complete) {
+    if (n === 2) return up ? "Boden gebildet – Anstieg startet" : "Hoch gebildet – Rückgang startet";
+    if (n === 3) return up ? "Erholung nach starkem Fall" : "Pause nach starkem Anstieg";
+    return up ? "Letzter Anstieg im Trend" : "Letzter Rückgang im Trend";
   }
+  if (c.pattern === "impulse") return up ? "Abwärtstrend ausgelaufen" : "Aufwärtstrend ausgelaufen";
+  if (c.pattern === "ending-diagonal") return up ? "Abwärtstrend erschöpft – Umkehr" : "Aufwärtstrend erschöpft – Umkehr";
+  if (c.pattern === "leading-diagonal") return up ? "Gegenbewegung nach oben" : "Rücksetzer erwartet";
+  if (c.pattern === "zigzag" && !c.complete) return up ? "Weiterer Anstieg erwartet" : "Weiterer Rückgang erwartet";
+  if (c.pattern.startsWith("triangle")) return up ? "Ausbruch nach oben" : "Ausbruch nach unten";
+  return up ? "Rücksetzer beendet – Boden gebildet" : "Erholung beendet – Hoch gebildet";
+}
+
+/** Einfacher Grund in Alltagssprache (ohne Wellen-Nummern oder Fachbegriffe). */
+export function plainReason(c: WaveCount | undefined, it: string): string {
+  if (!c) return `${it} zeigt kein klares Bild`;
+  const up = c.bias === 1;
+  const n = c.labels.length;
+  if (c.pattern === "impulse" && !c.complete) {
+    if (n === 2)
+      return up
+        ? `${it} nach einem Rücksetzer einen Boden gebildet hat und der Anstieg jetzt Fahrt aufnehmen dürfte`
+        : `${it} nach einer Erholung ein Hoch gebildet hat und der Rückgang jetzt Fahrt aufnehmen dürfte`;
+    if (n === 3) return up ? `${it} stark gefallen ist und eine Erholung wahrscheinlich ist` : `${it} stark gestiegen ist und eine Pause wahrscheinlich ist`;
+    return up ? `die kurze Pause vorbei ist und noch ein letzter Anstieg folgen dürfte` : `die kurze Erholung vorbei ist und noch ein letzter Rückgang folgen dürfte`;
+  }
+  if (c.pattern === "impulse") return up ? `der Abwärtstrend ausgelaufen ist und ${it} einen Boden bildet` : `der Aufwärtstrend ausgelaufen ist und ein Rücksetzer wahrscheinlich ist`;
+  if (c.pattern === "ending-diagonal") return up ? `der Abwärtstrend an Kraft verliert und eine Umkehr nach oben wahrscheinlich ist` : `der Aufwärtstrend an Kraft verliert und eine Umkehr nach unten wahrscheinlich ist`;
+  if (c.pattern === "leading-diagonal") return up ? `nach dem ersten Rückgang eine Gegenbewegung nach oben fällig ist` : `nach dem ersten Anstieg ein Rücksetzer fällig ist`;
+  if (c.pattern === "zigzag" && !c.complete) return up ? `nach dem kurzen Rücksetzer ein weiterer Anstieg wahrscheinlich ist` : `nach der kurzen Erholung ein weiterer Rückgang wahrscheinlich ist`;
+  if (c.pattern.startsWith("triangle")) return up ? `die Seitwärtsphase vorbei ist und ein Ausbruch nach oben erwartet wird` : `die Seitwärtsphase vorbei ist und ein Ausbruch nach unten erwartet wird`;
+  return up ? `der Rücksetzer beendet ist und ${it} einen Boden gebildet hat` : `die Erholung beendet ist und ${it} ein Hoch gebildet hat`;
 }
 
 const VETO_PLAIN: [RegExp, string][] = [
-  [/Chance-Risiko/, "der mögliche Gewinn steht in keinem guten Verhältnis zum Risiko"],
+  [/Chance-Risiko/, "der mögliche Gewinn in keinem guten Verhältnis zum Risiko steht"],
   [/zu unsicher/, "das Chartbild noch zu unklar ist"],
-  [/Alternative/, "der Chart genauso gut in die andere Richtung laufen kann"],
-  [/Kein sauberer Plan/, "sich kein sinnvoller Stop festlegen lässt"],
+  [/Alternative/, "der Kurs genauso gut in die andere Richtung laufen kann"],
+  [/Kein sauberer Plan/, "sich keine sinnvolle Verlustgrenze festlegen lässt"],
   [/widerspricht/, "sich Chartbild und Gesamtbewertung widersprechen"],
 ];
 
@@ -115,14 +129,25 @@ export function writeCommentary(input: {
     summary =
       plan.direction === "long"
         ? `Einstieg bei ${money(plan.entry, cur)} · Stop bei ${money(plan.stop, cur)} · Ziel ${t}`
-        : `Short-Einstieg bei ${money(plan.entry, cur)} · Stop bei ${money(plan.stop, cur)} · Ziel ${t}`;
+        : `Einstieg auf fallende Kurse bei ${money(plan.entry, cur)} · Stop bei ${money(plan.stop, cur)} · Ziel ${t}`;
     const why = plainReason(best, pron);
-    reason = plan.direction === "long" ? `Einstieg in ${noun}, da ${why}.` : `Ausstieg bzw. Short in ${noun}, da ${why}.`;
+    reason = plan.direction === "long" ? `Einstieg in ${noun}, da ${why}.` : `Verkaufen bzw. auf fallende Kurse setzen, da ${why}.`;
   } else {
-    summary = "Kein Einstieg";
+    summary = "Kein Einstieg – abwarten";
     const veto = decision.vetoes.map((v) => VETO_PLAIN.find(([re]) => re.test(v))?.[1]).find(Boolean);
-    const lean = best ? ` Tendenz: ${best.bias === 1 ? "eher aufwärts" : "eher abwärts"}, weil ${plainReason(best, pron)}.` : "";
-    reason = veto ? `Noch nicht einsteigen, da ${veto}.${lean}` : `Abwarten – ${it} zeigt aktuell kein klares Signal.${lean}`;
+    const lean = best ? ` Tendenz: eher ${best.bias === 1 ? "aufwärts" : "abwärts"}.` : "";
+    reason = veto ? `Noch nicht einsteigen, da ${veto}.${lean}` : `${it.charAt(0).toUpperCase() + it.slice(1)} zeigt gerade kein klares Signal.${lean}`;
+  }
+
+  let risk = "";
+  if (plan) {
+    const lossPct = (Math.abs(plan.entry - plan.stop) / plan.entry) * 100;
+    const gainPct = (Math.abs(plan.targets[0] - plan.entry) / plan.entry) * 100;
+    risk =
+      plan.direction === "long"
+        ? `Fällt der Kurs unter ${money(plan.stop, cur)}, wird verkauft – Verlust ca. ${lossPct.toFixed(1).replace(".", ",")} %. Möglicher Gewinn bis zum ersten Ziel: ca. ${gainPct.toFixed(1).replace(".", ",")} %.`
+        : `Steigt der Kurs über ${money(plan.stop, cur)}, wird die Wette auf fallende Kurse beendet – Verlust ca. ${lossPct.toFixed(1).replace(".", ",")} %. Möglicher Gewinn bis zum ersten Ziel: ca. ${gainPct.toFixed(1).replace(".", ",")} %.`;
+    if (decision.level === "neutral") risk = "";
   }
 
   // --- Überschrift (kurz)
@@ -173,5 +198,5 @@ export function writeCommentary(input: {
       ? `${input.horizonLabel}: abwarten (${total.toFixed(0)}/100).`
       : `${input.horizonLabel}: ${label} (${total.toFixed(0)}/100), Konfidenz ${elliott.confidence > 0.6 ? "hoch" : "mittel"}.`;
 
-  return { summary, reason, headline, elliott: ew, fundamental: fParts.join(" "), volume: vol, plan: planText, invalidation, verdict };
+  return { summary, reason, risk, headline, elliott: ew, fundamental: fParts.join(" "), volume: vol, plan: planText, invalidation, verdict };
 }

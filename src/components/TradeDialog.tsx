@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { AnalysisResult } from "@/lib/analysis/analyze";
-import { fmtPrice } from "@/lib/analysis/persona";
+import { fmtPrice, plainSetup } from "@/lib/analysis/persona";
 import { actions, type WatchItem } from "@/lib/store/store";
 
 export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; analysis: AnalysisResult; onClose: () => void }) {
@@ -11,7 +11,7 @@ export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; anal
   const [entry, setEntry] = useState(String(+(plan?.entry ?? analysis.price).toPrecision(6)));
   const [stop, setStop] = useState(plan ? String(+plan.stop.toPrecision(6)) : "");
   const [targets, setTargets] = useState(plan ? plan.targets.map((t) => +t.toPrecision(6)).join("; ") : "");
-  const [reason, setReason] = useState(`${c.summary}\n${c.reason}\n\nDetails: ${c.elliott} ${c.invalidation}`);
+  const [reason, setReason] = useState([c.summary, c.reason, c.risk].filter(Boolean).join("\n"));
   const [err, setErr] = useState<string | null>(null);
 
   const save = () => {
@@ -38,7 +38,7 @@ export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; anal
       reason,
       score: analysis.total,
       signal: analysis.decision.level,
-      pattern: analysis.elliott.best?.patternLabel,
+      pattern: plainSetup(analysis.elliott.best),
       lastPrice: analysis.price,
     });
     onClose();
@@ -60,14 +60,14 @@ export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; anal
         </p>
         {analysis.decision.level === "neutral" && (
           <p className="mb-3 rounded-lg border border-wine-light/40 bg-wine/20 p-2 text-xs text-red-200">
-            Der Analyst empfiehlt hier keinen Trade{analysis.decision.vetoes.length ? ` (${analysis.decision.vetoes.join("; ")})` : ""}. Du kannst ihn trotzdem bewusst als Papier-Trade erfassen.
+            Der Analyst empfiehlt hier keinen Einstieg: {c.reason} Du kannst den Trade trotzdem zum Üben erfassen.
           </p>
         )}
         <div className="grid grid-cols-2 gap-3">
           <label className="col-span-2 flex gap-2">
             {(["long", "short"] as const).map((d) => (
               <button key={d} type="button" onClick={() => setDirection(d)} className={`flex-1 rounded-lg border py-2 text-sm ${direction === d ? (d === "long" ? "border-emerald-500 bg-emerald-600/20 text-emerald-200" : "border-red-500 bg-wine/40 text-red-200") : "border-stone-700 text-stone-400"}`}>
-                {d === "long" ? "Long" : "Short"}
+                {d === "long" ? "Steigende Kurse (Long)" : "Fallende Kurse (Short)"}
               </button>
             ))}
           </label>
@@ -88,7 +88,7 @@ export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; anal
             <textarea className="input mt-1 h-40 text-xs" value={reason} onChange={(e) => setReason(e.target.value)} />
           </label>
         </div>
-        {rr != null && <p className="mt-2 text-xs text-stone-400">Chance-Risiko (Ziel 1): <span className={rr >= 1.5 ? "text-emerald-400" : "text-red-400"}>{rr.toFixed(2)} : 1</span></p>}
+        {rr != null && <p className="mt-2 text-xs text-stone-400">Chance : Risiko (bis Ziel 1): <span className={rr >= 1.5 ? "text-emerald-400" : "text-red-400"}>{rr.toFixed(2)} : 1</span></p>}
         {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <button className="btn" onClick={onClose}>

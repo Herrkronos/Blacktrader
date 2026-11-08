@@ -130,9 +130,15 @@ export function AssetDetail() {
               </button>
             ))}
             <label className="ml-2 flex items-center gap-1 text-xs text-stone-400">
-              <input type="checkbox" checked={showAlt} onChange={(e) => setShowAlt(e.target.checked)} className="accent-[#C9A24A]" />
-              Alternative
+              <input type="checkbox" checked={settings.expertMode} onChange={(e) => actions.setSettings({ expertMode: e.target.checked })} className="accent-[#C9A24A]" />
+              Expertenansicht
             </label>
+            {settings.expertMode && (
+              <label className="ml-2 flex items-center gap-1 text-xs text-stone-400">
+                <input type="checkbox" checked={showAlt} onChange={(e) => setShowAlt(e.target.checked)} className="accent-[#C9A24A]" />
+                Alternative
+              </label>
+            )}
           </div>
         </div>
       </div>
@@ -141,8 +147,12 @@ export function AssetDetail() {
         <div className="panel p-2 lg:col-span-2">
           {error && <p className="p-3 text-sm text-red-400">Kursdaten nicht verfügbar: {error}</p>}
           {loading && candles.length === 0 && !error && <p className="p-3 text-sm text-stone-400">Lade Kerzen …</p>}
-          {candles.length > 0 && <PriceChart candles={chartCandles} best={analysis?.elliott.best} alternative={analysis?.elliott.alternative} plan={analysis?.plan} showAlternative={showAlt} />}
-          <p className="px-2 pb-1 text-[11px] text-stone-500">Gold = Primärzählung, gestrichelt = Alternative. Linien: Kursziele (gold), Retracements (grau), Invalidierung (rot). Unten: RSI(14).</p>
+          {candles.length > 0 && <PriceChart candles={chartCandles} best={analysis?.elliott.best} alternative={analysis?.elliott.alternative} plan={settings.expertMode || analysis?.decision.level !== "neutral" ? analysis?.plan : null} showAlternative={showAlt} simple={!settings.expertMode} />}
+          <p className="px-2 pb-1 text-[11px] text-stone-500">
+            {settings.expertMode
+              ? "Gold = Primärzählung, gestrichelt = Alternative. Linien: Kursziele (gold), Retracements (grau), Invalidierung (rot). Unten: RSI(14)."
+              : "Gelb = Einstieg, Rot = Stop (Verlustgrenze), Grün = Kursziele. Unten: Stärke-Anzeige (über 70 = heiß gelaufen, unter 30 = stark gefallen)."}
+          </p>
         </div>
         {analysis ? <SignalCard a={analysis} onTrade={() => setTrade(true)} /> : <div className="panel p-4 text-sm text-stone-400">{candles.length > 0 && candles.length < 30 ? "Zu wenig Historie für eine Analyse." : "Analyse wird berechnet …"}</div>}
       </div>
@@ -151,10 +161,10 @@ export function AssetDetail() {
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="space-y-4 lg:col-span-2">
             <Commentary a={analysis} item={item} />
-            <WavePanel a={analysis} />
+            {settings.expertMode && <WavePanel a={analysis} />}
           </div>
           <div className="space-y-4">
-            <VolumePanel a={analysis} />
+            {settings.expertMode && <VolumePanel a={analysis} />}
             <FundamentalsPanel a={analysis} f={fundamentals} />
             <NewsPanel news={news} score={analysis.fundamental.newsScore} />
           </div>

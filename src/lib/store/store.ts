@@ -46,6 +46,8 @@ export interface Settings {
   sound: boolean;
   /** Schließen bei erstem oder letztem Kursziel */
   closeAtTarget: "first" | "last";
+  /** Expertenansicht: Wellenzählung, Fachbegriffe, Detailwerte */
+  expertMode: boolean;
   keys: {
     finnhub: string;
     alphavantage: string;
@@ -73,6 +75,7 @@ export const DEFAULT_SETTINGS: Settings = {
   notifications: false,
   sound: true,
   closeAtTarget: "first",
+  expertMode: false,
   keys: { finnhub: "", alphavantage: "", openfigi: "", llm: "", llmProvider: "anthropic", llmModel: "" },
 };
 

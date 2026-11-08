@@ -27,12 +27,14 @@ interface Props {
   plan?: TradePlan | null;
   showAlternative?: boolean;
   height?: number;
+  /** Einfache Ansicht: nur Einstieg, Stop und Ziele – keine Wellen-Nummern */
+  simple?: boolean;
 }
 
 const GOLD = "#C9A24A";
 const WINE = "#a32234";
 
-export function PriceChart({ candles, best, alternative, plan, showAlternative = true, height = 460 }: Props) {
+export function PriceChart({ candles, best, alternative, plan, showAlternative = true, height = 460, simple = false }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<{ candle: ISeriesApi<"Candlestick">; volume: ISeriesApi<"Histogram">; rsi: ISeriesApi<"Line">; wave: ISeriesApi<"Line">; alt: ISeriesApi<"Line"> } | null>(null);
@@ -95,8 +97,8 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
     if (!s) return;
     const t = (x: number) => x as UTCTimestamp;
     const toLine = (c?: WaveCount) => (c ? c.pivots.map((p) => ({ time: t(p.time), value: p.price })).filter((p, i, arr) => i === 0 || (p.time as number) > (arr[i - 1].time as number)) : []);
-    s.wave.setData(toLine(best));
-    s.alt.setData(showAlternative ? toLine(alternative) : []);
+    s.wave.setData(simple ? [] : toLine(best));
+    s.alt.setData(showAlternative && !simple ? toLine(alternative) : []);
     const markers: SeriesMarker<Time>[] = [];
     const addLabels = (c: WaveCount | undefined, primary: boolean) => {
       if (!c) return;
@@ -113,14 +115,16 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
         });
       });
     };
-    addLabels(best, true);
-    if (showAlternative) addLabels(alternative, false);
+    if (!simple) {
+      addLabels(best, true);
+      if (showAlternative) addLabels(alternative, false);
+    }
     markers.sort((a, b) => (a.time as number) - (b.time as number));
     markersRef.current?.setMarkers(markers);
 
     linesRef.current.forEach((l) => s.candle.removePriceLine(l));
     linesRef.current = [];
-    if (best) {
+    if (best && !simple) {
       for (const lv of best.levels) {
         linesRef.current.push(
           s.candle.createPriceLine({
@@ -136,8 +140,14 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
     }
     if (plan) {
       linesRef.current.push(s.candle.createPriceLine({ price: plan.entry, color: "#e3c57a", lineStyle: LineStyle.Solid, lineWidth: 1, axisLabelVisible: true, title: "Einstieg" }));
+      if (simple) {
+        linesRef.current.push(s.candle.createPriceLine({ price: plan.stop, color: WINE, lineStyle: LineStyle.Dashed, lineWidth: 2, axisLabelVisible: true, title: "Stop" }));
+        plan.targets.forEach((t, i) =>
+          linesRef.current.push(s.candle.createPriceLine({ price: t, color: "rgba(63,174,106,0.9)", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: true, title: `Ziel ${i + 1}` })),
+        );
+      }
     }
-  }, [best, alternative, plan, showAlternative]);
+  }, [best, alternative, plan, showAlternative, simple]);
 
   return <div ref={ref} style={{ height }} className="w-full" />;
 }

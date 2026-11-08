@@ -14,6 +14,7 @@ import { ScoreBar, SignalBadge } from "./ui";
 export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => void }) {
   const w = useAppData((d) => d.settings.weights);
   const sum = w.elliott + w.fundamental + w.volume || 1;
+  const expert = useAppData((d) => d.settings.expertMode);
   return (
     <div className="panel space-y-3 p-4">
       <div className="flex items-center justify-between">
@@ -22,31 +23,31 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
       </div>
       <div className="flex items-end gap-2">
         <span className="num font-display text-4xl text-gold-light">{a.total.toFixed(0)}</span>
-        <span className="pb-1 text-sm text-stone-400">/ 100 Gesamtscore</span>
+        <span className="pb-1 text-sm text-stone-400">/ 100 {expert ? "Gesamtscore" : "Punkte (über 50 = eher steigend)"}</span>
       </div>
-      <ScoreBar value={a.elliott.score} label={`Elliott (${Math.round((w.elliott / sum) * 100)} %)`} />
-      <ScoreBar value={a.fundamental.score} label={`Fundamental/News (${Math.round((w.fundamental / sum) * 100)} %)`} />
-      <ScoreBar value={a.volume.score} label={`Volumen/RSI (${Math.round((w.volume / sum) * 100)} %)`} />
-      {a.decision.vetoes.length > 0 && (
+      <ScoreBar value={a.elliott.score} label={expert ? `Elliott (${Math.round((w.elliott / sum) * 100)} %)` : "Chartbild"} />
+      <ScoreBar value={a.fundamental.score} label={expert ? `Fundamental/News (${Math.round((w.fundamental / sum) * 100)} %)` : "Firmenzahlen & Nachrichten"} />
+      <ScoreBar value={a.volume.score} label={expert ? `Volumen/RSI (${Math.round((w.volume / sum) * 100)} %)` : "Kaufinteresse"} />
+      {expert && a.decision.vetoes.length > 0 && (
         <div className="rounded-lg border border-gold/20 bg-black/40 p-2 text-xs text-stone-300">
           Roh-Signal „{SIGNAL_LABEL[a.decision.rawLevel]}“ neutralisiert: {a.decision.vetoes.join("; ")}.
         </div>
       )}
-      {a.plan ? (
+      {a.plan && (expert || a.decision.level !== "neutral") ? (
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
           <dt className="text-stone-400">Richtung</dt>
-          <dd className={a.plan.direction === "long" ? "text-up" : "text-down"}>{a.plan.direction === "long" ? "Long" : "Short"}</dd>
+          <dd className={a.plan.direction === "long" ? "text-up" : "text-down"}>{a.plan.direction === "long" ? "Auf steigende Kurse" : "Auf fallende Kurse"}</dd>
           <dt className="text-stone-400">Einstieg</dt>
           <dd className="num">{fmtPrice(a.plan.entry)}</dd>
-          <dt className="text-stone-400">Stop-Loss</dt>
+          <dt className="text-stone-400">{expert ? "Stop-Loss" : "Stop (Verlustgrenze)"}</dt>
           <dd className="num text-down">{fmtPrice(a.plan.stop)}</dd>
           <dt className="text-stone-400">Kursziele</dt>
           <dd className="num text-up">{a.plan.targets.map(fmtPrice).join(" / ")}</dd>
-          <dt className="text-stone-400">CRV</dt>
+          <dt className="text-stone-400">{expert ? "CRV" : "Chance : Risiko"}</dt>
           <dd className={`num ${a.plan.riskReward >= 1.5 ? "text-up" : "text-down"}`}>{a.plan.riskReward.toFixed(2)} : 1</dd>
         </dl>
       ) : (
-        <p className="text-sm text-stone-400">Kein ableitbarer Trade-Plan.</p>
+        <p className="text-sm text-stone-400">Aktuell kein Einstieg geplant.</p>
       )}
       <button className="btn-primary w-full" onClick={onTrade}>
         Als Papier-Trade übernehmen
@@ -57,6 +58,7 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
 
 export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: string; name: string } }) {
   const hasKey = useAppData((d) => !!d.settings.keys.llm);
+  const expert = useAppData((d) => d.settings.expertMode);
   const [llm, setLlm] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -93,6 +95,8 @@ export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: str
       <p className={`text-lg font-semibold leading-snug ${a.decision.level === "neutral" ? "text-stone-200" : a.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{c.summary}</p>
       <p className="text-base leading-relaxed text-stone-100">{c.reason}</p>
       {llm && <div className="whitespace-pre-wrap text-sm leading-relaxed text-stone-300">{llm}</div>}
+      {c.risk && <p className="text-sm text-stone-300">{c.risk}</p>}
+      {expert && (
       <details className="text-sm">
         <summary className="cursor-pointer text-xs text-gold/80">Details zur Analyse</summary>
         <p className="mt-2 font-display text-sm text-gold-light">{c.headline}</p>
@@ -106,6 +110,7 @@ export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: str
         </dl>
         <p className="mt-2 text-xs italic text-stone-400">{c.verdict}</p>
       </details>
+      )}
       {err && <p className="text-xs text-red-400">{err}</p>}
     </div>
   );
@@ -181,7 +186,53 @@ export function WavePanel({ a }: { a: AnalysisResult }) {
 const fmtPct = (x?: number) => (x == null ? "–" : `${(x * 100).toFixed(1)} %`);
 const fmtNum = (x?: number, d = 2) => (x == null ? "–" : x.toLocaleString("de-DE", { maximumFractionDigits: d }));
 
+const SIMPLE_NAMES: Record<string, string> = {
+  KGV: "Bewertung (Preis je Gewinn)",
+  KUV: "Preis im Verhältnis zum Umsatz",
+  KBV: "Preis im Verhältnis zum Firmenwert",
+  "EPS-Wachstum": "Gewinnwachstum",
+  Umsatzwachstum: "Umsatzwachstum",
+  Nettomarge: "Gewinnmarge",
+  "Verschuldung (D/E)": "Schulden",
+  "Free Cashflow": "Freier Geldzufluss",
+  Dividendenrendite: "Dividende",
+  Marktkapitalisierung: "Größe",
+  "Volumen / Market Cap": "Handelsaktivität",
+  "Angebot im Umlauf": "Coins im Umlauf",
+  "Entwicklung (Commits 4 W.)": "Aktivität der Entwickler",
+};
+
 export function FundamentalsPanel({ a, f }: { a: AnalysisResult; f: Fundamentals | null }) {
+  const expert = useAppData((d) => d.settings.expertMode);
+  if (!expert) {
+    const items = a.fundamental.items;
+    const s = a.fundamental.fundamentalScore;
+    return (
+      <div className="panel p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="panel-title">{f?.kind === "crypto" ? "Kennzahlen" : "Firmenzahlen"}</span>
+          {s != null && <span className={`text-xs ${s >= 58 ? "text-up" : s <= 42 ? "text-down" : "text-stone-400"}`}>{s >= 58 ? "eher gut" : s <= 42 ? "eher schwach" : "durchschnittlich"}</span>}
+        </div>
+        {items.length === 0 ? (
+          <p className="text-sm text-stone-400">Keine Zahlen verfügbar.</p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {items.map((i) => (
+              <li key={i.name} className="flex justify-between gap-3">
+                <span className="text-stone-300">{SIMPLE_NAMES[i.name] ?? i.name}</span>
+                <span className={`text-right ${i.score >= 60 ? "text-up" : i.score < 45 ? "text-down" : "text-stone-300"}`}>{i.comment}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {a.fundamental.warnings.map((w) => (
+          <p key={w} className="mt-2 text-xs text-amber-300">
+            {w}
+          </p>
+        ))}
+      </div>
+    );
+  }
   const rows: [string, string][] = !f
     ? []
     : f.kind === "stock"
@@ -241,8 +292,8 @@ export function NewsPanel({ news, score }: { news: NewsItem[]; score: number | n
   return (
     <div className="panel p-4">
       <div className="mb-2 flex items-center justify-between">
-        <span className="panel-title">News (72 h)</span>
-        <span className="text-xs text-stone-400">Sentiment-Score {score ?? "–"}</span>
+        <span className="panel-title">Nachrichten (3 Tage)</span>
+        <span className="text-xs text-stone-400">Stimmung: {score == null ? "–" : score > 58 ? "positiv" : score < 42 ? "negativ" : "gemischt"}</span>
       </div>
       {news.length === 0 ? (
         <p className="text-sm text-stone-400">Keine aktuellen Meldungen gefunden.</p>

@@ -1,6 +1,7 @@
 // Backtest: Walk-Forward über historische Kerzen – zu jedem Zeitpunkt sieht die Analyse nur die Vergangenheit.
 import type { Candle, Horizon, Interval } from "../types";
 import { analyze } from "./analyze";
+import { plainSetup } from "./persona";
 import type { Weights } from "./score";
 import { performance, tradeReturnPct, type PerformanceStats } from "./stats";
 
@@ -95,7 +96,7 @@ export function runBacktest(candles: Candle[], opts: BacktestOptions): BacktestR
       reason,
       returnPct: tradeReturnPct(plan.direction, plan.entry, exit),
       score: res.total,
-      pattern: res.elliott.best?.patternLabel ?? "–",
+      pattern: plainSetup(res.elliott.best),
     });
     i = exitIdx + 1;
   }

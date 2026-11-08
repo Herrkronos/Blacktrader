@@ -109,7 +109,7 @@ export default function BacktestPage() {
                 <tr>
                   <th className="px-3 py-2">Einstieg</th>
                   <th className="px-2 py-2">Richtung</th>
-                  <th className="px-2 py-2">Muster</th>
+                  <th className="px-2 py-2">Situation</th>
                   <th className="px-2 py-2 text-right">Einstieg</th>
                   <th className="px-2 py-2 text-right">Exit</th>
                   <th className="px-2 py-2">Grund</th>
@@ -120,7 +120,7 @@ export default function BacktestPage() {
                 {result.trades.map((t) => (
                   <tr key={t.entryTime}>
                     <td className="px-3 py-1.5 text-xs text-stone-400">{new Date(t.entryTime * 1000).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</td>
-                    <td className={`px-2 py-1.5 ${t.direction === "long" ? "text-up" : "text-down"}`}>{t.direction === "long" ? "Long" : "Short"}</td>
+                    <td className={`px-2 py-1.5 ${t.direction === "long" ? "text-up" : "text-down"}`}>{t.direction === "long" ? "Steigend" : "Fallend"}</td>
                     <td className="px-2 py-1.5 text-xs">{t.pattern}</td>
                     <td className="num px-2 py-1.5 text-right">{fmtPrice(t.entry)}</td>
                     <td className="num px-2 py-1.5 text-right">{fmtPrice(t.exit)}</td>
