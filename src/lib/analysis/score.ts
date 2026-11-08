@@ -50,10 +50,12 @@ export interface TradePlan {
 export const MIN_RISK_REWARD = 1.5;
 
 /** Plan aus der besten Zählung: Stop = Invalidierung, Ziele = Fibo-Ziele jenseits des Einstiegs. */
-export function buildPlan(count: WaveCount | undefined, price: number): TradePlan | null {
+export function buildPlan(count: WaveCount | undefined, price: number, minStopDistance = 0): TradePlan | null {
   if (!count) return null;
   const dir = count.bias;
-  const risk = (price - count.stop) * dir;
+  // Stop = Invalidierung, aber mindestens `minStopDistance` vom Einstieg entfernt (Schutz vor normalem Rauschen)
+  const stop = dir === 1 ? Math.min(count.stop, price - minStopDistance) : Math.max(count.stop, price + minStopDistance);
+  const risk = (price - stop) * dir;
   if (!(risk > 0)) return null;
   const targets = count.targets
     .filter((t) => (t - price) * dir > 0)
@@ -64,7 +66,7 @@ export function buildPlan(count: WaveCount | undefined, price: number): TradePla
   return {
     direction: dir === 1 ? "long" : "short",
     entry: price,
-    stop: count.stop,
+    stop,
     targets,
     riskReward: Math.round((reward / risk) * 100) / 100,
   };
@@ -83,7 +85,7 @@ export interface SignalDecision {
  */
 export function decideSignal(
   score: number,
-  opts: { elliottConfidence: number; contested: boolean; plan: TradePlan | null; elliottBias?: 1 | -1 },
+  opts: { elliottConfidence: number; contested: boolean; plan: TradePlan | null; elliottBias?: 1 | -1; extraVetoes?: string[] },
 ): SignalDecision {
   const rawLevel = levelFromScore(score);
   const vetoes: string[] = [];
@@ -96,6 +98,7 @@ export function decideSignal(
       if ((opts.plan.direction === "long" ? 1 : -1) !== dir) vetoes.push("Elliott-Szenario widerspricht der Gesamtrichtung");
       if (opts.plan.riskReward < MIN_RISK_REWARD) vetoes.push(`Chance-Risiko ${opts.plan.riskReward.toFixed(2)} unter ${MIN_RISK_REWARD}`);
     }
+    vetoes.push(...(opts.extraVetoes ?? []));
   }
   return { level: vetoes.length ? "neutral" : rawLevel, rawLevel, vetoes };
 }

@@ -91,6 +91,9 @@ const VETO_PLAIN: [RegExp, string][] = [
   [/Alternative/, "der Kurs genauso gut in die andere Richtung laufen kann"],
   [/Kein sauberer Plan/, "sich keine sinnvolle Verlustgrenze festlegen lässt"],
   [/widerspricht/, "sich Chartbild und Gesamtbewertung widersprechen"],
+  [/Gegen den übergeordneten Trend/, "der Einstieg gegen den großen Trend laufen würde"],
+  [/Kein klarer übergeordneter Trend/, "es gerade keinen klaren großen Trend gibt"],
+  [/Bestätigung/, "der Kurs die Richtung noch nicht bestätigt hat"],
 ];
 
 function shortCount(c: WaveCount): string {

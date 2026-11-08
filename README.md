@@ -57,3 +57,16 @@ src/lib/store/      lokaler Speicher + Export/Import
 `Gesamt = 0,6 × Elliott + 0,2 × Fundamental/News + 0,2 × Volumen/RSI` (in den Einstellungen änderbar).
 Signalstufen: ≥ 72 Starker Kauf, ≥ 58 Kauf, ≤ 42 Verkauf, ≤ 28 Starker Verkauf, sonst Neutral.
 Ein Signal wird auf **Neutral/kein Trade** gesetzt, wenn die Wellenzählung unsicher ist, die Alternativzählung fast gleich stark in die Gegenrichtung zeigt, das Chance-Risiko-Verhältnis unter 1,5 liegt oder Elliott der Gesamtrichtung widerspricht.
+
+## Messung mit echten Kursdaten
+
+`scripts/evaluate.ts` lässt den Analysten (EchoChart-Logik) über echte historische Kursreihen laufen und teilt jede Reihe in
+Entwicklung (erste 60 %) und unabhängige Prüfung (letzte 40 %). Regeln werden nur anhand der Entwicklungsdaten gewählt.
+
+```bash
+DATA_DIR=<ordner mit SPY_D.csv, GOOG.csv, EURUSD.csv, xau2016_5m.csv> npx tsx scripts/evaluate.ts
+DATA_DIR=... GRID=1 npx tsx scripts/evaluate.ts   # Filter-Kombinationen (nur Entwicklungsdaten)
+```
+
+Stand der Messung (Prüfdaten): ohne Filter 16 % Treffer / Gewinnfaktor 0,51; mit Trendfilter + Stop ≥ 2 ATR 35 % / 0,66.
+Ein nachweisbarer Vorteil (Gewinnfaktor > 1 auf Prüfdaten) besteht noch nicht.

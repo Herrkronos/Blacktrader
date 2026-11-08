@@ -19,3 +19,20 @@ describe("Kein Einstieg = kein Trade", () => {
     expect(decideSignal(90, { elliottConfidence: 1, contested: false, plan }).level).toBe("neutral");
   });
 });
+
+describe("Trendfilter", () => {
+  it("im klaren Abwärtstrend kein Kaufsignal", () => {
+    const pts: number[] = [];
+    for (let i = 0; i < 30; i++) pts.push(300 - i * 8 + (i % 2 ? 6 : 0));
+    const c = candlesFromWaypoints(pts, 12, 0.003, 9);
+    for (let end = 250; end <= c.length; end += 10) {
+      const r = analyze({ symbol: "T", name: "T", candles: c.slice(0, end), horizon: "medium", interval: "1d" });
+      if (r) expect(r.decision.level.includes("buy")).toBe(false);
+    }
+  });
+  it("Stop liegt mindestens 2 ATR vom Einstieg entfernt", async () => {
+    const { buildPlan } = await import("../src/lib/analysis/score");
+    const plan = buildPlan({ bias: 1, stop: 99, targets: [120] } as never, 100, 4)!;
+    expect(plan.stop).toBe(96);
+  });
+});
