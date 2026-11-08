@@ -74,6 +74,10 @@ export default function SettingsPage() {
           <input type="checkbox" className="accent-[#C9A24A]" checked={s.expertMode} onChange={(e) => actions.setSettings({ expertMode: e.target.checked })} />
           Expertenansicht anzeigen
         </label>
+        <label className="flex items-center gap-2 text-sm text-stone-200">
+          <input type="checkbox" className="accent-[#C9A24A]" checked={s.autoTrade} onChange={(e) => actions.setSettings({ autoTrade: e.target.checked })} />
+          Auto-Papiertrading: Signale der Watchlist automatisch als Übungs-Trades ins Journal übernehmen
+        </label>
       </Section>
 
       <Section title="Gewichtung des Gesamtscores" hint="Gesamtscore = Elliott × w₁ + Fundamental/News × w₂ + Volumen/RSI × w₃. Standard 60 / 20 / 20. Die Werte werden auf 100 % normiert.">

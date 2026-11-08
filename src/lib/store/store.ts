@@ -48,6 +48,8 @@ export interface Settings {
   closeAtTarget: "first" | "last";
   /** Expertenansicht: Wellenzählung, Fachbegriffe, Detailwerte */
   expertMode: boolean;
+  /** Signale automatisch als Papier-Trades übernehmen */
+  autoTrade: boolean;
   keys: {
     finnhub: string;
     alphavantage: string;
@@ -76,6 +78,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sound: true,
   closeAtTarget: "first",
   expertMode: false,
+  autoTrade: true,
   keys: { finnhub: "", alphavantage: "", openfigi: "", llm: "", llmProvider: "anthropic", llmModel: "" },
 };
 

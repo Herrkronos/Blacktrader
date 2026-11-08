@@ -45,7 +45,7 @@ export default function BacktestPage() {
       <div>
         <h1 className="text-2xl text-gold sm:text-3xl">Backtest</h1>
         <p className="text-sm text-stone-400">
-          Walk-Forward auf historischen Kerzen: Zu jedem Zeitpunkt sieht die Analyse nur die Vergangenheit. Fundamentaldaten und News sind historisch nicht verfügbar und zählen neutral. Stop und Ziel in derselben Kerze werden konservativ als Stop gewertet.
+          Wie hätte der Analyst in der Vergangenheit abgeschnitten? Wert wählen, „Backtest starten“ – die App spielt die letzten Monate/Jahre durch, als wäre es live gewesen, und zeigt Gewinn, Trefferquote und alle Trades.
         </p>
       </div>
       <div className="panel flex flex-col gap-3 p-3 sm:flex-row sm:items-end">

@@ -9,6 +9,7 @@ import { fmtPrice } from "../analysis/persona";
 import { actions, getData, useAppData, type Trade, type WatchItem } from "../store/store";
 import type { Candle, Fundamentals, Horizon, Interval, NewsItem, ResolvedAsset } from "../types";
 import { notify } from "./alerts";
+import { openPaperTrade } from "./autotrade";
 import { api } from "./api";
 import { binanceStream } from "./binanceWs";
 
@@ -228,13 +229,15 @@ function checkSignal(item: WatchItem, horizon: Horizon, res: AnalysisResult) {
   const key = `${item.id}:${horizon}`;
   const prev = d.signals[key];
   const level = res.decision.level;
+  // Auto-Papiertrading: jedes aktive Signal wird als Übungs-Trade verfolgt
+  const opened = d.settings.autoTrade && level !== "neutral" ? openPaperTrade(item, res) : false;
   if (prev?.level === level) return;
   actions.setSignal(key, level);
-  if (!prev || level === "neutral") return; // erstes Signal bzw. Rückfall auf neutral: kein Alarm
+  if ((!prev && !opened) || level === "neutral") return; // erstes Signal bzw. Rückfall auf neutral: kein Alarm
   const buy = level.includes("buy");
   notify(
     `${SIGNAL_LABEL[level]}: ${item.symbol}`,
-    `${res.commentary.summary}. ${res.commentary.reason}`,
+    `${res.commentary.summary}. ${res.commentary.reason}${opened ? " (Papier-Trade eröffnet)" : ""}`,
     { sound: d.settings.sound, notifications: d.settings.notifications, kind: buy ? "buy" : "sell" },
   );
 }

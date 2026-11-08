@@ -41,6 +41,9 @@ export function Watchlist() {
                   </div>
                 </div>
               </div>
+              {a?.result && a.result.decision.level !== "neutral" && (
+                <p className={`mt-2 text-sm font-medium ${a.result.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{a.result.commentary.summary}</p>
+              )}
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <SignalBadge level={a?.result?.decision.level} small />
                 <div className="w-24">
@@ -87,6 +90,9 @@ export function Watchlist() {
                       {w.name}
                       {w.isin ? ` · ${w.isin}` : ""}
                     </div>
+                    {a?.result && a.result.decision.level !== "neutral" && (
+                      <div className={`max-w-[320px] text-xs ${a.result.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{a.result.commentary.summary}</div>
+                    )}
                   </Link>
                 </td>
                 <td className="num px-2 py-2.5 text-right text-stone-100">{lv?.price != null ? fmtPrice(lv.price) : "–"}</td>

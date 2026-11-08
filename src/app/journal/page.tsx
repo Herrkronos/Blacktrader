@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 import { EquityChart } from "@/components/EquityChart";
 import { SignalBadge, Stat } from "@/components/ui";
@@ -20,6 +21,14 @@ export default function JournalPage() {
   const closed = filtered.filter((t) => t.status === "closed" && t.returnPct != null);
   const openTrades = filtered.filter((t) => t.status === "open");
   const stats = performance(closed.map((t) => ({ returnPct: t.returnPct!, closedAt: t.closedAt! })));
+  // Unrealisierter Stand der offenen Trades (Durchschnitt)
+  const openReturns = openTrades
+    .map((t) => {
+      const p = live[instrumentKey(t)]?.price ?? t.lastPrice;
+      return p ? tradeReturnPct(t.direction, t.entry, p) : null;
+    })
+    .filter((x): x is number => x != null);
+  const openAvg = openReturns.length ? openReturns.reduce((a, b) => a + b, 0) / openReturns.length : null;
 
   const closeManually = (t: Trade) => {
     const lv = live[instrumentKey(t)];
@@ -36,7 +45,7 @@ export default function JournalPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl text-gold sm:text-3xl">Trade-Journal</h1>
-          <p className="text-sm text-stone-400">Papier-Trades werden mit Live-Kursen verfolgt und bei Ziel oder Stop automatisch geschlossen.</p>
+          <p className="text-sm text-stone-400">Deine Übungs-Trades: Sie werden mit Live-Kursen verfolgt und bei Ziel oder Stop automatisch geschlossen.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <select className="input w-auto" value={horizon} onChange={(e) => setHorizon(e.target.value as Horizon | "all")}>
@@ -58,14 +67,37 @@ export default function JournalPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <Stat label="Kumuliert" value={`${stats.totalReturn >= 0 ? "+" : ""}${stats.totalReturn.toFixed(2)} %`} tone={stats.totalReturn >= 0 ? "up" : "down"} />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        <Stat
+          label="Offene Trades jetzt"
+          value={openAvg == null ? "–" : `${openAvg >= 0 ? "+" : ""}${openAvg.toFixed(2)} %`}
+          tone={openAvg == null ? undefined : openAvg >= 0 ? "up" : "down"}
+          hint={`Ø von ${openTrades.length} offenen`}
+        />
+        <Stat label="Abgeschlossen" value={`${stats.totalReturn >= 0 ? "+" : ""}${stats.totalReturn.toFixed(2)} %`} tone={stats.totalReturn >= 0 ? "up" : "down"} />
         <Stat label="Trefferquote" value={`${(stats.winRate * 100).toFixed(0)} %`} hint={`${stats.wins} / ${stats.trades} Trades`} />
         <Stat label="Ø Gewinn" value={`+${stats.avgWin.toFixed(2)} %`} tone="up" />
         <Stat label="Ø Verlust" value={`${stats.avgLoss.toFixed(2)} %`} tone="down" />
         <Stat label="Max. Drawdown" value={`${stats.maxDrawdown.toFixed(2)} %`} tone="down" />
         <Stat label="Profit-Faktor" value={stats.profitFactor == null ? "∞" : stats.profitFactor.toFixed(2)} hint={`${openTrades.length} offen`} />
       </div>
+
+      {trades.length === 0 && (
+        <div className="panel space-y-2 p-4 text-sm text-stone-300">
+          <p className="font-display text-gold">Noch keine Trades – deshalb noch keine Gewinnkurve.</p>
+          <p>So füllt sich dein Journal:</p>
+          <ul className="list-inside list-disc space-y-1 text-stone-400">
+            <li>
+              Unter <Link href="/chancen" className="text-gold underline">Chancen</Link> Einstiegsmöglichkeiten ansehen und als Papier-Trade übernehmen.
+            </li>
+            <li>Auto-Papiertrading (in den Einstellungen, standardmäßig an) übernimmt jedes neue Signal deiner Watchlist automatisch.</li>
+            <li>
+              Wie profitabel der Analyst in der Vergangenheit gewesen wäre, zeigt der <Link href="/backtest" className="text-gold underline">Backtest</Link> sofort.
+            </li>
+          </ul>
+          <p className="text-xs text-stone-500">Trades werden verfolgt, solange die App geöffnet ist, und bei Ziel oder Stop automatisch geschlossen.</p>
+        </div>
+      )}
 
       <div className="panel p-3">
         <div className="panel-title mb-2">Performance – kumulierte Rendite</div>

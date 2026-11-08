@@ -6,6 +6,7 @@ export function EquityChart({ data, compare }: { data: { time: number; cumulativ
   const points = [{ time: data[0].time - 1, cumulative: 0 }, ...data];
   const last = points[points.length - 1].cumulative;
   const color = last >= 0 ? "#C9A24A" : "#a32234";
+  const sameDay = points[points.length - 1].time - points[0].time < 2 * 86400e3;
   return (
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -17,7 +18,9 @@ export function EquityChart({ data, compare }: { data: { time: number; cumulativ
             </linearGradient>
           </defs>
           <CartesianGrid stroke="rgba(201,162,74,0.08)" vertical={false} />
-          <XAxis dataKey="time" type="number" domain={["dataMin", "dataMax"]} tick={{ fill: "#8f887a", fontSize: 10 }} tickFormatter={(t: number) => new Date(t).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" })} />
+          <XAxis dataKey="time" type="number" domain={["dataMin", "dataMax"]} tick={{ fill: "#8f887a", fontSize: 10 }} tickFormatter={(t: number) =>
+              sameDay ? new Date(t).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : new Date(t).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" })
+            } />
           <YAxis tick={{ fill: "#8f887a", fontSize: 10 }} tickFormatter={(v: number) => `${v.toFixed(0)} %`} width={48} />
           <Tooltip
             contentStyle={{ background: "#0b0b0b", border: "1px solid rgba(201,162,74,0.3)", fontSize: 12 }}

@@ -4,9 +4,10 @@ import { usePathname } from "next/navigation";
 
 const NAV = [
   { href: "/", label: "Watchlist" },
+  { href: "/chancen", label: "Chancen" },
   { href: "/journal", label: "Journal" },
   { href: "/backtest", label: "Backtest" },
-  { href: "/einstellungen", label: "Einstellungen" },
+  { href: "/einstellungen", label: "Einstellungen", short: "⚙" },
 ];
 
 export function Header() {
@@ -22,16 +23,23 @@ export function Header() {
             <div className="text-[10px] uppercase tracking-[0.3em] text-stone-400">Trading Analyst</div>
           </div>
         </Link>
-        <nav className="flex gap-1 overflow-x-auto text-sm">
+        <nav className="flex gap-0.5 overflow-x-auto text-sm [scrollbar-width:none]">
           {NAV.map((n) => {
             const active = n.href === "/" ? path === "/" || path.startsWith("/analyse") : path.startsWith(n.href);
             return (
               <Link
                 key={n.href}
                 href={n.href}
-                className={`whitespace-nowrap rounded-md px-3 py-1.5 transition ${active ? "bg-gold/15 text-gold-light" : "text-stone-300 hover:text-gold-light"}`}
+                className={`whitespace-nowrap rounded-md px-2.5 py-1.5 transition sm:px-3 ${active ? "bg-gold/15 text-gold-light" : "text-stone-300 hover:text-gold-light"}`}
               >
-                {n.label}
+                {"short" in n ? (
+                  <>
+                    <span className="sm:hidden" aria-label={n.label}>{n.short}</span>
+                    <span className="hidden sm:inline">{n.label}</span>
+                  </>
+                ) : (
+                  n.label
+                )}
               </Link>
             );
           })}

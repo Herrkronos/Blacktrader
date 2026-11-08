@@ -13,7 +13,7 @@ export default function Dashboard() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl text-gold sm:text-3xl">Watchlist</h1>
-          <p className="text-sm text-stone-400">Elliott 60 % · Fundamental/News 20 % · Volumen/RSI 20 % – getrennt je Zeithorizont.</p>
+          <p className="text-sm text-stone-400">Deine beobachteten Werte – mit Signal, Einstieg und Stop. Neue Chancen findest du unter „Chancen“.</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-stone-400">Globaler Horizont</span>
