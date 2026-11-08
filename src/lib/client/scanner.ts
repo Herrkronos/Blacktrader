@@ -1,5 +1,6 @@
 "use client";
 // Chancen-Scanner (geteilt von Übersicht und Chancen): je Wert alle drei Zeithorizonte + Kernposition.
+import { learnedParams, refreshTrainerParams } from "./trainerParams";
 import { useSyncExternalStore } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
 import { coreStatus, type CoreStatus } from "../analysis/core";
@@ -75,6 +76,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   let done = 0;
   let failed = 0;
   emit({ busy: true, progress: 0 });
+  await Promise.race([refreshTrainerParams(), new Promise((r) => setTimeout(r, 3000))]);
   await pool(jobs, 4, async ({ asset, horizon }) => {
     const key = `${asset.kind}:${asset.symbol}`;
     const entry = byAsset.get(key) ?? { asset, horizons: {}, core: null };
@@ -82,7 +84,8 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
     try {
       const interval = settings.intervals[horizon];
       const { candles } = await api.candles(asset, interval, 60e3);
-      let res = analyze({ symbol: asset.symbol, name: asset.name, candles, horizon, interval, weights: settings.weights, kind: asset.kind, currency: asset.currency });
+      const params = learnedParams(asset.kind, horizon);
+      let res = analyze({ symbol: asset.symbol, name: asset.name, candles, horizon, interval, weights: settings.weights, kind: asset.kind, currency: asset.currency, params });
       if (res && res.decision.level !== "neutral") {
         // Kandidat: mit Firmenzahlen und Nachrichten vollständig bewerten (gleiche Analyse wie bisher)
         const [f, n] = await Promise.allSettled([api.fundamentals(asset), api.news(asset)]);
@@ -95,6 +98,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
           weights: settings.weights,
           kind: asset.kind,
           currency: asset.currency,
+          params,
           fundamentals: f.status === "fulfilled" ? f.value.fundamentals : null,
           news: n.status === "fulfilled" ? n.value.news : [],
         });

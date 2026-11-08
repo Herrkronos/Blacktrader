@@ -8,7 +8,7 @@ const NAV = [
   { href: "/chancen", label: "Chancen", Icon: IconSpark, match: (p: string) => p.startsWith("/chancen") },
   { href: "/watchlist", label: "Watchlist", Icon: IconList, match: (p: string) => p.startsWith("/watchlist") || p.startsWith("/analyse") },
   { href: "/journal", label: "Journal", Icon: IconBook, match: (p: string) => p.startsWith("/journal") },
-  { href: "/mehr", label: "Mehr", Icon: IconMore, match: (p: string) => ["/mehr", "/echochart", "/einstellungen"].some((x) => p.startsWith(x)) },
+  { href: "/mehr", label: "Mehr", Icon: IconMore, match: (p: string) => ["/mehr", "/echochart", "/einstellungen", "/trainer"].some((x) => p.startsWith(x)) },
 ];
 
 /** Feste Navigation unten in der Daumenzone. */

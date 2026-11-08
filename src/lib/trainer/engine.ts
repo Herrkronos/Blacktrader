@@ -4,6 +4,7 @@ import { analyze } from "../analysis/analyze";
 import type { BacktestTrade } from "../analysis/backtest";
 import { DEFAULT_PARAMS, PARAM_BOUNDS, validateParams, type LearnableParams } from "../analysis/params";
 import { runZoneBacktest } from "../analysis/zoneBacktest";
+import { LOCKED } from "../analysis/locked-config";
 import type { ZoneSetup } from "../analysis/zones";
 import type { AssetKind, Candle, Horizon, Interval } from "../types";
 
@@ -67,7 +68,7 @@ export function signalFromAnalysis(hist: Candle[], s: Pick<Series, "kind" | "hor
     riskReward: p.riskReward,
     cancelAbove: p.cancelAbove ?? p.entry,
     inZone: p.orderType === "market",
-    atr: (p.trailDistance ?? 0) / 4,
+    atr: (p.trailDistance ?? 0) / LOCKED.trade.trailAtr,
   };
 }
 
@@ -113,20 +114,44 @@ export interface Evaluation {
   oosTrades: number;
 }
 
+export interface SeriesTrades {
+  trades: BacktestTrade[];
+  months: number;
+}
+
+/** Trades einer Reihe NUR aus den unbekannten Prüfbereichen der Folds. */
+export function oosSeries(s: Series, params: LearnableParams, folds = 4, step?: number): SeriesTrades {
+  const trades: BacktestTrade[] = [];
+  let months = 0;
+  for (const f of walkForwardFolds(s.candles.length, folds)) {
+    const slice = s.candles.slice(f.test[0], f.test[1]);
+    const startTime = s.candles[f.test[0] + Math.min(150, f.test[1] - f.test[0] - 1)]?.time ?? 0;
+    const r = backtestSeries({ ...s, candles: slice }, params, { step });
+    trades.push(...r.trades.filter((t) => t.entryTime >= startTime));
+    months += monthsOf(slice.slice(150));
+  }
+  return { trades, months };
+}
+
 /** Bewertet Parameter NUR auf den unbekannten Prüfbereichen der Folds. */
 export function evaluateOOS(series: Series[], params: LearnableParams, folds = 4, step?: number): Evaluation {
   const trades: BacktestTrade[] = [];
   let months = 0;
   for (const s of series) {
-    for (const f of walkForwardFolds(s.candles.length, folds)) {
-      const slice = s.candles.slice(f.test[0], f.test[1]);
-      const startTime = s.candles[f.test[0] + Math.min(150, f.test[1] - f.test[0] - 1)]?.time ?? 0;
-      const r = backtestSeries({ ...s, candles: slice }, params, { step });
-      trades.push(...r.trades.filter((t) => t.entryTime >= startTime));
-      months += monthsOf(slice.slice(150));
-    }
+    const r = oosSeries(s, params, folds, step);
+    trades.push(...r.trades);
+    months += r.months;
   }
   return { oos: metrics(trades, months), oosTrades: trades.length };
+}
+
+/** Gesperrter Abschlusstest: nur Trades, die im Abschlusszeitraum (letzte 12 Monate) beginnen. */
+export function holdoutSeries(s: Series, params: LearnableParams, months = 12, step?: number): SeriesTrades {
+  const { train, holdout } = splitHoldout(s.candles, months);
+  if (holdout.length < 2) return { trades: [], months: 0 };
+  const candles = [...train.slice(-150), ...holdout];
+  const r = backtestSeries({ ...s, candles }, params, { step, warmup: Math.min(150, train.length) });
+  return { trades: r.trades.filter((t) => t.entryTime >= holdout[0].time), months: monthsOf(holdout) };
 }
 
 export const MIN_SIGNALS_VALID = 200;
@@ -154,7 +179,7 @@ const NUMERIC_KEYS = Object.keys(PARAM_BOUNDS) as (keyof typeof PARAM_BOUNDS)[];
 const STEP: Record<string, number> = { zoneAtrMult: 0.5, fibToleranceScale: 0.15, rankFibWeight: 0.05, rankContextStrength: 0.25, rsiOverbought: 3, rsiOversold: 3, divergenceRecentBars: 5, relVolHigh: 0.15, relVolBreakout: 0.15, relVolLow: 0.1, newsShare: 0.1, newsHalfLifeHours: 12, minStrength: 5 };
 
 /** Kleine Schritte um die aktuellen Werte (vorsichtiges Nachjustieren). */
-export function neighbours(p: LearnableParams, keys: (keyof typeof PARAM_BOUNDS)[] = NUMERIC_KEYS): { params: LearnableParams; change: string }[] {
+export function neighbours(p: LearnableParams, keys: (keyof typeof PARAM_BOUNDS)[] = NUMERIC_KEYS, withDegrees = true): { params: LearnableParams; change: string }[] {
   const out: { params: LearnableParams; change: string }[] = [];
   for (const k of keys) {
     const [lo, hi] = PARAM_BOUNDS[k];
@@ -167,7 +192,7 @@ export function neighbours(p: LearnableParams, keys: (keyof typeof PARAM_BOUNDS)
     }
   }
   // Wellengrade gemeinsam verschieben
-  for (const f of [0.85, 1.15]) {
+  for (const f of withDegrees ? [0.85, 1.15] : []) {
     const d = p.elliottDegrees.map((x) => Math.round(x * f * 100) / 100) as [number, number, number];
     const params = { ...p, elliottDegrees: d };
     if (!validateParams(params).length) out.push({ params, change: `elliottDegrees ${p.elliottDegrees.join("/")} → ${d.join("/")}` });
@@ -175,20 +200,36 @@ export function neighbours(p: LearnableParams, keys: (keyof typeof PARAM_BOUNDS)
   return out;
 }
 
+/** Trades einer Reihe NUR aus dem Lernbereich (alles vor dem Prüfbereich des letzten Folds). */
+export function inSampleSeries(s: Series, params: LearnableParams, folds = 4, step?: number): SeriesTrades {
+  const fs = walkForwardFolds(s.candles.length, folds);
+  if (!fs.length) return { trades: [], months: 0 };
+  const slice = s.candles.slice(0, fs[fs.length - 1].train[1]);
+  return { trades: backtestSeries({ ...s, candles: slice }, params, { step }).trades, months: monthsOf(slice.slice(150)) };
+}
+
 /** Bewertung NUR auf den Lernbereichen (Zeitraum A jedes Folds, ohne Prüfbereiche). */
 export function evaluateInSample(series: Series[], params: LearnableParams, folds = 4, step?: number): Metrics {
   const trades: BacktestTrade[] = [];
   let months = 0;
   for (const s of series) {
-    const fs = walkForwardFolds(s.candles.length, folds);
-    if (!fs.length) continue;
-    // Lernbereich = alles vor dem ersten Prüfbereich des letzten Folds
-    const end = fs[fs.length - 1].train[1];
-    const slice = s.candles.slice(0, end);
-    trades.push(...backtestSeries({ ...s, candles: slice }, params, { step }).trades);
-    months += monthsOf(slice.slice(150));
+    const r = inSampleSeries(s, params, folds, step);
+    trades.push(...r.trades);
+    months += r.months;
   }
   return metrics(trades, months);
+}
+
+/** Vorauswahl auf Lerndaten: Trefferquote höher, Profit-Faktor nicht schlechter, Signalmenge ≥ 60 %. */
+export function preselect(baseIn: Metrics, cand: Metrics): boolean {
+  return cand.hitRate > baseIn.hitRate && cand.profitFactor >= baseIn.profitFactor && cand.perMonth >= baseIn.perMonth * 0.6;
+}
+
+/** Wirksame Stellschrauben: RSI/Volumen/Fibo/Ranking wirken nur über die Mindest-Signalstärke. */
+export function effectiveKeys(p: LearnableParams): (keyof typeof PARAM_BOUNDS)[] {
+  const base: (keyof typeof PARAM_BOUNDS)[] = ["zoneAtrMult", "minStrength"];
+  if (p.minStrength <= 0) return base;
+  return [...base, "fibToleranceScale", "rankFibWeight", "rankContextStrength", "rsiOverbought", "rsiOversold", "divergenceRecentBars", "relVolHigh", "relVolBreakout", "relVolLow"];
 }
 
 export interface TrainStepResult {
@@ -214,7 +255,7 @@ export function trainStep(series: Series[], current: LearnableParams = DEFAULT_P
   for (const c of cands) {
     const m = evaluateInSample(series, c.params, opts.folds, opts.step);
     // Vorauswahl auf Lerndaten: Trefferquote höher, Profit-Faktor nicht schlechter, Signalmenge ≥ 60 %
-    if (m.hitRate <= baseIn.hitRate || m.profitFactor < baseIn.profitFactor || m.perMonth < baseIn.perMonth * 0.6) continue;
+    if (!preselect(baseIn, m)) continue;
     if (!chosen || m.hitRate > chosen.inSample.hitRate) chosen = { change: c.change, params: c.params, inSample: m };
   }
   const base = evaluateOOS(series, current, opts.folds, opts.step).oos;

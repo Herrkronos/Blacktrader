@@ -4,12 +4,15 @@ import { EquityChart } from "@/components/EquityChart";
 import { HorizonToggle, Stat } from "@/components/ui";
 import type { BacktestResult } from "@/lib/analysis/backtest";
 import { runZoneBacktestAsync } from "@/lib/analysis/zoneBacktest";
+import { DEFAULT_PARAMS } from "@/lib/analysis/params";
+import { learnedParams } from "@/lib/client/trainerParams";
+import { signalFromAnalysis } from "@/lib/trainer/engine";
 import { runCoreBacktestAsync, type CoreResult } from "@/lib/analysis/core";
 import { fmtPrice } from "@/lib/analysis/persona";
 import { LOOKBACKS, loadHistory, planHistory } from "@/lib/client/history";
 import { SCAN_GROUPS } from "@/lib/client/presets";
 import { useAppData } from "@/lib/store/store";
-import { HORIZON_INTERVALS, type Horizon, type Interval, type ResolvedAsset } from "@/lib/types";
+import { HORIZON_INTERVALS, type Candle, type Horizon, type Interval, type ResolvedAsset } from "@/lib/types";
 
 const fmtDate = (t: number) => new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 
@@ -48,7 +51,11 @@ export default function EchoChartPage() {
       if (candles.length < 150) throw new Error(`Zu wenig Kursdaten (${candles.length} Kerzen, mindestens 150 nötig).`);
       setPhase({ label: "Analyst spielt die Vergangenheit durch", p: 0 });
       setCore(null);
-      const r = await runZoneBacktestAsync(candles, { warmup: 200 }, (p) => setPhase({ label: "Zonen-Trades werden durchgespielt", p }));
+      const params = learnedParams(asset.kind, horizon);
+      // Gelernte Werte wie in der App (Standardwerte = identisch zur Zielzonen-Erkennung)
+      const learned = JSON.stringify(params) !== JSON.stringify(DEFAULT_PARAMS);
+      const opts = learned ? { warmup: 200, signalAt: (h: Candle[]) => signalFromAnalysis(h, { kind: asset.kind, horizon: horizon, interval }, params) } : { warmup: 200 };
+      const r = await runZoneBacktestAsync(candles, opts, (p) => setPhase({ label: "Zonen-Trades werden durchgespielt", p }));
       const c = candles.length >= 260 ? await runCoreBacktestAsync(candles, {}, (p) => setPhase({ label: "Kernposition (Welle 5 / Boden) wird durchgespielt", p })) : null;
       setCore(c);
       setResult({ ...r, symbol: asset.name, bars: candles.length, from: candles[0].time, to: candles[candles.length - 1].time, note: plan.note, interval });

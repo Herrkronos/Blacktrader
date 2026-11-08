@@ -99,3 +99,18 @@ Bottom-Navigation: Übersicht · Chancen · Watchlist · Journal · Mehr (EchoCh
 Signalfarben: Grün = Trade, Rot = Short, Blau = Kernposition, Orange = wartende Order.
 Journal enthält nur selbst übernommene Papier-Trades; beim Update auf v2 wird vorher ein Backup im Browser angelegt
 (Mehr → Backups). Zurück zum alten Stand: Branch `backup/vor-ui-umbau`.
+
+## Trainer (Mehr → Trainer)
+
+Der Trainer verbessert nur die **Anwendung** der festen Methode – nie die Methode selbst.
+
+- **Fest** (`src/lib/analysis/locked-config.ts`, eingefroren, `tests/locked.test.ts` schlägt bei Änderung fehl): Gewichtung 60/20/20, Elliott-Regeln und -Muster, Stop-/Ziel-Logik, Chance-Risiko ≥ 1,5, Nachziehen, Horizonte, Signalarten und Farben.
+- **Lernbar** (`src/lib/analysis/params.ts`, mit Grenzen): ZigZag-/ATR-Faktoren, Fibonacci-Toleranz, Ranking der Zählungen, RSI-Schwellen, Divergenz-Frische, Volumen-Schwellen, Kennzahl-Gewichte und News-Anteil innerhalb der 20 %, Mindest-Signalstärke – je Anlageklasse × Horizont. Standardwerte = bisheriges Verhalten (`tests/golden.test.ts`).
+- **Lernen** (`src/lib/trainer/`): Walk-Forward (lernen auf A, prüfen auf dem folgenden unbekannten B, weiterrollen), letzte 12 Monate gesperrt (einmaliger Abschlusstest je Version). Kandidaten werden nur auf Lerndaten ausgewählt und nur übernommen, wenn sie auf den Prüfdaten ≥ 200 Signale haben, eine höhere Trefferquote, keinen niedrigeren Profit-Faktor und höchstens 40 % weniger Signale pro Monat.
+- **Signal-Protokoll**: jede Nacht werden die Signale aller Scanner-Werte mit Eingaben und Werten gespeichert und später als gewonnen/verloren/verfallen ausgewertet (getrennt vom Journal).
+- **Betrieb**: Vercel Cron (`vercel.json`, täglich 02:17 UTC) ruft `/api/trainer/cron` auf; jeder Lauf hat ~48 s Zeitbudget und setzt die Arbeit beim nächsten Lauf fort. „Lernschritt jetzt ausführen“ in der App beschleunigt das.
+- **Speicher**: In Vercel unter Storage „Upstash for Redis“ verbinden (setzt `KV_REST_API_URL`/`KV_REST_API_TOKEN`). Ohne Speicher arbeitet der Trainer nur im Arbeitsspeicher und vergisst alles.
+- **Optional**: `CRON_SECRET` (schützt den Cron-Aufruf), `TRAINER_ADMIN_TOKEN` (Zugangscode für Zurücksetzen/Abschlusstest/manuellen Lauf).
+- Offline-Erstlauf auf CSV-Daten: `DATA_DIR=<ordner> npx tsx scripts/train.ts`.
+
+Hinweis: RSI-, Volumen-, Fibo- und Ranking-Werte wirken nur über die Mindest-Signalstärke (Einstieg, Stop und Ziel kommen aus der festen Zonen-Logik). Kennzahl- und News-Gewichte werden mangels historischer Kennzahlen/News nicht per Backtest trainiert und bleiben Standard.

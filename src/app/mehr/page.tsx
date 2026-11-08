@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { IconChart, IconChevron, IconDownload, IconGear, IconShield } from "@/components/Icons";
+import { IconChart, IconChevron, IconDownload, IconGear, IconShield, IconSpark } from "@/components/Icons";
 import { actions, listBackups, readBackup } from "@/lib/store/store";
 
 function Row({ href, icon, title, text }: { href: string; icon: React.ReactNode; title: string; text: string }) {
@@ -37,6 +37,7 @@ export default function MehrPage() {
       <h1 className="text-[22px] text-gold">Mehr</h1>
       <div className="card divide-y divide-white/5 overflow-hidden">
         <Row href="/echochart" icon={<IconChart className="h-6 w-6" />} title="EchoChart" text="Wie gut wäre der Analyst früher gewesen?" />
+        <Row href="/trainer" icon={<IconSpark className="h-6 w-6" />} title="Trainer" text="Trefferquote, Lernschritte, Versionen" />
         <Row href="/einstellungen" icon={<IconGear className="h-6 w-6" />} title="Einstellungen" text="Gewichtung, Kerzen, Alarme, Schlüssel, Export" />
       </div>
 

@@ -1,6 +1,7 @@
 "use client";
 // Zentrale Echtzeit-Überwachung: Live-Kurse (Binance-WebSocket bzw. Polling), Analysen der Watchlist,
 // Signal-Alarme und automatische Verfolgung offener Papier-Trades.
+import { learnedParams, refreshTrainerParams, trainerVersion } from "./trainerParams";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
 import { SIGNAL_LABEL } from "../analysis/score";
@@ -82,6 +83,10 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const instrumentsKey = instruments.map((i) => `${instrumentKey(i)}|${i.binanceSymbol ?? ""}|${i.yahooSymbol ?? ""}`).join(",");
 
   // ---- Live-Kurse
+  useEffect(() => {
+    void refreshTrainerParams();
+  }, []);
+
   useEffect(() => {
     const cleanups: (() => void)[] = [];
     const pollMs = settings.pollSeconds * 1000;
@@ -189,7 +194,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   }, [watchKey, reloadTick]);
 
   // ---- Analyse-Takt: berechnet bei neuen Daten/Kursen neu (max. alle 5 s), Alarme + Trade-Verfolgung
-  const lastCalc = useRef<Record<string, { version: number; price?: number; at: number }>>({});
+  const lastCalc = useRef<Record<string, { version: number; price?: number; at: number; tv?: number }>>({});
   useEffect(() => {
     const run = () => {
       const d = getData();
@@ -200,12 +205,12 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         const lv = liveRef.current[instrumentKey(item)];
         const prev = lastCalc.current[item.id];
         const priceMoved = lv?.price && prev?.price ? Math.abs(lv.price - prev.price) / prev.price > 0.0005 : lv?.price !== prev?.price;
-        if (prev && prev.version === r.version && !priceMoved) continue;
+        if (prev && prev.version === r.version && prev.tv === trainerVersion() && !priceMoved) continue;
         if (prev && Date.now() - prev.at < 5000 && prev.version === r.version) continue;
-        lastCalc.current[item.id] = { version: r.version, price: lv?.price, at: Date.now() };
+        lastCalc.current[item.id] = { version: r.version, price: lv?.price, at: Date.now(), tv: trainerVersion() };
         const result =
           r.candles.length >= 30
-            ? analyze({ symbol: item.symbol, name: item.name, candles: r.candles, horizon: r.horizon, interval: r.interval, fundamentals: r.fundamentals, news: r.news, weights: d.settings.weights, livePrice: lv?.price, kind: item.kind, currency: lv?.currency ?? item.currency })
+            ? analyze({ symbol: item.symbol, name: item.name, candles: r.candles, horizon: r.horizon, interval: r.interval, fundamentals: r.fundamentals, news: r.news, weights: d.settings.weights, livePrice: lv?.price, kind: item.kind, currency: lv?.currency ?? item.currency, params: learnedParams(item.kind, r.horizon) })
             : null;
         next[item.id] = { core: r.core, horizon: r.horizon, interval: r.interval, result, candles: r.candles, fundamentals: r.fundamentals, news: r.news, candleSource: r.source, error: r.error ?? (r.candles.length < 30 && r.candles.length > 0 ? "Zu wenig Historie für eine Analyse" : undefined), loading: false };
         if (result) checkSignal(item, r.horizon, result);
