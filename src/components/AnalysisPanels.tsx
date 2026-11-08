@@ -37,8 +37,18 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
           <dt className="text-stone-400">Richtung</dt>
           <dd className={a.plan.direction === "long" ? "text-up" : "text-down"}>{a.plan.direction === "long" ? "Auf steigende Kurse" : "Auf fallende Kurse"}</dd>
+          {a.plan.zoneStart != null && (
+            <>
+              <dt className="text-stone-400">{a.plan.direction === "long" ? "Kaufzone" : "Verkaufszone"}</dt>
+              <dd className="num">
+                {fmtPrice(a.plan.zoneStart)} – {fmtPrice(a.plan.zoneEnd!)}
+              </dd>
+            </>
+          )}
           <dt className="text-stone-400">Einstieg</dt>
-          <dd className="num">{fmtPrice(a.plan.entry)}</dd>
+          <dd className="num">
+            {fmtPrice(a.plan.entry)} {a.plan.orderType === "limit" ? <span className="text-xs text-sky-300">(wartet, bis der Kurs dort ist)</span> : a.plan.orderType === "market" ? <span className="text-xs text-emerald-300">(jetzt in der Zone)</span> : null}
+          </dd>
           <dt className="text-stone-400">{expert ? "Stop-Loss" : "Stop (Verlustgrenze)"}</dt>
           <dd className="num text-down">{fmtPrice(a.plan.stop)}</dd>
           <dt className="text-stone-400">Kursziele</dt>
@@ -51,7 +61,7 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
       )}
       {a.plan && a.decision.level !== "neutral" ? (
         <button className="btn-primary w-full" onClick={onTrade}>
-          Als Papier-Trade übernehmen
+          {a.plan.orderType === "limit" ? "Order in die Zone legen (Papier-Trade)" : "Als Papier-Trade übernehmen"}
         </button>
       ) : (
         <p className="rounded-lg border border-stone-700 p-2 text-center text-xs text-stone-400">Kein Einstieg – kein Trade möglich.</p>

@@ -55,7 +55,7 @@ function* backtestSteps(candles: Candle[], opts: BacktestOptions): Generator<num
   while (i < candles.length - 1) {
     if (evaluated % 50 === 0) yield (i - warmup) / Math.max(1, candles.length - 1 - warmup);
     const hist = candles.slice(Math.max(0, i + 1 - window), i + 1);
-    const res = analyze({ symbol: "BT", name: "Backtest", candles: hist, horizon: opts.horizon, interval: opts.interval, weights: opts.weights, news: [], fundamentals: null, filters: opts.filters });
+    const res = analyze({ symbol: "BT", name: "Backtest", candles: hist, horizon: opts.horizon, interval: opts.interval, weights: opts.weights, news: [], fundamentals: null, filters: opts.filters, mode: "elliott" });
     evaluated++;
     if (!res || res.decision.level === "neutral" || !res.plan) {
       i += step;

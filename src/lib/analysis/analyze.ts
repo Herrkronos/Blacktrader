@@ -2,9 +2,10 @@
 import { HORIZON_LABEL, type Candle, type Fundamentals, type Horizon, type Interval, type NewsItem } from "../types";
 import { analyzeElliott, type ElliottResult } from "./elliott";
 import { atr, ema } from "./indicators";
+import { findZoneSetup } from "./zones";
 import { analyzeFundamentals, type FundamentalResult } from "./fundamental";
 import { writeCommentary, type Commentary } from "./persona";
-import { buildPlan, decideSignal, DEFAULT_WEIGHTS, totalScore, type SignalDecision, type TradePlan, type Weights } from "./score";
+import { DEFAULT_WEIGHTS, MIN_RISK_REWARD, type SignalDecision, type TradePlan, type Weights, buildPlan, decideSignal, levelFromScore, totalScore } from "./score";
 import { analyzeVolumeRsi, type VolumeRsiResult } from "./volume";
 
 export interface AnalysisResult {
@@ -51,6 +52,8 @@ export interface AnalyzeInput {
   /** Aktueller Live-Kurs (überschreibt den letzten Schlusskurs) */
   livePrice?: number;
   filters?: Partial<AnalyzerFilters>;
+  /** "zone" = Zielzonen-Einstieg (Standard), "elliott" = alter Sofort-Einstieg (nur für Vergleichsmessungen) */
+  mode?: "zone" | "elliott";
   kind?: "stock" | "crypto" | "commodity";
   /** Währung für Texte, z. B. EUR */
   currency?: string;
@@ -77,6 +80,48 @@ export function analyze(input: AnalyzeInput): AnalysisResult | null {
   const f = { ...DEFAULT_FILTERS, ...(input.filters ?? {}) };
   const closes = candles.map((c) => c.close);
   const atrNow = atr(candles)[candles.length - 1] ?? price * 0.01;
+  if ((input.mode ?? "zone") === "zone") {
+    const zone = findZoneSetup(candles.slice(-400)); // gleiches Fenster wie im EchoChart gemessen
+    const plan: TradePlan | null = zone
+      ? {
+          direction: zone.direction,
+          entry: zone.entry,
+          stop: zone.stop,
+          targets: zone.targets,
+          riskReward: Math.round(zone.riskReward * 100) / 100,
+          orderType: zone.inZone ? "market" : "limit",
+          zoneStart: zone.zoneStart,
+          zoneEnd: zone.zoneEnd,
+          cancelAbove: zone.cancelAbove,
+        }
+      : null;
+    const vetoes: string[] = [];
+    if (!zone) {
+      const e200 = ema(closes, Math.min(200, Math.floor(closes.length * 0.6)))[closes.length - 1];
+      const e50 = ema(closes, 50)[closes.length - 1];
+      const trend = e200 == null || e50 == null ? 0 : price > e200 && e50 > e200 ? 1 : price < e200 && e50 < e200 ? -1 : 0;
+      vetoes.push(trend === 0 ? "Kein klarer übergeordneter Trend" : "Keine Einstiegszone in Reichweite");
+    } else if (zone.riskReward < MIN_RISK_REWARD) vetoes.push(`Chance-Risiko ${zone.riskReward.toFixed(2)} unter ${MIN_RISK_REWARD}`);
+    const ok = !!plan && vetoes.length === 0;
+    const level: SignalDecision["level"] = !ok ? "neutral" : plan!.direction === "long" ? (total >= 72 ? "strong-buy" : "buy") : total <= 28 ? "strong-sell" : "sell";
+    const decision: SignalDecision = { level, rawLevel: levelFromScore(total), vetoes };
+    const commentary = writeCommentary({
+      symbol: input.symbol,
+      name: input.name,
+      price,
+      elliott,
+      fundamental,
+      volume,
+      total,
+      decision,
+      plan: ok ? plan : null,
+      news: input.news ?? [],
+      horizonLabel: HORIZON_LABEL[input.horizon],
+      kind: input.kind,
+      currency: input.currency,
+    });
+    return { symbol: input.symbol, horizon: input.horizon, interval: input.interval, price, time: candles[candles.length - 1].time, elliott, fundamental, volume, total, decision, plan: ok ? plan : null, commentary };
+  }
   const plan = buildPlan(elliott.best, price, f.minStopAtr * atrNow);
   const extraVetoes: string[] = [];
   if (plan && f.trend !== "off") {

@@ -18,6 +18,13 @@ interface Hit {
 // Ergebnis bleibt beim Seitenwechsel erhalten
 let lastScan: { at: number; hits: Hit[]; checked: number; failed: number } | null = null;
 
+/** Abstand vom aktuellen Kurs bis zum Einstieg in % (0 = jetzt in der Zone) */
+function distance(h: Hit): number {
+  const p = h.res.plan;
+  if (!p || p.orderType !== "limit") return 0;
+  return (Math.abs(h.res.price - p.entry) / h.res.price) * 100;
+}
+
 async function pool<T>(items: T[], limit: number, fn: (x: T) => Promise<void>) {
   let i = 0;
   await Promise.all(
@@ -36,6 +43,7 @@ export default function ChancenPage() {
   const [horizonFilter, setHorizonFilter] = useState<Horizon | "all">("all");
   const [groupFilter, setGroupFilter] = useState<AssetKind | "all">("all");
   const [dialog, setDialog] = useState<Hit | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const assets = (() => {
     const map = new Map<string, ResolvedAsset>();
@@ -56,7 +64,7 @@ export default function ChancenPage() {
         const interval = settings.intervals[horizon];
         const { candles } = await api.candles(asset, interval, 60e3);
         const first = analyze({ symbol: asset.symbol, name: asset.name, candles, horizon, interval, weights: settings.weights, kind: asset.kind, currency: asset.currency });
-        if (first && first.decision.rawLevel !== "neutral") {
+        if (first && first.decision.level !== "neutral") {
           // Kandidat: mit Firmenzahlen und Nachrichten vollständig bewerten
           const [f, n] = await Promise.allSettled([api.fundamentals(asset), api.news(asset)]);
           const full = analyze({
@@ -79,7 +87,7 @@ export default function ChancenPage() {
       done++;
       setProgress(done / jobs.length);
     });
-    hits.sort((a, b) => Math.abs(b.res.total - 50) - Math.abs(a.res.total - 50));
+    hits.sort((a, b) => distance(a) - distance(b));
     lastScan = { at: Date.now(), hits, checked: jobs.length, failed };
     setScan(lastScan);
     setBusy(false);
@@ -160,7 +168,7 @@ export default function ChancenPage() {
               <p className="panel px-4 py-3 text-sm text-stone-400">Keine Einstiege {horizonFilter === "all" ? "" : `(${HORIZON_LABEL[horizonFilter]}) `}– abwarten.</p>
             )}
             <div className="grid gap-3 md:grid-cols-2">
-        {groupHits.map((h) => {
+        {(expanded[g.kind] ? groupHits : groupHits.slice(0, 6)).map((h) => {
           const c = h.res.commentary;
           const open = hasOpenTrade(h.asset.symbol, h.res.horizon);
           const inList = watchlist.some((w) => w.kind === h.asset.kind && w.symbol === h.asset.symbol);
@@ -175,7 +183,14 @@ export default function ChancenPage() {
                     {HORIZON_LABEL[h.res.horizon]} ({h.res.interval}) · {h.res.total.toFixed(0)} Punkte
                   </div>
                 </div>
-                <SignalBadge level={h.res.decision.level} />
+                <div className="flex flex-col items-end gap-1">
+                  <SignalBadge level={h.res.decision.level} />
+                  {distance(h) === 0 ? (
+                    <span className="chip border-emerald-500/50 text-emerald-300">Jetzt in der Zone</span>
+                  ) : (
+                    <span className="chip border-sky-500/40 text-sky-300">wartet · noch {distance(h).toFixed(1).replace(".", ",")} %</span>
+                  )}
+                </div>
               </div>
               <p className={`font-semibold ${h.res.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{c.summary}</p>
               <p className="text-sm text-stone-200">{c.reason}</p>
@@ -198,12 +213,17 @@ export default function ChancenPage() {
           );
         })}
             </div>
+            {groupHits.length > 6 && (
+              <button className="btn w-full text-xs" onClick={() => setExpanded((e) => ({ ...e, [g.kind]: !e[g.kind] }))}>
+                {expanded[g.kind] ? "Weniger anzeigen" : `Alle ${groupHits.length} anzeigen`}
+              </button>
+            )}
           </section>
         );
       })}
       {scan && !busy && (
         <p className="text-xs text-stone-500">
-          Letzte Suche: {new Date(scan.at).toLocaleTimeString("de-DE")} · {scan.checked} Prüfungen{scan.failed ? ` · ${scan.failed} ohne Daten` : ""} · {trades.filter((t) => t.status === "open").length} offene Papier-Trades
+          Letzte Suche: {new Date(scan.at).toLocaleTimeString("de-DE")} · {scan.checked} Prüfungen{scan.failed ? ` · ${scan.failed} ohne Daten` : ""} · {trades.filter((t) => t.status !== "closed").length} laufende/wartende Papier-Trades
         </p>
       )}
       {dialog && <TradeDialog item={{ ...dialog.asset, id: "scan", addedAt: 0 } as WatchItem} analysis={dialog.res} onClose={() => setDialog(null)} />}

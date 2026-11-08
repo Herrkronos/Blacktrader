@@ -5,6 +5,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { runBacktest, type BacktestTrade } from "../src/lib/analysis/backtest";
 import type { AnalyzerFilters } from "../src/lib/analysis/analyze";
+import { runZoneBacktest } from "../src/lib/analysis/zoneBacktest";
+import type { ZoneOptions } from "../src/lib/analysis/zones";
 import { aggregateCandles } from "../src/lib/data/aggregate";
 import type { Candle, Horizon, Interval } from "../src/lib/types";
 
@@ -71,6 +73,30 @@ const fmt = (r: Row) =>
 
 const FILTERS: Partial<AnalyzerFilters> = JSON.parse(process.env.FILTERS ?? "{}");
 
+const ZONE: Partial<ZoneOptions> | null = process.env.ZONE ? JSON.parse(process.env.ZONE) : null;
+const run = (c: Candle[], j: { horizon: Horizon; interval: Interval }, f: Partial<AnalyzerFilters> = FILTERS) =>
+  ZONE ? runZoneBacktest(c, { zone: ZONE }) : runBacktest(c, { horizon: j.horizon, interval: j.interval, filters: f });
+
+if (process.env.ZONEGRID) {
+  const js = jobs();
+  for (const trendFilter of [true, false])
+    for (const atrMult of [2.5, 4])
+      for (const entryRetrace of [0.618, 0.705])
+        for (const target1Ext of [0, 0.272]) {
+          const z = { trendFilter, atrMult, entryRetrace, target1Ext };
+          const ts: BacktestTrade[] = [];
+          const per: string[] = [];
+          for (const j of js) {
+            const cut = Math.floor(j.candles.length * 0.6);
+            const r = runZoneBacktest(j.candles.slice(0, cut), { zone: z });
+            ts.push(...r.trades);
+            per.push(`${j.name}:${summarize(r.trades).pf.toFixed(1)}`);
+          }
+          console.log(`${JSON.stringify(z).padEnd(76)} ${fmt(summarize(ts))} | ${per.join(" ")}`);
+        }
+  process.exit(0);
+}
+
 if (process.env.GRID) {
   // Nur Entwicklungsteil – die Prüfdaten bleiben für die Endkontrolle unberührt
   const js = jobs();
@@ -100,7 +126,7 @@ for (const j of jobs()) {
     ["Entwicklung", j.candles.slice(0, cut)],
     ["Prüfung", j.candles.slice(Math.max(0, cut - 400))],
   ] as const) {
-    const r = runBacktest(c, { horizon: j.horizon, interval: j.interval, filters: FILTERS });
+    const r = run(c, j);
     // In der Prüfungs-Hälfte nur Trades nach dem Schnitt zählen
     const ts = part === "Prüfung" ? r.trades.filter((t) => t.entryTime >= j.candles[cut].time) : r.trades;
     ts.forEach((t) => all.push({ part, t }));

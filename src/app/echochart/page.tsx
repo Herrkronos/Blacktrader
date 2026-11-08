@@ -2,7 +2,8 @@
 import { useMemo, useState } from "react";
 import { EquityChart } from "@/components/EquityChart";
 import { HorizonToggle, Stat } from "@/components/ui";
-import { runBacktestAsync, type BacktestResult } from "@/lib/analysis/backtest";
+import type { BacktestResult } from "@/lib/analysis/backtest";
+import { runZoneBacktestAsync } from "@/lib/analysis/zoneBacktest";
 import { fmtPrice } from "@/lib/analysis/persona";
 import { LOOKBACKS, loadHistory, planHistory } from "@/lib/client/history";
 import { SCAN_GROUPS } from "@/lib/client/presets";
@@ -13,7 +14,6 @@ const fmtDate = (t: number) => new Date(t * 1000).toLocaleDateString("de-DE", { 
 
 export default function EchoChartPage() {
   const watchlist = useAppData((d) => d.watchlist);
-  const weights = useAppData((d) => d.settings.weights);
   const intervals = useAppData((d) => d.settings.intervals);
   const [key, setKey] = useState<string>("");
   const [horizon, setHorizon] = useState<Horizon>("medium");
@@ -46,7 +46,7 @@ export default function EchoChartPage() {
       const candles = await loadHistory(plan, interval, days, (p) => setPhase({ label: "Kurse laden", p }));
       if (candles.length < 150) throw new Error(`Zu wenig Kursdaten (${candles.length} Kerzen, mindestens 150 nötig).`);
       setPhase({ label: "Analyst spielt die Vergangenheit durch", p: 0 });
-      const r = await runBacktestAsync(candles, { horizon, interval, weights }, (p) => setPhase({ label: "Analyst spielt die Vergangenheit durch", p }));
+      const r = await runZoneBacktestAsync(candles, {}, (p) => setPhase({ label: "Analyst spielt die Vergangenheit durch", p }));
       setShowAll(false);
       setResult({ ...r, symbol: asset.name, bars: candles.length, from: candles[0].time, to: candles[candles.length - 1].time, note: plan.note });
     } catch (e) {
@@ -68,7 +68,7 @@ export default function EchoChartPage() {
           <ol className="mt-2 list-inside list-decimal space-y-1">
             <li>Wert, Kerzengröße und „Wie weit zurück?“ wählen, dann „EchoChart starten“ tippen.</li>
             <li>Die App spielt die vergangenen Kurse Schritt für Schritt durch – der Analyst kennt dabei immer nur, was bis zu diesem Tag passiert war.</li>
-            <li>Bei jedem Signal wird ein Übungs-Trade mit seinem Einstieg, Stop und Ziel eröffnet und bei Ziel oder Stop geschlossen.</li>
+            <li>Bei jedem Signal legt der Analyst eine Order in seine Kaufzone (bzw. Verkaufszone). Nur wenn der Kurs dorthin kommt, wird der Übungs-Trade eröffnet und bei Ziel oder Stop geschlossen.</li>
             <li>Am Ende siehst du den Gewinn, die Trefferquote und den Vergleich mit „einfach kaufen und halten“.</li>
           </ol>
           <p className="mt-2 text-xs text-stone-500">Firmenzahlen und Nachrichten von damals fehlen und zählen neutral. Berührt der Kurs Stop und Ziel in derselben Kerze, wird vorsichtig mit dem Stop gerechnet. Gute Ergebnisse von früher sind keine Garantie für die Zukunft.</p>

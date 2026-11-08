@@ -94,6 +94,7 @@ const VETO_PLAIN: [RegExp, string][] = [
   [/Gegen den übergeordneten Trend/, "der Einstieg gegen den großen Trend laufen würde"],
   [/Kein klarer übergeordneter Trend/, "es gerade keinen klaren großen Trend gibt"],
   [/Bestätigung/, "der Kurs die Richtung noch nicht bestätigt hat"],
+  [/Keine Einstiegszone/, "gerade keine günstige Einstiegszone in Reichweite ist – der Kurs ist zu weit gelaufen oder die Korrektur zu tief"],
 ];
 
 function shortCount(c: WaveCount): string {
@@ -135,6 +136,21 @@ export function writeCommentary(input: {
         : `Einstieg auf fallende Kurse bei ${money(plan.entry, cur)} · Stop bei ${money(plan.stop, cur)} · Ziel ${t}`;
     const why = plainReason(best, pron);
     reason = plan.direction === "long" ? `Einstieg in ${noun}, da ${why}.` : `Verkaufen bzw. auf fallende Kurse setzen, da ${why}.`;
+    if (plan.orderType) {
+      const up = plan.direction === "long";
+      const zone = `${money(plan.zoneStart ?? plan.entry, cur)}–${money(plan.zoneEnd ?? plan.entry, cur)}`;
+      if (plan.orderType === "limit") {
+        summary = `${up ? "Kaufzone" : "Verkaufszone"} ${zone} · Einstieg bei ${money(plan.entry, cur)} · Stop bei ${money(plan.stop, cur)} · Ziel ${t}`;
+        reason = up
+          ? `Einstieg in ${noun}, sobald der Kurs auf ${money(plan.entry, cur)} zurückkommt: Der Aufwärtstrend ist intakt, und nach dem letzten Anstieg ist ein Rücksetzer in diese Zone typisch. Dort wird gekauft – nicht vorher.`
+          : `Einstieg auf fallende Kurse, sobald der Kurs auf ${money(plan.entry, cur)} steigt: Der Abwärtstrend ist intakt, und nach dem letzten Rückgang ist eine Erholung in diese Zone typisch. Erst dort wird verkauft.`;
+      } else {
+        summary = `Einstieg bei ${money(plan.entry, cur)} · Stop bei ${money(plan.stop, cur)} · Ziel ${t}`;
+        reason = up
+          ? `Einstieg in ${noun}, da der Aufwärtstrend intakt ist und der Kurs jetzt in der Kaufzone (${zone}) nach dem Rücksetzer liegt.`
+          : `Einstieg auf fallende Kurse, da der Abwärtstrend intakt ist und der Kurs jetzt in der Verkaufszone (${zone}) nach der Erholung liegt.`;
+      }
+    }
   } else {
     summary = "Kein Einstieg – abwarten";
     const veto = decision.vetoes.map((v) => VETO_PLAIN.find(([re]) => re.test(v))?.[1]).find(Boolean);
@@ -150,6 +166,8 @@ export function writeCommentary(input: {
       plan.direction === "long"
         ? `Fällt der Kurs unter ${money(plan.stop, cur)}, wird verkauft – Verlust ca. ${lossPct.toFixed(1).replace(".", ",")} %. Möglicher Gewinn bis zum ersten Ziel: ca. ${gainPct.toFixed(1).replace(".", ",")} %.`
         : `Steigt der Kurs über ${money(plan.stop, cur)}, wird die Wette auf fallende Kurse beendet – Verlust ca. ${lossPct.toFixed(1).replace(".", ",")} %. Möglicher Gewinn bis zum ersten Ziel: ca. ${gainPct.toFixed(1).replace(".", ",")} %.`;
+    if (plan.orderType === "limit" && plan.cancelAbove != null)
+      risk += ` ${plan.direction === "long" ? "Steigt" : "Fällt"} der Kurs vorher ${plan.direction === "long" ? "über" : "unter"} ${money(plan.cancelAbove, cur)}, verfällt die Order.`;
     if (decision.level === "neutral") risk = "";
   }
 

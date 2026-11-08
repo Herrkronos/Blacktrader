@@ -136,8 +136,8 @@ describe("Kurzbegründung in Alltagssprache", () => {
     const candles = candlesFromWaypoints([150, 130, 138, 100, 124, 109.2, 112], 15, 0.004, 3);
     const res = analyze({ symbol: "T", name: "T", candles, horizon: "medium", interval: "1d", kind: "stock", currency: "EUR" })!;
     if (res.decision.level !== "neutral") {
-      expect(res.commentary.summary).toMatch(/^Einstieg (auf fallende Kurse )?bei .+ € · Stop bei .+ €/);
-      expect(res.commentary.reason).toMatch(/die Aktie, da sie /);
+      expect(res.commentary.summary).toMatch(/Einstieg bei .+ € · Stop bei .+ €/);
+      expect(res.commentary.reason).toMatch(/Einstieg/);
     } else expect(res.commentary.summary).toBe("Kein Einstieg – abwarten");
   });
 });

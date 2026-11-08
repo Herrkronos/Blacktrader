@@ -20,6 +20,7 @@ export default function JournalPage() {
   const filtered = trades.filter((t) => (horizon === "all" || t.horizon === horizon) && (asset === "all" || t.symbol === asset));
   const closed = filtered.filter((t) => t.status === "closed" && t.returnPct != null);
   const openTrades = filtered.filter((t) => t.status === "open");
+  const pendingTrades = filtered.filter((t) => t.status === "pending");
   const stats = performance(closed.map((t) => ({ returnPct: t.returnPct!, closedAt: t.closedAt! })));
   // Unrealisierter Stand der offenen Trades (Durchschnitt)
   const openReturns = openTrades
@@ -72,7 +73,7 @@ export default function JournalPage() {
           label="Offene Trades jetzt"
           value={openAvg == null ? "–" : `${openAvg >= 0 ? "+" : ""}${openAvg.toFixed(2)} %`}
           tone={openAvg == null ? undefined : openAvg >= 0 ? "up" : "down"}
-          hint={`Ø von ${openTrades.length} offenen`}
+          hint={`Ø von ${openTrades.length} offenen · ${pendingTrades.length} wartend`}
         />
         <Stat label="Abgeschlossen" value={`${stats.totalReturn >= 0 ? "+" : ""}${stats.totalReturn.toFixed(2)} %`} tone={stats.totalReturn >= 0 ? "up" : "down"} />
         <Stat label="Trefferquote" value={`${(stats.winRate * 100).toFixed(0)} %`} hint={`${stats.wins} / ${stats.trades} Trades`} />
@@ -131,8 +132,8 @@ export default function JournalPage() {
             )}
             {[...filtered].sort((a, b) => b.openedAt - a.openedAt).map((t) => {
               const lv = live[instrumentKey(t)];
-              const cur = t.status === "open" ? lv?.price ?? t.lastPrice : t.exit;
-              const ret = t.status === "closed" ? t.returnPct : cur ? tradeReturnPct(t.direction, t.entry, cur) : undefined;
+              const cur = t.status !== "closed" ? lv?.price ?? t.lastPrice : t.exit;
+              const ret = t.status === "closed" ? t.returnPct : t.status === "open" && cur ? tradeReturnPct(t.direction, t.entry, cur) : undefined;
               return (
                 <Fragment key={t.id}>
                   <tr className="cursor-pointer hover:bg-gold/5" onClick={() => setOpen(open === t.id ? null : t.id)}>
@@ -149,12 +150,23 @@ export default function JournalPage() {
                     <td className="num px-2 py-2 text-right">{cur ? fmtPrice(cur) : "–"}</td>
                     <td className={`num px-2 py-2 text-right ${ret == null ? "" : ret >= 0 ? "text-up" : "text-down"}`}>{ret == null ? "–" : `${ret >= 0 ? "+" : ""}${ret.toFixed(2)} %`}</td>
                     <td className="px-2 py-2 text-xs">
-                      {t.status === "open" ? <span className="text-gold-light">offen</span> : <span className="text-stone-400">{t.closeReason === "target" ? "Ziel" : t.closeReason === "stop" ? "Stop" : "manuell"}</span>}
+                      {t.status === "open" ? (
+                        <span className="text-gold-light">offen</span>
+                      ) : t.status === "pending" ? (
+                        <span className="text-sky-300" title="Limit-Order wartet, bis der Kurs die Zone erreicht">wartet auf Einstieg</span>
+                      ) : (
+                        <span className="text-stone-400">{t.closeReason === "target" ? "Ziel" : t.closeReason === "stop" ? "Stop" : t.closeReason === "cancelled" ? "verfallen (kein Einstieg)" : "manuell"}</span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                       {t.status === "open" && (
                         <button className="btn mr-1 px-2 py-1 text-xs" onClick={() => closeManually(t)}>
                           Schließen
+                        </button>
+                      )}
+                      {t.status === "pending" && (
+                        <button className="btn mr-1 px-2 py-1 text-xs" onClick={() => actions.updateTrade(t.id, { status: "closed", closedAt: Date.now(), closeReason: "cancelled" })}>
+                          Order löschen
                         </button>
                       )}
                       <button className="text-stone-500 hover:text-red-400" onClick={() => window.confirm("Trade löschen?") && actions.removeTrade(t.id)} title="Löschen">

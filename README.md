@@ -68,5 +68,13 @@ DATA_DIR=<ordner mit SPY_D.csv, GOOG.csv, EURUSD.csv, xau2016_5m.csv> npx tsx sc
 DATA_DIR=... GRID=1 npx tsx scripts/evaluate.ts   # Filter-Kombinationen (nur Entwicklungsdaten)
 ```
 
-Stand der Messung (Prüfdaten): ohne Filter 16 % Treffer / Gewinnfaktor 0,51; mit Trendfilter + Stop ≥ 2 ATR 35 % / 0,66.
-Ein nachweisbarer Vorteil (Gewinnfaktor > 1 auf Prüfdaten) besteht noch nicht.
+Stand der Messung auf Prüfdaten (letzte 40 %, vom Analysten nie gesehen):
+
+| Methode | Trades | Treffer | Gewinnfaktor |
+|---|---|---|---|
+| Elliott-Sofort-Einstieg (alt) | 145 | 16 % | 0,51 |
+| + Trendfilter + Stop ≥ 2 ATR | 138 | 35 % | 0,66 |
+| **Zielzonen-Einstieg (aktuell)** | **383** | **36 %** | **1,18** |
+
+Zielzonen (`src/lib/analysis/zones.ts`): im Trend die letzte Welle A→B, Limit-Einstieg bei 61,8 % Korrektur
+(Zone bis 78,6 %), Stop jenseits von A, Ziel 1 = B + 27,2 %. `ZONE='{...}'` bzw. `ZONEGRID=1` für Messungen.

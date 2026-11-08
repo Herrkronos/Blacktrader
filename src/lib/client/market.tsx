@@ -61,7 +61,7 @@ export function itemHorizon(item: WatchItem, global: Horizon): Horizon {
 
 export function MarketProvider({ children }: { children: ReactNode }) {
   const watchlist = useAppData((d) => d.watchlist);
-  const openTrades = useAppData((d) => d.trades.filter((t) => t.status === "open"));
+  const openTrades = useAppData((d) => d.trades.filter((t) => t.status !== "closed"));
   const settings = useAppData((d) => d.settings);
   const [live, setLive] = useState<Record<string, LiveState>>({});
   const [analyses, setAnalyses] = useState<Record<string, ItemAnalysis>>({});
@@ -247,11 +247,28 @@ const lastTradeWrite: Record<string, number> = {};
 function trackTrades(trades: Trade[], live: Record<string, LiveState>) {
   const s = getData().settings;
   for (const t of trades) {
-    if (t.status !== "open") continue;
+    if (t.status === "closed") continue;
     const lv = live[instrumentKey(t)];
     if (!lv?.price || lv.status === "offline") continue;
     const price = lv.price;
     const dir = t.direction === "long" ? 1 : -1;
+    if (t.status === "pending") {
+      // Wartende Limit-Order: Einstieg bei Erreichen der Zone, sonst verfallen lassen
+      if ((price - t.entry) * dir <= 0) {
+        actions.updateTrade(t.id, { status: "open", entry: dir === 1 ? Math.min(t.entry, price) : Math.max(t.entry, price), openedAt: Date.now(), lastPrice: price });
+        notify(`Einstieg ausgeführt: ${t.symbol}`, `Der Kurs hat die ${dir === 1 ? "Kaufzone" : "Verkaufszone"} erreicht – Papier-Trade bei ${fmtPrice(price)} eröffnet.`, {
+          sound: s.sound,
+          notifications: s.notifications,
+          kind: dir === 1 ? "buy" : "sell",
+        });
+      } else if ((t.cancelAbove != null && (price - t.cancelAbove) * dir > 0) || (t.expiresAt && Date.now() > t.expiresAt)) {
+        actions.updateTrade(t.id, { status: "closed", closedAt: Date.now(), closeReason: "cancelled", lastPrice: price });
+      } else if (!lastTradeWrite[t.id] || Date.now() - lastTradeWrite[t.id] > 30e3) {
+        lastTradeWrite[t.id] = Date.now();
+        if (t.lastPrice !== price) actions.updateTrade(t.id, { lastPrice: price });
+      }
+      continue;
+    }
     const sortedTargets = [...t.targets].sort((a, b) => (a - b) * dir);
     const target = s.closeAtTarget === "last" ? sortedTargets[sortedTargets.length - 1] : sortedTargets[0];
     let closeReason: Trade["closeReason"] | null = null;

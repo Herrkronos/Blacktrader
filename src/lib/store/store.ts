@@ -29,11 +29,16 @@ export interface Trade {
   score: number;
   signal: SignalLevel;
   pattern?: string;
-  status: "open" | "closed";
+  /** pending = wartende Limit-Order in der Zone */
+  status: "pending" | "open" | "closed";
+  orderType?: "limit" | "market";
+  cancelAbove?: number;
+  /** Ablauf der wartenden Order (ms) */
+  expiresAt?: number;
   lastPrice?: number;
   exit?: number;
   closedAt?: number;
-  closeReason?: "target" | "stop" | "manual";
+  closeReason?: "target" | "stop" | "manual" | "cancelled";
   returnPct?: number;
 }
 
@@ -193,8 +198,8 @@ export const actions = {
   setKeys(patch: Partial<Settings["keys"]>) {
     update((d) => ({ ...d, settings: { ...d.settings, keys: { ...d.settings.keys, ...patch } } }));
   },
-  addTrade(t: Omit<Trade, "id" | "status">) {
-    update((d) => ({ ...d, trades: [...d.trades, { ...t, id: uid(), status: "open" }] }));
+  addTrade(t: Omit<Trade, "id" | "status"> & { status?: Trade["status"] }) {
+    update((d) => ({ ...d, trades: [...d.trades, { ...t, id: uid(), status: t.status ?? "open" }] }));
   },
   updateTrade(id: string, patch: Partial<Trade>) {
     update((d) => ({ ...d, trades: d.trades.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));

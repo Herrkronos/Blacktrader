@@ -45,6 +45,12 @@ export interface TradePlan {
   stop: number;
   targets: number[];
   riskReward: number;
+  /** "limit" = Einstieg erst, wenn der Kurs die Zone erreicht; "market" = jetzt */
+  orderType?: "limit" | "market";
+  zoneStart?: number;
+  zoneEnd?: number;
+  /** Order verfällt, wenn der Kurs vorher darüber (Long) bzw. darunter (Short) läuft */
+  cancelAbove?: number;
 }
 
 export const MIN_RISK_REWARD = 1.5;
