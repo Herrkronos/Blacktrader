@@ -149,11 +149,11 @@ export function AssetDetail() {
         <div className="panel p-2 lg:col-span-2">
           {error && <p className="p-3 text-sm text-red-400">Kursdaten nicht verfügbar: {error}</p>}
           {loading && candles.length === 0 && !error && <p className="p-3 text-sm text-stone-400">Lade Kerzen …</p>}
-          {candles.length > 0 && <PriceChart candles={chartCandles} best={analysis?.elliott.best} alternative={analysis?.elliott.alternative} plan={settings.expertMode || analysis?.decision.level !== "neutral" ? analysis?.plan : null} showAlternative={showAlt} simple={!settings.expertMode} />}
+          {candles.length > 0 && <PriceChart candles={chartCandles} best={analysis?.elliott.best} alternative={analysis?.elliott.alternative} plan={settings.expertMode || analysis?.decision.level !== "neutral" ? analysis?.plan : null} showAlternative={showAlt} simple={!settings.expertMode} coreEntry={core?.state === "hold" ? core.last?.price : undefined} />}
           <p className="px-2 pb-1 text-[11px] text-stone-500">
             {settings.expertMode
               ? "Gold = Primärzählung, gestrichelt = Alternative. Linien: Kursziele (gold), Retracements (grau), Invalidierung (rot). Unten: RSI(14)."
-              : "Gelb = Einstieg, Rot = Stop (Verlustgrenze), Grün = Kursziele. Unten: Stärke-Anzeige (über 70 = heiß gelaufen, unter 30 = stark gefallen)."}
+              : "Grün = Trading-Einstieg, Blau = Einstieg der Kernposition, Rot = Stop (Verlustgrenze), grün gestrichelt = Kursziele. Unten: Stärke-Anzeige (über 70 = heiß gelaufen, unter 30 = stark gefallen)."}
           </p>
         </div>
         {analysis ? <SignalCard a={analysis} onTrade={() => setTrade(true)} /> : <div className="panel p-4 text-sm text-stone-400">{candles.length > 0 && candles.length < 30 ? "Zu wenig Historie für eine Analyse." : "Analyse wird berechnet …"}</div>}

@@ -17,9 +17,11 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
   const sum = w.elliott + w.fundamental + w.volume || 1;
   const expert = useAppData((d) => d.settings.expertMode);
   return (
-    <div className="panel space-y-3 p-4">
+    <div className={`panel space-y-3 p-4 ${a.plan && a.decision.level !== "neutral" ? "trade-bg" : ""}`}>
       <div className="flex items-center justify-between">
-        <span className="panel-title">Signal</span>
+        <span className="panel-title">
+          Signal <span className="trade-tag ml-1 align-middle normal-case tracking-normal">Trading-Einstieg</span>
+        </span>
         <SignalBadge level={a.decision.level} />
       </div>
       <div className="flex items-end gap-2">
@@ -48,7 +50,7 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
           )}
           <dt className="text-stone-400">Einstieg</dt>
           <dd className="num">
-            {fmtPrice(a.plan.entry)} {a.plan.orderType === "limit" ? <span className="text-xs text-sky-300">(wartet, bis der Kurs dort ist)</span> : a.plan.orderType === "market" ? <span className="text-xs text-emerald-300">(jetzt in der Zone)</span> : null}
+            {fmtPrice(a.plan.entry)} {a.plan.orderType === "limit" ? <span className="text-xs text-amber-300">(wartet, bis der Kurs dort ist)</span> : a.plan.orderType === "market" ? <span className="text-xs text-emerald-300">(jetzt in der Zone)</span> : null}
           </dd>
           <dt className="text-stone-400">{expert ? "Stop-Loss" : "Stop (Verlustgrenze)"}</dt>
           <dd className="num text-down">{fmtPrice(a.plan.stop)}</dd>
@@ -405,9 +407,11 @@ export function CoreCard({ core, currency }: { core: CoreStatus | null | undefin
         : "Gekauft wird erst wieder, wenn der große Trend nach oben dreht.";
   const tone = core.state === "hold" ? "border-emerald-500/40 text-emerald-300" : core.state === "wait-bottom" ? "border-sky-500/40 text-sky-300" : "border-stone-600 text-stone-300";
   return (
-    <div className="panel space-y-2 p-4">
+    <div className={`panel space-y-2 p-4 ${core.state === "hold" ? "core-bg" : ""}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className="panel-title">Kernposition</span>
+        <span className="panel-title">
+          Kernposition <span className="core-tag ml-1 align-middle normal-case tracking-normal">langfristig</span>
+        </span>
         <span className={`chip ${tone}`}>{title}</span>
       </div>
       <p className="text-sm text-stone-200">{text}</p>

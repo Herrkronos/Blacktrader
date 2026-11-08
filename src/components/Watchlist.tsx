@@ -42,11 +42,11 @@ export function Watchlist() {
                 </div>
               </div>
               {a?.result && a.result.decision.level !== "neutral" && (
-                <p className={`mt-2 text-sm font-medium ${a.result.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{a.result.commentary.summary}</p>
+                <p className={`mt-2 rounded-md border px-2 py-1 text-sm font-medium ${a.result.plan?.direction === "short" ? "border-red-500/50 bg-red-950/40 text-red-200" : "trade-bg text-emerald-100"}`}>{a.result.commentary.summary}</p>
               )}
               {a?.core && (
-                <p className="mt-1 text-xs text-stone-400">
-                  Kernposition: <span className={a.core.state === "hold" ? "text-emerald-300" : a.core.state === "wait-bottom" ? "text-sky-300" : "text-stone-300"}>{a.core.state === "hold" ? "Halten" : a.core.state === "wait-bottom" ? "Gewinne mitgenommen – warten auf Boden" : "nicht investiert"}</span>
+                <p className={`mt-2 rounded-md border px-2 py-1 text-xs ${a.core.state === "hold" ? "core-bg text-sky-100" : "border-stone-700 text-stone-400"}`}>
+                  Kernposition: {a.core.state === "hold" ? "Halten" : a.core.state === "wait-bottom" ? "Gewinne mitgenommen – warten auf Boden" : "nicht investiert"}
                 </p>
               )}
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -96,12 +96,12 @@ export function Watchlist() {
                       {w.isin ? ` · ${w.isin}` : ""}
                     </div>
                     {a?.core && (
-                      <div className="text-[11px] text-stone-400">
-                        Kern: <span className={a.core.state === "hold" ? "text-emerald-300" : a.core.state === "wait-bottom" ? "text-sky-300" : "text-stone-300"}>{a.core.state === "hold" ? "Halten" : a.core.state === "wait-bottom" ? "Gewinne mitgenommen, warten auf Boden" : "nicht investiert"}</span>
+                      <div className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[11px] ${a.core.state === "hold" ? "core-tag" : "text-stone-400"}`}>
+                        Kern: {a.core.state === "hold" ? "Halten" : a.core.state === "wait-bottom" ? "Gewinne mitgenommen, warten auf Boden" : "nicht investiert"}
                       </div>
                     )}
                     {a?.result && a.result.decision.level !== "neutral" && (
-                      <div className={`max-w-[320px] text-xs ${a.result.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{a.result.commentary.summary}</div>
+                      <div className={`mt-1 max-w-[340px] rounded px-1.5 py-0.5 text-xs ${a.result.plan?.direction === "short" ? "bg-red-950/50 text-red-200" : "trade-tag"}`}>{a.result.commentary.summary}</div>
                     )}
                   </Link>
                 </td>

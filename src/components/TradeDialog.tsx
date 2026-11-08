@@ -56,7 +56,7 @@ export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; anal
             <p className="mt-3 text-sm text-stone-200">{c.reason}</p>
             {c.risk && <p className="mt-1 text-xs text-stone-400">{c.risk}</p>}
             {plan.orderType === "limit" && (
-              <p className="mt-2 rounded-lg border border-sky-500/30 bg-sky-900/20 p-2 text-xs text-sky-200">
+              <p className="mt-2 rounded-lg border border-amber-500/40 bg-amber-900/20 p-2 text-xs text-amber-100">
                 Wartende Order: Der Trade startet erst, wenn der Kurs {fmtPrice(plan.entry)} erreicht. Läuft der Kurs vorher über {fmtPrice(plan.cancelAbove ?? plan.entry)} oder passiert 60 Kerzen lang nichts, verfällt sie.
               </p>
             )}

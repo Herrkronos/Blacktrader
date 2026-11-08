@@ -11,6 +11,16 @@ const SIGNAL_STYLE: Record<SignalLevel, string> = {
   "strong-sell": "border-red-400/60 bg-wine/60 text-red-100",
 };
 
+/** Legende: Blau = Kernposition, Grün = Trading-Einstieg */
+export function EntryLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[11px] text-stone-400">
+      <span className="core-tag">Kernposition</span> = langfristig, Welle 5 / Boden
+      <span className="trade-tag">Trading-Einstieg</span> = Zone mit Stop und Ziel
+    </div>
+  );
+}
+
 export function SignalBadge({ level, small }: { level?: SignalLevel; small?: boolean }) {
   if (!level) return <span className="text-xs text-stone-500">–</span>;
   return <span className={`inline-block whitespace-nowrap rounded-md border ${small ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1 text-xs"} font-medium ${SIGNAL_STYLE[level]}`}>{SIGNAL_LABEL[level]}</span>;
@@ -74,9 +84,9 @@ export function Change({ value }: { value?: number }) {
   return <span className={`num ${value >= 0 ? "text-up" : "text-down"}`}>{`${value >= 0 ? "+" : ""}${value.toFixed(2)} %`}</span>;
 }
 
-export function Stat({ label, value, hint, tone }: { label: string; value: React.ReactNode; hint?: string; tone?: "up" | "down" }) {
+export function Stat({ label, value, hint, tone, accent }: { label: string; value: React.ReactNode; hint?: string; tone?: "up" | "down"; accent?: "core" | "trade" }) {
   return (
-    <div className="panel px-3 py-2">
+    <div className={`panel px-3 py-2 ${accent === "core" ? "core-bg" : accent === "trade" ? "trade-bg" : ""}`}>
       <div className="text-[11px] uppercase tracking-wider text-stone-400">{label}</div>
       <div className={`num text-lg font-semibold ${tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-stone-100"}`}>{value}</div>
       {hint && <div className="text-[11px] text-stone-500">{hint}</div>}

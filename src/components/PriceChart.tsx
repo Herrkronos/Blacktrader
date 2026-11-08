@@ -29,12 +29,14 @@ interface Props {
   height?: number;
   /** Einfache Ansicht: nur Einstieg, Stop und Ziele – keine Wellen-Nummern */
   simple?: boolean;
+  /** Einstiegskurs der laufenden Kernposition (blaue Linie) */
+  coreEntry?: number;
 }
 
 const GOLD = "#C9A24A";
 const WINE = "#a32234";
 
-export function PriceChart({ candles, best, alternative, plan, showAlternative = true, height = 460, simple = false }: Props) {
+export function PriceChart({ candles, best, alternative, plan, showAlternative = true, height = 460, simple = false, coreEntry }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<{ candle: ISeriesApi<"Candlestick">; volume: ISeriesApi<"Histogram">; rsi: ISeriesApi<"Line">; wave: ISeriesApi<"Line">; alt: ISeriesApi<"Line"> } | null>(null);
@@ -139,7 +141,7 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
       }
     }
     if (plan) {
-      linesRef.current.push(s.candle.createPriceLine({ price: plan.entry, color: "#e3c57a", lineStyle: LineStyle.Solid, lineWidth: 1, axisLabelVisible: true, title: "Einstieg" }));
+      linesRef.current.push(s.candle.createPriceLine({ price: plan.entry, color: "#34d399", lineStyle: LineStyle.Solid, lineWidth: 2, axisLabelVisible: true, title: "Trading-Einstieg" }));
       if (simple) {
         linesRef.current.push(s.candle.createPriceLine({ price: plan.stop, color: WINE, lineStyle: LineStyle.Dashed, lineWidth: 2, axisLabelVisible: true, title: "Stop" }));
         plan.targets.forEach((t, i) =>
@@ -147,7 +149,10 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
         );
       }
     }
-  }, [best, alternative, plan, showAlternative, simple]);
+    if (coreEntry) {
+      linesRef.current.push(s.candle.createPriceLine({ price: coreEntry, color: "#38bdf8", lineStyle: LineStyle.Solid, lineWidth: 2, axisLabelVisible: true, title: "Kernposition" }));
+    }
+  }, [best, alternative, plan, showAlternative, simple, coreEntry]);
 
   return <div ref={ref} style={{ height }} className="w-full" />;
 }

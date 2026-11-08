@@ -173,7 +173,7 @@ export default function ChancenPage() {
           const open = hasOpenTrade(h.asset.symbol, h.res.horizon);
           const inList = watchlist.some((w) => w.kind === h.asset.kind && w.symbol === h.asset.symbol);
           return (
-            <div key={`${h.asset.symbol}-${h.res.horizon}`} className="panel space-y-2 p-4">
+            <div key={`${h.asset.symbol}-${h.res.horizon}`} className={`panel space-y-2 p-4 ${h.res.plan?.direction === "short" ? "" : "trade-bg"}`}>
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="font-semibold text-gold-light">
@@ -184,11 +184,12 @@ export default function ChancenPage() {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
+                  <span className="trade-tag">Trading-Einstieg</span>
                   <SignalBadge level={h.res.decision.level} />
                   {distance(h) === 0 ? (
                     <span className="chip border-emerald-500/50 text-emerald-300">Jetzt in der Zone</span>
                   ) : (
-                    <span className="chip border-sky-500/40 text-sky-300">wartet · noch {distance(h).toFixed(1).replace(".", ",")} %</span>
+                    <span className="chip border-amber-500/50 text-amber-300">wartet · noch {distance(h).toFixed(1).replace(".", ",")} %</span>
                   )}
                 </div>
               </div>

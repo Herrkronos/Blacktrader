@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 import { EquityChart } from "@/components/EquityChart";
-import { SignalBadge, Stat } from "@/components/ui";
+import { EntryLegend, SignalBadge, Stat } from "@/components/ui";
 import { fmtPrice } from "@/lib/analysis/persona";
 import { performance, tradeReturnPct } from "@/lib/analysis/stats";
 import { instrumentKey, useMarket } from "@/lib/client/market";
@@ -105,6 +105,7 @@ export default function JournalPage() {
         <EquityChart data={stats.curve} />
       </div>
 
+      <EntryLegend />
       <div className="panel overflow-x-auto">
         <table className="w-full min-w-[760px] text-sm">
           <thead className="border-b border-gold/20 text-left text-[11px] uppercase tracking-wider text-stone-400">
@@ -136,10 +137,12 @@ export default function JournalPage() {
               const ret = t.status === "closed" ? t.returnPct : t.status === "open" && cur ? tradeReturnPct(t.direction, t.entry, cur) : undefined;
               return (
                 <Fragment key={t.id}>
-                  <tr className="cursor-pointer hover:bg-gold/5" onClick={() => setOpen(open === t.id ? null : t.id)}>
+                  <tr className={`cursor-pointer hover:brightness-125 ${t.strategy === "core" ? "core-row" : "trade-row"}`} onClick={() => setOpen(open === t.id ? null : t.id)}>
                     <td className="px-3 py-2">
                       <div className="font-semibold text-gold-light">{t.symbol}</div>
-                      <div className={`text-xs ${t.direction === "long" ? "text-up" : "text-down"}`}>{t.strategy === "core" ? "Kernposition" : t.direction === "long" ? "Steigend" : "Fallend"}</div>
+                      <div className="mt-0.5">
+                        {t.strategy === "core" ? <span className="core-tag">Kernposition</span> : <span className="trade-tag">Trading {t.direction === "long" ? "↑" : "↓"}</span>}
+                      </div>
                     </td>
                     <td className="px-2 py-2 text-xs text-stone-400">{new Date(t.openedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</td>
                     <td className="px-2 py-2 text-xs">{HORIZON_LABEL[t.horizon]} <span className="text-stone-500">{t.interval}</span></td>
@@ -153,7 +156,7 @@ export default function JournalPage() {
                       {t.status === "open" ? (
                         <span className="text-gold-light">{t.trailing ? "offen · Stop läuft mit" : "offen"}</span>
                       ) : t.status === "pending" ? (
-                        <span className="text-sky-300" title="Limit-Order wartet, bis der Kurs die Zone erreicht">wartet auf Einstieg</span>
+                        <span className="text-amber-300" title="Limit-Order wartet, bis der Kurs die Zone erreicht">wartet auf Einstieg</span>
                       ) : (
                         <span className="text-stone-400">{t.closeReason === "target" ? "Ziel" : t.closeReason === "stop" ? "Stop" : t.closeReason === "cancelled" ? "verfallen (kein Einstieg)" : t.closeReason === "welle5" ? "Welle 5 – Gewinn mitgenommen" : t.closeReason === "trendbruch" ? "Trendbruch" : "manuell"}</span>
                       )}

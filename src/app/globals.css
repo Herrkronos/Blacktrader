@@ -65,6 +65,25 @@ h3,
   .num {
     font-variant-numeric: tabular-nums;
   }
+  /* Kernposition = Blau, Trading-Einstieg (Zonen) = Grün */
+  .core-bg {
+    @apply border-sky-400/70 bg-sky-900/50;
+  }
+  .trade-bg {
+    @apply border-emerald-400/70 bg-emerald-900/40;
+  }
+  .core-row {
+    @apply bg-sky-800/40 shadow-[inset_5px_0_0_rgb(56,189,248)];
+  }
+  .trade-row {
+    @apply bg-emerald-800/30 shadow-[inset_5px_0_0_rgb(52,211,153)];
+  }
+  .core-tag {
+    @apply rounded-md border border-sky-400/60 bg-sky-500/20 px-1.5 py-0.5 text-[11px] font-medium text-sky-200;
+  }
+  .trade-tag {
+    @apply rounded-md border border-emerald-400/60 bg-emerald-500/20 px-1.5 py-0.5 text-[11px] font-medium text-emerald-200;
+  }
   .chip {
     @apply rounded-md border px-2 py-1 text-xs transition;
   }

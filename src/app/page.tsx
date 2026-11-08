@@ -1,6 +1,6 @@
 "use client";
 import { AddAsset } from "@/components/AddAsset";
-import { HorizonToggle } from "@/components/ui";
+import { EntryLegend, HorizonToggle } from "@/components/ui";
 import { Watchlist } from "@/components/Watchlist";
 import { actions, useAppData } from "@/lib/store/store";
 
@@ -21,6 +21,7 @@ export default function Dashboard() {
         </div>
       </div>
       <AddAsset />
+      <EntryLegend />
       <Watchlist />
       {hasStocks && (
         <p className="text-xs text-stone-500">
