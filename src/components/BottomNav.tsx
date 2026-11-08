@@ -15,7 +15,7 @@ const NAV = [
 export function BottomNav() {
   const path = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/80 pb-[var(--safe-bottom)] backdrop-blur-xl" aria-label="Hauptnavigation">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[rgba(176,138,79,0.3)] bg-black/85 pb-[var(--safe-bottom)] backdrop-blur-xl" aria-label="Hauptnavigation">
       <ul className="mx-auto grid h-[var(--nav-h)] max-w-3xl grid-cols-5">
         {NAV.map(({ href, label, Icon, match }) => {
           const active = match(path);

@@ -7,6 +7,9 @@
   --color-wine: #7a1420;
   --color-wine-light: #a32234;
   --color-ink: #050505;
+  /* Wappen-Farben */
+  --color-crest-red: #560810;
+  --color-crest-gold: #b08a4f;
   --color-up: #34d399;
   --color-down: #f87171;
   --color-core: #38bdf8;
@@ -25,9 +28,12 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+html {
+  background: #000;
+}
+
 html,
 body {
-  background: #000;
   color: #e9e4d8;
   font-family: var(--font-sans);
   font-size: 16px;
@@ -37,12 +43,21 @@ body {
 }
 
 /* Wappen als fixierter Hintergrund der gesamten App */
+body {
+  background: transparent;
+}
+
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: #000 url("/background.jpg") center center / contain no-repeat;
+  background-color: #000;
+  background-image: url("/background.jpg");
+  background-image: image-set(url("/background.webp") type("image/webp"), url("/background.jpg") type("image/jpeg"));
+  background-position: center center;
+  background-size: contain;
+  background-repeat: no-repeat;
   pointer-events: none;
 }
 
@@ -62,10 +77,12 @@ h3,
 @layer components {
   /* Glas-Karte */
   .card {
-    @apply rounded-2xl border border-white/10 bg-black/55 shadow-[0_8px_30px_rgba(0,0,0,0.45)] backdrop-blur-xl;
+    @apply rounded-2xl border border-[rgba(176,138,79,0.28)] shadow-[0_8px_30px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(201,162,74,0.14)] backdrop-blur-[3px];
+    background: linear-gradient(160deg, rgba(70, 8, 14, 0.66) 0%, rgba(18, 5, 7, 0.76) 45%, rgba(4, 4, 4, 0.8) 100%);
   }
   .panel {
-    @apply rounded-2xl border border-white/10 bg-black/55 shadow-[0_8px_30px_rgba(0,0,0,0.45)] backdrop-blur-xl;
+    @apply rounded-2xl border border-[rgba(176,138,79,0.28)] shadow-[0_8px_30px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(201,162,74,0.14)] backdrop-blur-[3px];
+    background: linear-gradient(160deg, rgba(70, 8, 14, 0.66) 0%, rgba(18, 5, 7, 0.76) 45%, rgba(4, 4, 4, 0.8) 100%);
   }
   .panel-title {
     @apply font-display text-[15px] font-semibold text-gold-light;
@@ -133,7 +150,7 @@ h3,
     @apply shadow-[inset_4px_0_0_rgb(248,113,113)];
   }
   .btn {
-    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-[15px] text-stone-100 transition active:scale-[0.98] hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[rgba(176,138,79,0.35)] bg-[rgba(86,8,16,0.35)] px-4 text-[15px] text-stone-100 transition active:scale-[0.98] hover:bg-[rgba(86,8,16,0.55)] disabled:cursor-not-allowed disabled:opacity-40;
   }
   .btn-primary {
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-gold px-4 text-[15px] font-semibold text-black transition active:scale-[0.98] hover:bg-gold-light disabled:cursor-not-allowed disabled:opacity-40;
@@ -142,13 +159,13 @@ h3,
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-red-400/50 bg-red-500/10 px-4 text-[15px] text-red-200 transition active:scale-[0.98];
   }
   .input {
-    @apply min-h-[48px] w-full rounded-xl border border-white/15 bg-black/50 px-4 text-[16px] text-stone-100 placeholder:text-stone-500 focus:border-gold focus:outline-none;
+    @apply min-h-[48px] w-full rounded-xl border border-[rgba(176,138,79,0.3)] bg-black/60 px-4 text-[16px] text-stone-100 placeholder:text-stone-500 focus:border-gold focus:outline-none;
   }
   .chip {
     @apply inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border px-3.5 text-[14px] transition;
   }
   .seg {
-    @apply inline-flex rounded-xl border border-white/10 bg-black/40 p-1;
+    @apply inline-flex rounded-xl border border-[rgba(176,138,79,0.25)] bg-[rgba(40,6,10,0.55)] p-1;
   }
   .seg > button {
     @apply min-h-[44px] rounded-lg px-2 text-[14px] text-stone-300 transition;

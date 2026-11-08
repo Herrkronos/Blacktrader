@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   title: "Black Ship Holding – Trading Analyst",
   description: "Elliott-Wellen-, Fundamental- und Volumenanalyse mit Watchlist, Echtzeit-Signalen und Trade-Journal.",
   manifest: "/manifest.webmanifest",
-  icons: { icon: "/icon.svg", apple: "/icon-192.png" },
+  icons: { icon: [{ url: "/favicon.png", type: "image/png" }], apple: "/icon-180.png" },
   appleWebApp: {
     capable: true,
     title: "Black Ship",
