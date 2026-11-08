@@ -23,7 +23,6 @@ export default function EchoChartPage() {
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<{ label: string; p: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showAll, setShowAll] = useState(false);
   const [core, setCore] = useState<CoreResult | null>(null);
   const [result, setResult] = useState<(BacktestResult & { symbol: string; bars: number; from: number; to: number; note?: string; interval: Interval }) | null>(null);
 
@@ -52,7 +51,6 @@ export default function EchoChartPage() {
       const r = await runZoneBacktestAsync(candles, { warmup: 200 }, (p) => setPhase({ label: "Zonen-Trades werden durchgespielt", p }));
       const c = candles.length >= 260 ? await runCoreBacktestAsync(candles, {}, (p) => setPhase({ label: "Kernposition (Welle 5 / Boden) wird durchgespielt", p })) : null;
       setCore(c);
-      setShowAll(false);
       setResult({ ...r, symbol: asset.name, bars: candles.length, from: candles[0].time, to: candles[candles.length - 1].time, note: plan.note, interval });
     } catch (e) {
       setError((e as Error).message);
@@ -62,7 +60,6 @@ export default function EchoChartPage() {
     }
   };
 
-  const s = result?.stats;
   return (
     <div className="space-y-4">
       <div>
@@ -170,10 +167,11 @@ export default function EchoChartPage() {
           {result.note ? <span className="block text-xs text-stone-500">{result.note}</span> : null}
         </p>
       )}
-      {result && core && (
+      {result && (
         <div className="panel space-y-3 p-3">
           <div className="panel-title">Vergleich</div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {core ? (
             <Stat
               accent="core"
               label="Kernposition (Welle 5 / Boden)"
@@ -181,6 +179,9 @@ export default function EchoChartPage() {
               tone={core.stats.totalReturn >= 0 ? "up" : "down"}
               hint={`${core.segments.length} Phasen · ${(core.exposure * 100).toFixed(0)} % der Zeit investiert · größter Rückgang ${core.maxDrawdown.toFixed(1)} %`}
             />
+            ) : (
+              <Stat accent="core" label="Kernposition (Welle 5 / Boden)" value="–" hint="Zu wenig Kerzen – längeren Zeitraum wählen" />
+            )}
             <Stat
               accent="trade"
               label="Zonen-Trades"
@@ -190,10 +191,13 @@ export default function EchoChartPage() {
             />
             <Stat
               label="Einfach gehalten"
-              value={`${core.buyAndHold >= 0 ? "+" : ""}${core.buyAndHold.toFixed(1)} %`}
-              hint={`größter Rückgang ${core.holdMaxDrawdown.toFixed(1)} %`}
+              value={`${(core?.buyAndHold ?? result.buyAndHold) >= 0 ? "+" : ""}${(core?.buyAndHold ?? result.buyAndHold).toFixed(1)} %`}
+              hint={core ? `größter Rückgang ${core.holdMaxDrawdown.toFixed(1)} %` : undefined}
             />
           </div>
+          {result.trades.length > 0 && result.trades.length < 10 && <p className="text-xs text-amber-300">Weniger als 10 Zonen-Trades – statistisch nicht belastbar.</p>}
+          {core && (
+          <>
           <div className="text-xs text-stone-400">Kernposition – Gewinnkurve (gestrichelt: einfach gehalten)</div>
           <EquityChart data={core.curve} compare={core.buyAndHold} />
           <details className="text-sm">
@@ -211,62 +215,14 @@ export default function EchoChartPage() {
               </tbody>
             </table>
           </details>
+          </>
+          )}
           <p className="text-[11px] text-stone-500">
             Kernposition: im Aufwärtstrend halten, nach erkannter 5. Welle Gewinne mitnehmen, nach einem Boden (abgeschlossene Korrektur) wieder einsteigen. „Größter Rückgang“ = stärkster Verlust vom Höchststand zwischendurch.
           </p>
         </div>
       )}
-      {result && s && (
-        <>
-          <div className="panel-title pt-2">Zonen-Trades im Detail</div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            <Stat accent="trade" label="Zonen-Trades" value={`${s.totalReturn >= 0 ? "+" : ""}${s.totalReturn.toFixed(1)} %`} tone={s.totalReturn >= 0 ? "up" : "down"} hint={`${result.trades.length} Trades`} />
-            <Stat label="Einfach gehalten" value={`${result.buyAndHold >= 0 ? "+" : ""}${result.buyAndHold.toFixed(1)} %`} />
-            <Stat label="Trades" value={s.trades} hint={`Trefferquote ${(s.winRate * 100).toFixed(0)} %`} />
-            <Stat label="Ø Gewinn / Verlust" value={`${s.avgWin.toFixed(1)} / ${s.avgLoss.toFixed(1)} %`} />
-            <Stat label="Max. Drawdown" value={`${s.maxDrawdown.toFixed(1)} %`} tone="down" />
-            <Stat label="Profit-Faktor" value={s.profitFactor == null ? "∞" : s.profitFactor.toFixed(2)} hint={`${result.evaluatedBars} Analysen`} />
-          </div>
-          {s.trades < 10 && <p className="text-xs text-amber-300">Weniger als 10 Trades – statistisch nicht belastbar. Ehrlich gesagt: Das ist eine Anekdote, kein Beweis.</p>}
-          <div className="panel p-3">
-            <div className="panel-title mb-2">Gewinnkurve</div>
-            <EquityChart data={s.curve} compare={result.buyAndHold} />
-          </div>
-          <div className="panel overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="border-b border-gold/20 text-left text-[11px] uppercase tracking-wider text-stone-400">
-                <tr>
-                  <th className="px-3 py-2">Einstieg</th>
-                  <th className="px-2 py-2">Richtung</th>
-                  <th className="px-2 py-2">Situation</th>
-                  <th className="px-2 py-2 text-right">Einstieg</th>
-                  <th className="px-2 py-2 text-right">Exit</th>
-                  <th className="px-2 py-2">Grund</th>
-                  <th className="px-2 py-2 text-right">Rendite</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gold/10">
-                {(showAll ? [...result.trades].reverse() : [...result.trades].reverse().slice(0, 30)).map((t) => (
-                  <tr key={t.entryTime} className="trade-row">
-                    <td className="px-3 py-1.5 text-xs text-stone-400">{new Date(t.entryTime * 1000).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</td>
-                    <td className={`px-2 py-1.5 ${t.direction === "long" ? "text-up" : "text-down"}`}>{t.direction === "long" ? "Steigend" : "Fallend"}</td>
-                    <td className="px-2 py-1.5 text-xs">{t.pattern}</td>
-                    <td className="num px-2 py-1.5 text-right">{fmtPrice(t.entry)}</td>
-                    <td className="num px-2 py-1.5 text-right">{fmtPrice(t.exit)}</td>
-                    <td className="px-2 py-1.5 text-xs">{{ target: "Ziel", stop: "Stop", timeout: "Zeitlimit", end: "Datenende" }[t.reason]}</td>
-                    <td className={`num px-2 py-1.5 text-right ${t.returnPct >= 0 ? "text-up" : "text-down"}`}>{`${t.returnPct >= 0 ? "+" : ""}${t.returnPct.toFixed(2)} %`}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {result.trades.length > 30 && (
-            <button className="btn w-full" onClick={() => setShowAll(!showAll)}>
-              {showAll ? "Nur die letzten 30 Trades zeigen" : `Alle ${result.trades.length} Trades anzeigen`}
-            </button>
-          )}
-        </>
-      )}
+
     </div>
   );
 }
