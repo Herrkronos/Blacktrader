@@ -77,6 +77,25 @@ const ZONE: Partial<ZoneOptions> | null = process.env.ZONE ? JSON.parse(process.
 const run = (c: Candle[], j: { horizon: Horizon; interval: Interval }, f: Partial<AnalyzerFilters> = FILTERS) =>
   ZONE ? runZoneBacktest(c, { zone: ZONE, ...JSON.parse(process.env.ZONEBT ?? "{}") }) : runBacktest(c, { horizon: j.horizon, interval: j.interval, filters: f });
 
+if (process.env.FRESH) {
+  // Völlig frische Daten (bei keiner Entscheidung verwendet): ganze Reihe, alle Versionen im Vergleich
+  const versions: [string, (c: Candle[], iv: Interval, h: Horizon) => BacktestTrade[]][] = [
+    ["Alter Analyst (Sofort)", (c, iv, h) => runBacktest(c, { horizon: h, interval: iv, filters: { trend: "off", minStopAtr: 0 } }).trades],
+    ["Zielzonen, Ziel 1", (c) => runZoneBacktest(c, { exitMode: "fixed" }).trades],
+    ["Zielzonen + laufen lassen", (c) => runZoneBacktest(c, {}).trades],
+  ];
+  for (const file of process.env.FRESH.split(",")) {
+    const base = readCsv(file);
+    for (const [label, sec, iv, h] of [["5m", 0, "5m", "short"], ["15m", 900, "15m", "short"], ["1h", 3600, "1h", "short"], ["4h", 14400, "4h", "medium"]] as const) {
+      const c = sec ? aggregateCandles(base, sec) : base;
+      const bh = ((c[c.length - 1].close - c[120].close) / c[120].close) * 100;
+      for (const [name, fn] of versions) console.log(`${file.slice(0, 7)} ${label.padEnd(4)} ${name.padEnd(26)} ${fmt(summarize(fn(c, iv, h)))} | Halten ${bh.toFixed(1)} %`);
+    }
+  }
+  for (const [name] of versions) void name;
+  process.exit(0);
+}
+
 if (process.env.EXITGRID) {
   const js = jobs();
   const combos: Record<string, unknown>[] = [{ exitMode: "fixed" }, { exitMode: "fixed", confirmEntry: true }];
