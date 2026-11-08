@@ -6,6 +6,7 @@ import path from "node:path";
 import { runBacktest, type BacktestTrade } from "../src/lib/analysis/backtest";
 import type { AnalyzerFilters } from "../src/lib/analysis/analyze";
 import { runZoneBacktest } from "../src/lib/analysis/zoneBacktest";
+import { runCoreBacktest } from "../src/lib/analysis/core";
 import type { ZoneOptions } from "../src/lib/analysis/zones";
 import { aggregateCandles } from "../src/lib/data/aggregate";
 import type { Candle, Horizon, Interval } from "../src/lib/types";
@@ -76,6 +77,37 @@ const FILTERS: Partial<AnalyzerFilters> = JSON.parse(process.env.FILTERS ?? "{}"
 const ZONE: Partial<ZoneOptions> | null = process.env.ZONE ? JSON.parse(process.env.ZONE) : null;
 const run = (c: Candle[], j: { horizon: Horizon; interval: Interval }, f: Partial<AnalyzerFilters> = FILTERS) =>
   ZONE ? runZoneBacktest(c, { zone: ZONE, ...JSON.parse(process.env.ZONEBT ?? "{}") }) : runBacktest(c, { horizon: j.horizon, interval: j.interval, filters: f });
+
+if (process.env.CORE) {
+  // Kernposition: Entwicklung/Prüfung je Reihe + frische Gold-Jahre; Vergleich mit Halten, Zonen und 50/50-Kombination
+  const q = Number(process.env.CORE);
+  const extra: Job[] = [];
+  for (const f of ["xau2013_5m.csv", "xau2017_5m.csv"])
+    if (fs.existsSync(path.join(DIR, f))) {
+      const b = readCsv(f);
+      extra.push({ name: `${f.slice(0, 7)} 1h`, candles: aggregateCandles(b, 3600), horizon: "short", interval: "1h" });
+      extra.push({ name: `${f.slice(0, 7)} 4h`, candles: aggregateCandles(b, 14400), horizon: "medium", interval: "4h" });
+    }
+  const tot = { dev: [0, 0, 0, 0, 0], test: [0, 0, 0, 0, 0], fresh: [0, 0, 0, 0, 0] };
+  for (const j of [...jobs().filter((x) => !x.name.includes("5m") && !x.name.includes("15m")), ...extra]) {
+    const isFresh = extra.includes(j);
+    const cut = Math.floor(j.candles.length * 0.6);
+    const parts: [string, Candle[]][] = isFresh ? [["fresh", j.candles]] : [["dev", j.candles.slice(0, cut)], ["test", j.candles.slice(Math.max(0, cut - 400))]];
+    for (const [part, c] of parts) {
+      const core = runCoreBacktest(c, { minQuality: q, ...(process.env.CORE_DEG ? { degrees: process.env.CORE_DEG.split(",") } : {}) });
+      const zone = runZoneBacktest(c, { warmup: 200 });
+      const zr = (zone.trades.reduce((e, t) => e * (1 + t.returnPct / 100), 1) - 1) * 100;
+      const combo = (0.5 * (1 + core.stats.totalReturn / 100) + 0.5 * (1 + zr / 100) - 1) * 100;
+      const row = [core.buyAndHold, core.stats.totalReturn, zr, combo, core.exposure * 100];
+      row.forEach((v, k) => (tot[part as keyof typeof tot][k] += v));
+      console.log(
+        `${j.name.padEnd(12)} ${part.padEnd(5)} Halten ${core.buyAndHold.toFixed(1).padStart(7)} % | Kern ${core.stats.totalReturn.toFixed(1).padStart(7)} % (${core.segments.length} Phasen, ${(core.exposure * 100).toFixed(0)} % investiert, MaxDD ${core.maxDrawdown.toFixed(1)} % vs Halten ${core.holdMaxDrawdown.toFixed(1)} %) | Zonen ${zr.toFixed(1).padStart(6)} % | 50/50 ${combo.toFixed(1).padStart(7)} %`,
+      );
+    }
+  }
+  for (const [k, v] of Object.entries(tot)) console.log(`SUMME ${k.padEnd(5)} Halten ${v[0].toFixed(0)} | Kern ${v[1].toFixed(0)} | Zonen ${v[2].toFixed(0)} | 50/50 ${v[3].toFixed(0)}`);
+  process.exit(0);
+}
 
 if (process.env.FRESH) {
   // Völlig frische Daten (bei keiner Entscheidung verwendet): ganze Reihe, alle Versionen im Vergleich

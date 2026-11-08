@@ -79,3 +79,16 @@ Stand der Messung auf Prüfdaten (letzte 40 %, vom Analysten nie gesehen):
 
 Zielzonen (`src/lib/analysis/zones.ts`): im Trend die letzte Welle A→B, Limit-Einstieg bei 61,8 % Korrektur
 (Zone bis 78,6 %), Stop jenseits von A, Ziel 1 = B + 27,2 %. Ab Ziel 1 Stop auf Einstieg und mit 4 × ATR nachziehen. `ZONE='{...}'` bzw. `ZONEGRID=1` für Messungen.
+
+### Kernposition (Welle 5 / Boden)
+
+`src/lib/analysis/core.ts`: im Aufwärtstrend (EMA 50/200) halten, nach erkannter abgeschlossener 5. Welle (großer Wellengrad,
+Qualität ≥ 0,55) Gewinne mitnehmen, nach einem Boden (abgeschlossene Korrektur oder neue Welle 1-2) bzw. neuem Hoch wieder
+einsteigen. Messung: `CORE=0.55 npx tsx scripts/evaluate.ts`.
+
+| Daten | Einfach halten | Kernposition | größter Rückgang Kern / Halten |
+|---|---|---|---|
+| S&P 500 täglich 2010–2021 (Prüfung) | +489 % | +223 % | −23 % / −34 % |
+| S&P 500 wöchentlich (Prüfung) | +372 % | +284 % | −29 % / −53 % |
+| Gold 2013 1h (frisch) | −28 % | −8 % | −12 % / −30 % |
+| Gold 2017 1h (frisch) | +9 % | +11 % | −4 % / −9 % |

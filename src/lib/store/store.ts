@@ -44,7 +44,9 @@ export interface Trade {
   lastPrice?: number;
   exit?: number;
   closedAt?: number;
-  closeReason?: "target" | "stop" | "manual" | "cancelled";
+  closeReason?: "target" | "stop" | "manual" | "cancelled" | "welle5" | "trendbruch";
+  /** "core" = Kernposition (Welle 5 / Boden), sonst Zonen-Trade */
+  strategy?: "zone" | "core";
   returnPct?: number;
 }
 

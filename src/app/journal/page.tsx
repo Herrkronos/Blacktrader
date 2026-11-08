@@ -139,14 +139,14 @@ export default function JournalPage() {
                   <tr className="cursor-pointer hover:bg-gold/5" onClick={() => setOpen(open === t.id ? null : t.id)}>
                     <td className="px-3 py-2">
                       <div className="font-semibold text-gold-light">{t.symbol}</div>
-                      <div className={`text-xs ${t.direction === "long" ? "text-up" : "text-down"}`}>{t.direction === "long" ? "Steigend" : "Fallend"}</div>
+                      <div className={`text-xs ${t.direction === "long" ? "text-up" : "text-down"}`}>{t.strategy === "core" ? "Kernposition" : t.direction === "long" ? "Steigend" : "Fallend"}</div>
                     </td>
                     <td className="px-2 py-2 text-xs text-stone-400">{new Date(t.openedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</td>
                     <td className="px-2 py-2 text-xs">{HORIZON_LABEL[t.horizon]} <span className="text-stone-500">{t.interval}</span></td>
                     <td className="px-2 py-2"><SignalBadge level={t.signal} small /></td>
                     <td className="num px-2 py-2 text-right">{fmtPrice(t.entry)}</td>
-                    <td className="num px-2 py-2 text-right text-down">{fmtPrice(t.stop)}</td>
-                    <td className="num px-2 py-2 text-right text-up">{t.targets.map(fmtPrice).join(" / ")}</td>
+                    <td className="num px-2 py-2 text-right text-down">{t.strategy === "core" ? "–" : fmtPrice(t.stop)}</td>
+                    <td className="num px-2 py-2 text-right text-up">{t.strategy === "core" ? "bis Welle 5" : t.targets.map(fmtPrice).join(" / ")}</td>
                     <td className="num px-2 py-2 text-right">{cur ? fmtPrice(cur) : "–"}</td>
                     <td className={`num px-2 py-2 text-right ${ret == null ? "" : ret >= 0 ? "text-up" : "text-down"}`}>{ret == null ? "–" : `${ret >= 0 ? "+" : ""}${ret.toFixed(2)} %`}</td>
                     <td className="px-2 py-2 text-xs">
@@ -155,7 +155,7 @@ export default function JournalPage() {
                       ) : t.status === "pending" ? (
                         <span className="text-sky-300" title="Limit-Order wartet, bis der Kurs die Zone erreicht">wartet auf Einstieg</span>
                       ) : (
-                        <span className="text-stone-400">{t.closeReason === "target" ? "Ziel" : t.closeReason === "stop" ? "Stop" : t.closeReason === "cancelled" ? "verfallen (kein Einstieg)" : "manuell"}</span>
+                        <span className="text-stone-400">{t.closeReason === "target" ? "Ziel" : t.closeReason === "stop" ? "Stop" : t.closeReason === "cancelled" ? "verfallen (kein Einstieg)" : t.closeReason === "welle5" ? "Welle 5 – Gewinn mitgenommen" : t.closeReason === "trendbruch" ? "Trendbruch" : "manuell"}</span>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 text-right" onClick={(e) => e.stopPropagation()}>

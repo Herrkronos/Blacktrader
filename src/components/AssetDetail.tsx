@@ -3,13 +3,14 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { analyze } from "@/lib/analysis/analyze";
+import { coreStatus } from "@/lib/analysis/core";
 import { fmtPrice } from "@/lib/analysis/persona";
 import { api } from "@/lib/client/api";
 import { binanceStream } from "@/lib/client/binanceWs";
 import { itemHorizon, useLive } from "@/lib/client/market";
 import { actions, useAppData } from "@/lib/store/store";
 import { HORIZON_INTERVALS, type Candle, type Fundamentals, type Interval, type NewsItem } from "@/lib/types";
-import { Commentary, FundamentalsPanel, NewsPanel, SignalCard, VolumePanel, WavePanel } from "./AnalysisPanels";
+import { Commentary, CoreCard, FundamentalsPanel, NewsPanel, SignalCard, VolumePanel, WavePanel } from "./AnalysisPanels";
 import { PriceChart } from "./PriceChart";
 import { TradeDialog } from "./TradeDialog";
 import { Change, HorizonToggle, StatusDot } from "./ui";
@@ -90,6 +91,7 @@ export function AssetDetail() {
     return [...candles.slice(0, -1), { ...last, close: live.price, high: Math.max(last.high, live.price), low: Math.min(last.low, live.price) }];
   }, [candles, live?.price, source]);
 
+  const core = useMemo(() => (candles.length >= 120 ? coreStatus(candles) : null), [candles]);
   const analysis = useMemo(
     () => (item && chartCandles.length >= 30 ? analyze({ symbol: item.symbol, name: item.name, candles: chartCandles, horizon, interval, fundamentals, news, weights: settings.weights, kind: item.kind, currency: live?.currency ?? item.currency }) : null),
     [item, chartCandles, horizon, interval, fundamentals, news, settings.weights, live?.currency],
@@ -161,6 +163,7 @@ export function AssetDetail() {
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="space-y-4 lg:col-span-2">
             <Commentary a={analysis} item={item} />
+            <CoreCard core={core} currency={live?.currency ?? item.currency} />
             {settings.expertMode && <WavePanel a={analysis} />}
           </div>
           <div className="space-y-4">

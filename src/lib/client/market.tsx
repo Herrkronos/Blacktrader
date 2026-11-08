@@ -9,7 +9,8 @@ import { fmtPrice } from "../analysis/persona";
 import { actions, getData, useAppData, type Trade, type WatchItem } from "../store/store";
 import type { Candle, Fundamentals, Horizon, Interval, NewsItem, ResolvedAsset } from "../types";
 import { notify } from "./alerts";
-import { openPaperTrade } from "./autotrade";
+import { openPaperTrade, syncCoreTrade } from "./autotrade";
+import { coreStatus, type CoreStatus } from "../analysis/core";
 import { api } from "./api";
 import { binanceStream } from "./binanceWs";
 
@@ -36,6 +37,8 @@ export interface ItemAnalysis {
   candleSource?: string;
   error?: string;
   loading: boolean;
+  /** Kernposition (Welle 5 / Boden) */
+  core?: CoreStatus | null;
 }
 
 type Instrument = Pick<ResolvedAsset, "kind" | "symbol" | "name" | "binanceSymbol" | "yahooSymbol" | "coingeckoId">;
@@ -135,7 +138,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   }, [instrumentsKey, settings.pollSeconds]);
 
   // ---- Rohdaten für Analysen (Kerzen, Fundamentaldaten, News)
-  const raw = useRef<Record<string, { candles: Candle[]; fundamentals: Fundamentals | null; news: NewsItem[]; source?: string; error?: string; version: number; horizon: Horizon; interval: Interval }>>({});
+  const raw = useRef<Record<string, { candles: Candle[]; fundamentals: Fundamentals | null; news: NewsItem[]; source?: string; error?: string; version: number; horizon: Horizon; interval: Interval; core?: CoreStatus | null }>>({});
   const [dataVersion, setDataVersion] = useState(0);
   const watchKey = watchlist.map((w) => `${w.id}:${itemHorizon(w, settings.globalHorizon)}:${settings.intervals[itemHorizon(w, settings.globalHorizon)]}`).join(",");
 
@@ -153,7 +156,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         try {
           const r = await api.candles(item, interval, candleRefreshMs(interval) / 2);
           if (cancelled) return;
-          raw.current[item.id] = { ...(raw.current[item.id] ?? { fundamentals: null, news: [] }), candles: r.candles, source: r.source, error: undefined, version: Date.now(), horizon, interval };
+          raw.current[item.id] = { ...(raw.current[item.id] ?? { fundamentals: null, news: [] }), candles: r.candles, source: r.source, error: undefined, version: Date.now(), horizon, interval, core: coreStatus(r.candles) };
         } catch (e) {
           if (cancelled) return;
           raw.current[item.id] = { ...(raw.current[item.id] ?? { fundamentals: null, news: [], candles: [] }), error: (e as Error).message, version: Date.now(), horizon, interval } as never;
@@ -204,8 +207,12 @@ export function MarketProvider({ children }: { children: ReactNode }) {
           r.candles.length >= 30
             ? analyze({ symbol: item.symbol, name: item.name, candles: r.candles, horizon: r.horizon, interval: r.interval, fundamentals: r.fundamentals, news: r.news, weights: d.settings.weights, livePrice: lv?.price, kind: item.kind, currency: lv?.currency ?? item.currency })
             : null;
-        next[item.id] = { horizon: r.horizon, interval: r.interval, result, candles: r.candles, fundamentals: r.fundamentals, news: r.news, candleSource: r.source, error: r.error ?? (r.candles.length < 30 && r.candles.length > 0 ? "Zu wenig Historie für eine Analyse" : undefined), loading: false };
+        next[item.id] = { core: r.core, horizon: r.horizon, interval: r.interval, result, candles: r.candles, fundamentals: r.fundamentals, news: r.news, candleSource: r.source, error: r.error ?? (r.candles.length < 30 && r.candles.length > 0 ? "Zu wenig Historie für eine Analyse" : undefined), loading: false };
         if (result) checkSignal(item, r.horizon, result);
+        if (result && r.core && d.settings.autoTrade) {
+          const msg = syncCoreTrade(item, result, r.core);
+          if (msg) notify(`Kernposition ${item.symbol}`, msg, { sound: d.settings.sound, notifications: d.settings.notifications, kind: r.core.state === "hold" ? "buy" : "sell" });
+        }
       }
       if (Object.keys(next).length) setAnalyses((p) => ({ ...p, ...next }));
       trackTrades(d.trades, liveRef.current);
@@ -251,6 +258,14 @@ function trackTrades(trades: Trade[], live: Record<string, LiveState>) {
     const lv = live[instrumentKey(t)];
     if (!lv?.price || lv.status === "offline") continue;
     const price = lv.price;
+    if (t.strategy === "core") {
+      // Kernposition wird über den Kernstatus geschlossen, hier nur den Kurs aktualisieren
+      if (!lastTradeWrite[t.id] || Date.now() - lastTradeWrite[t.id] > 30e3) {
+        lastTradeWrite[t.id] = Date.now();
+        if (t.lastPrice !== price) actions.updateTrade(t.id, { lastPrice: price });
+      }
+      continue;
+    }
     const dir = t.direction === "long" ? 1 : -1;
     if (t.status === "pending") {
       // Wartende Limit-Order: Einstieg bei Erreichen der Zone, sonst verfallen lassen

@@ -4,7 +4,8 @@ import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis
 import type { AnalysisResult } from "@/lib/analysis/analyze";
 import type { WaveCount } from "@/lib/analysis/elliott";
 import { compactNumber } from "@/lib/analysis/fundamental";
-import { fmtPrice } from "@/lib/analysis/persona";
+import { fmtPrice, money } from "@/lib/analysis/persona";
+import type { CoreStatus } from "@/lib/analysis/core";
 import { SIGNAL_LABEL } from "@/lib/analysis/score";
 import { api } from "@/lib/client/api";
 import { useAppData } from "@/lib/store/store";
@@ -380,6 +381,42 @@ export function VolumePanel({ a }: { a: AnalysisResult }) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+const CORE_EVENT_TEXT: Record<string, string> = {
+  einstieg: "Aufwärtstrend bestätigt – eingestiegen",
+  welle5: "Welle 5 beendet – Gewinne mitgenommen",
+  trendbruch: "Aufwärtstrend gebrochen – verkauft",
+  boden: "Boden gefunden – wieder eingestiegen",
+  "neues-hoch": "Neues Hoch – wieder eingestiegen",
+};
+
+export function CoreCard({ core, currency }: { core: CoreStatus | null | undefined; currency?: string }) {
+  if (!core) return null;
+  const title =
+    core.state === "hold" ? "Halten" : core.state === "wait-bottom" ? "Gewinne mitgenommen – warten auf Boden" : "Nicht investiert – kein Aufwärtstrend";
+  const text =
+    core.state === "hold"
+      ? "Der große Aufwärtstrend läuft und die 5. Welle ist noch nicht beendet. Die Kernposition wird gehalten."
+      : core.state === "wait-bottom"
+        ? `Der Analyst hat das Ende der 5. Welle erkannt${core.wave5Top ? ` (Hoch bei ${money(core.wave5Top, currency)})` : ""}. Wieder eingestiegen wird, sobald nach der Korrektur ein Boden gefunden ist${core.wave5Top ? ` oder der Kurs über ${money(core.wave5Top, currency)} steigt` : ""}.`
+        : "Gekauft wird erst wieder, wenn der große Trend nach oben dreht.";
+  const tone = core.state === "hold" ? "border-emerald-500/40 text-emerald-300" : core.state === "wait-bottom" ? "border-sky-500/40 text-sky-300" : "border-stone-600 text-stone-300";
+  return (
+    <div className="panel space-y-2 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="panel-title">Kernposition</span>
+        <span className={`chip ${tone}`}>{title}</span>
+      </div>
+      <p className="text-sm text-stone-200">{text}</p>
+      {core.last && (
+        <p className="text-xs text-stone-400">
+          Letztes Ereignis: {CORE_EVENT_TEXT[core.last.type]} am {new Date(core.last.time * 1000).toLocaleDateString("de-DE")} bei {money(core.last.price, currency)}.
+        </p>
+      )}
+      <p className="text-[11px] text-stone-500">Kernposition = im Aufwärtstrend halten, nach der 5. Welle Gewinne mitnehmen, nach einem Boden wieder einsteigen. Läuft zusätzlich zu den Zonen-Trades.</p>
     </div>
   );
 }

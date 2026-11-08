@@ -44,6 +44,11 @@ export function Watchlist() {
               {a?.result && a.result.decision.level !== "neutral" && (
                 <p className={`mt-2 text-sm font-medium ${a.result.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{a.result.commentary.summary}</p>
               )}
+              {a?.core && (
+                <p className="mt-1 text-xs text-stone-400">
+                  Kernposition: <span className={a.core.state === "hold" ? "text-emerald-300" : a.core.state === "wait-bottom" ? "text-sky-300" : "text-stone-300"}>{a.core.state === "hold" ? "Halten" : a.core.state === "wait-bottom" ? "Gewinne mitgenommen – warten auf Boden" : "nicht investiert"}</span>
+                </p>
+              )}
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <SignalBadge level={a?.result?.decision.level} small />
                 <div className="w-24">
@@ -90,6 +95,11 @@ export function Watchlist() {
                       {w.name}
                       {w.isin ? ` · ${w.isin}` : ""}
                     </div>
+                    {a?.core && (
+                      <div className="text-[11px] text-stone-400">
+                        Kern: <span className={a.core.state === "hold" ? "text-emerald-300" : a.core.state === "wait-bottom" ? "text-sky-300" : "text-stone-300"}>{a.core.state === "hold" ? "Halten" : a.core.state === "wait-bottom" ? "Gewinne mitgenommen, warten auf Boden" : "nicht investiert"}</span>
+                      </div>
+                    )}
                     {a?.result && a.result.decision.level !== "neutral" && (
                       <div className={`max-w-[320px] text-xs ${a.result.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{a.result.commentary.summary}</div>
                     )}
