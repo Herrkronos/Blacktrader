@@ -97,9 +97,31 @@ async function resolveSymbol(input: string): Promise<ResolvedAsset[]> {
   return results.slice(0, 8);
 }
 
+/** Rohstoffe per Name (deutsch/englisch) → fortlaufender Terminkontrakt bei Yahoo. */
+const COMMODITIES: { words: string[]; asset: ResolvedAsset }[] = [
+  { words: ["GOLD", "GOLDPREIS", "XAU"], asset: { kind: "commodity", symbol: "GC=F", name: "Gold", yahooSymbol: "GC=F", currency: "USD", exchange: "Terminmarkt" } },
+  { words: ["SILBER", "SILVER", "XAG"], asset: { kind: "commodity", symbol: "SI=F", name: "Silber", yahooSymbol: "SI=F", currency: "USD", exchange: "Terminmarkt" } },
+  { words: ["ÖL", "OEL", "OIL", "ROHÖL", "ROHOEL", "WTI", "CRUDE"], asset: { kind: "commodity", symbol: "CL=F", name: "Öl (WTI)", yahooSymbol: "CL=F", currency: "USD", exchange: "Terminmarkt" } },
+  { words: ["BRENT", "BRENTÖL"], asset: { kind: "commodity", symbol: "BZ=F", name: "Öl (Brent)", yahooSymbol: "BZ=F", currency: "USD", exchange: "Terminmarkt" } },
+  { words: ["ERDGAS", "GAS", "NATGAS", "NATURAL GAS"], asset: { kind: "commodity", symbol: "NG=F", name: "Erdgas", yahooSymbol: "NG=F", currency: "USD", exchange: "Terminmarkt" } },
+  { words: ["KUPFER", "COPPER"], asset: { kind: "commodity", symbol: "HG=F", name: "Kupfer", yahooSymbol: "HG=F", currency: "USD", exchange: "Terminmarkt" } },
+  { words: ["PLATIN", "PLATINUM"], asset: { kind: "commodity", symbol: "PL=F", name: "Platin", yahooSymbol: "PL=F", currency: "USD", exchange: "Terminmarkt" } },
+];
+
+export function commodityFor(input: string): ResolvedAsset | undefined {
+  const s = input.trim().toUpperCase();
+  return COMMODITIES.find((c) => c.words.includes(s) || c.asset.symbol === s)?.asset;
+}
+
 export async function resolveInput(raw: string, figiKey?: string): Promise<ResolvedAsset[]> {
   const input = raw.trim();
   if (!input) return [];
+  const commodity = commodityFor(input);
+  if (commodity) {
+    // Rohstoff zuerst, gleichnamige Firmen/Coins nur als Alternativen
+    const others = await resolveSymbol(input).catch(() => [] as ResolvedAsset[]);
+    return [commodity, ...others.filter((o) => o.symbol !== commodity.symbol)].slice(0, 8);
+  }
   if (looksLikeIsin(input)) {
     const check = validateIsin(input);
     if (!check.valid) throw new UpstreamError(check.reason, 400);

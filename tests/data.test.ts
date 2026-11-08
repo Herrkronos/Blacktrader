@@ -48,3 +48,14 @@ describe("Datenanbindung (offline)", () => {
     expect(calls).toBe(1);
   });
 });
+
+describe("Suche nach Rohstoffen", () => {
+  it("Gold, Silber, Öl werden als Rohstoff erkannt (nicht als Firma)", async () => {
+    const { commodityFor } = await import("../src/lib/data/resolve");
+    expect(commodityFor("Gold")?.symbol).toBe("GC=F");
+    expect(commodityFor("silber")?.symbol).toBe("SI=F");
+    expect(commodityFor("Öl")?.symbol).toBe("CL=F");
+    expect(commodityFor("gc=f")?.name).toBe("Gold");
+    expect(commodityFor("Goldman")).toBeUndefined();
+  });
+});
