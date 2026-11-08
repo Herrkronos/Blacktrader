@@ -1,7 +1,7 @@
 "use client";
 // Chancen: alle Werte (Watchlist + feste Liste) in allen Zeiträumen – Trade (grün), Short (rot), Kernposition (blau).
 import { useEffect, useMemo, useState } from "react";
-import { AssetCard, type HorizonView } from "@/components/AssetCard";
+import { AssetCard, signalStrength, type HorizonView } from "@/components/AssetCard";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { Legend } from "@/components/Legend";
 import { ConfirmSheet } from "@/components/Sheet";
@@ -26,11 +26,19 @@ function views(e: ScanEntry): Partial<Record<Horizon, HorizonView>> {
   return v;
 }
 
-/** Sortierung: jetzt in der Zone zuerst, dann nach Abstand, Kernposition-only danach. */
-function rank(e: ScanEntry, filter: KindFilter): number {
-  const active = Object.values(e.horizons).filter((h) => h && h.res.plan && h.res.decision.level !== "neutral" && (filter === "all" || filter === "core" || (filter === "trade" ? h.res.plan.direction === "long" : h.res.plan.direction === "short")));
-  if (!active.length) return 1000 + (e.core?.last ? -e.core.last.time / 1e10 : 0);
-  return Math.min(...active.map((h) => entryDistance(h!.res)));
+/**
+ * Sortierung: Kernposition = neuestes Signal zuerst; sonst nach Signalstärke (höher = besser),
+ * bei Gleichstand der näher am Einstieg liegende Wert.
+ */
+function sortKey(e: ScanEntry, filter: KindFilter): [number, number] {
+  if (filter === "core") return [-(e.core?.last?.time ?? 0), 0];
+  const active = Object.values(e.horizons).filter(
+    (h) => h && h.res.plan && h.res.decision.level !== "neutral" && (filter === "all" || (filter === "trade" ? h.res.plan.direction === "long" : h.res.plan.direction === "short")),
+  );
+  if (!active.length) return [1000, 0];
+  const best = Math.max(...active.map((h) => signalStrength(h!.res) ?? 0));
+  const dist = Math.min(...active.map((h) => entryDistance(h!.res)));
+  return [-best, dist];
 }
 
 export default function ChancenPage() {
@@ -49,7 +57,11 @@ export default function ChancenPage() {
     () =>
       scan.entries
         .filter((e) => (group === "all" || e.asset.kind === group) && entryKinds(e).length > 0 && (kind === "all" || entryKinds(e).includes(kind)))
-        .sort((a, b) => rank(a, kind) - rank(b, kind)),
+        .sort((a, b) => {
+          const ka = sortKey(a, kind);
+          const kb = sortKey(b, kind);
+          return ka[0] - kb[0] || ka[1] - kb[1];
+        }),
     [scan.entries, kind, group],
   );
   const counts = useMemo(() => {
@@ -112,11 +124,16 @@ export default function ChancenPage() {
 
       {list.slice(0, more).map((e) => {
         const v = views(e);
-        const initial = (["short", "medium", "long"] as Horizon[]).find((h) => {
-          const p = v[h]?.res?.plan;
-          if (!p || v[h]?.res?.decision.level === "neutral") return false;
-          return kind === "all" || kind === "core" || (kind === "trade" ? p.direction === "long" : p.direction === "short");
-        });
+        if (kind === "core")
+          return <AssetCard key={`${e.asset.kind}:${e.asset.symbol}`} asset={e.asset} views={v} core={e.core} initial="medium" focus="core" onOpen={(h) => open(e.asset, h)} />;
+        // Zeitraum mit dem stärksten passenden Signal zuerst zeigen
+        const initial = (["short", "medium", "long"] as Horizon[])
+          .filter((h) => {
+            const p = v[h]?.res?.plan;
+            if (!p || v[h]?.res?.decision.level === "neutral") return false;
+            return kind === "all" || (kind === "trade" ? p.direction === "long" : p.direction === "short");
+          })
+          .sort((x, y) => (signalStrength(v[y]?.res) ?? 0) - (signalStrength(v[x]?.res) ?? 0))[0];
         return <AssetCard key={`${e.asset.kind}:${e.asset.symbol}`} asset={e.asset} views={v} core={e.core} initial={initial ?? "medium"} onOpen={(h) => open(e.asset, h)} />;
       })}
       {list.length > more && (

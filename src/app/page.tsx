@@ -2,6 +2,7 @@
 // Übersicht: Gesamtperformance, Top-3-Chancen, offene Trades (live), News zur Watchlist.
 import Link from "next/link";
 import { useEffect, useMemo } from "react";
+import { signalStrength } from "@/components/AssetCard";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { EquityChart } from "@/components/EquityChart";
 import { IconChevron } from "@/components/Icons";
@@ -58,7 +59,8 @@ export default function Uebersicht() {
         .filter((h) => h && h.res.plan && h.res.decision.level !== "neutral")
         .map((h) => ({ asset: e.asset, res: h!.res, d: entryDistance(h!.res), core: e.core?.state === "hold" })),
     );
-    return items.sort((a, b) => a.d - b.d || b.res.total - a.res.total).slice(0, 3);
+    // Stärkste Signale zuerst (Kauf: Score, Short: 100 − Score)
+    return items.sort((a, b) => (signalStrength(b.res) ?? 0) - (signalStrength(a.res) ?? 0) || a.d - b.d).slice(0, 3);
   }, [scan.entries]);
 
   const news = useMemo(() => {
@@ -104,7 +106,9 @@ export default function Uebersicht() {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <span className={long ? "badge-trade" : "badge-short"}>{long ? (core ? "Nachkauf" : "Trade") : "Short"}</span>
+                  <span className={long ? "badge-trade" : "badge-short"}>
+                    {long ? (core ? "Nachkauf" : "Trade") : "Short"} · Stärke {signalStrength(res)?.toFixed(0)}
+                  </span>
                   <span className={d === 0 ? "text-[13px] text-emerald-300" : "text-[13px] text-amber-300"}>{d === 0 ? "jetzt in der Zone" : `noch ${d.toFixed(1).replace(".", ",")} %`}</span>
                 </div>
               </div>

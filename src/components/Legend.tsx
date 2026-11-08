@@ -27,6 +27,9 @@ export function Legend() {
           <div className="flex items-center gap-2">
             <span className="badge-risk">Hohes Risiko</span> Stop sehr weit entfernt
           </div>
+          <p className="border-t border-white/10 pt-2 text-stone-400">
+            <b className="text-stone-200">Stärke 0–100:</b> je höher, desto stärker das Signal – für Kauf und Short gleich. Kernpositionen haben keine Punkte und sind nach dem neuesten Signal sortiert.
+          </p>
         </div>
       )}
     </div>

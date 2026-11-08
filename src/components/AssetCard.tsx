@@ -24,6 +24,15 @@ const RISK_LIMIT = 15; // % Abstand Einstieg–Stop, ab dem "Hohes Risiko" angez
 
 const pctStr = (a: number, b: number) => `${((Math.abs(b - a) / a) * 100).toFixed(1).replace(".", ",")} %`;
 
+/**
+ * Signalstärke 0–100 (nur Anzeige): je höher, desto stärker das Signal – für Kauf und Short gleich.
+ * Kauf = Gesamtscore, Short = 100 − Gesamtscore (ein niedriger Score bedeutet ein starkes Short-Signal).
+ */
+export function signalStrength(res: AnalysisResult | null | undefined): number | null {
+  if (!res || !res.plan || res.decision.level === "neutral") return null;
+  return res.plan.direction === "long" ? res.total : 100 - res.total;
+}
+
 /** Erklärung, wenn die Zeiträume unterschiedliche Richtungen zeigen. */
 export function conflictText(views: Partial<Record<Horizon, HorizonView>>): string | null {
   const dirs = HORIZONS.map((h) => {
@@ -46,6 +55,7 @@ export function AssetCard({
   source,
   onOpen,
   onRemove,
+  focus,
 }: {
   asset: ResolvedAsset;
   views: Partial<Record<Horizon, HorizonView>>;
@@ -57,6 +67,8 @@ export function AssetCard({
   source?: string;
   onOpen: (h: Horizon) => void;
   onRemove?: () => void;
+  /** "core" = nur die Kernposition zeigen (Filter Kernposition) */
+  focus?: "core";
 }) {
   const available = HORIZONS.filter((h) => views[h]);
   const firstActive = available.find((h) => views[h]?.res?.plan && views[h]?.res?.decision.level !== "neutral");
@@ -66,7 +78,9 @@ export function AssetCard({
   const trades = useAppData((d) => d.trades);
   const view = views[h];
   const res = view?.res ?? null;
-  const plan = res && res.decision.level !== "neutral" ? res.plan : null;
+  const coreFocus = focus === "core";
+  const plan = !coreFocus && res && res.decision.level !== "neutral" ? res.plan : null;
+  const strength = coreFocus ? null : signalStrength(res);
   const cur = asset.currency;
   const myCore = trades.find((t) => t.status === "open" && t.strategy === "core" && t.symbol === asset.symbol);
   const coreActive = !!myCore || core?.state === "hold";
@@ -76,7 +90,7 @@ export function AssetCard({
   const conflict = useMemo(() => conflictText(views), [views]);
   const tradeOpen = res ? hasOpenTrade(asset.symbol, res.horizon) : false;
 
-  const edge = plan ? (plan.direction === "long" ? "edge-trade" : "edge-short") : coreActive ? "edge-core" : "";
+  const edge = coreFocus ? "edge-core" : plan ? (plan.direction === "long" ? "edge-trade" : "edge-short") : coreActive ? "edge-core" : "";
   const badge = plan ? (
     plan.direction === "long" ? (
       <span className="badge-trade">{isNachkauf ? "Nachkauf" : "Trade"}</span>
@@ -134,7 +148,7 @@ export function AssetCard({
         </div>
       </div>
 
-      {available.length > 1 && (
+      {available.length > 1 && !coreFocus && (
         <div className="seg w-full" role="tablist" aria-label="Zeitraum">
           {available.map((x) => {
             const r = views[x]?.res;
@@ -171,22 +185,47 @@ export function AssetCard({
             <div className="num text-[13px] text-emerald-300/80">+{pctStr(plan.entry, plan.targets[0])}</div>
           </div>
         </div>
+      ) : coreFocus && core ? (
+        <div className="grid grid-cols-2 gap-2 text-center">
+          <div className="rounded-xl bg-sky-500/10 px-1 py-2">
+            <div className="label">{core.state === "hold" ? "Signal seit" : "Letztes Signal"}</div>
+            <div className="num text-[17px] font-semibold text-sky-200">{core.last ? new Date(core.last.time * 1000).toLocaleDateString("de-DE") : "–"}</div>
+            {core.last && <div className="num text-[13px] text-stone-400">bei {money(core.last.price, cur)}</div>}
+          </div>
+          <div className="rounded-xl bg-sky-500/10 px-1 py-2">
+            <div className="label">Seitdem</div>
+            {core.last && lastPrice != null ? (
+              <div className={`num text-[17px] font-semibold ${lastPrice >= core.last.price ? "text-up" : "text-down"}`}>
+                {`${lastPrice >= core.last.price ? "+" : "−"}${pctStr(core.last.price, lastPrice)}`}
+              </div>
+            ) : (
+              <div className="num text-[17px] font-semibold text-stone-400">–</div>
+            )}
+            <div className="text-[13px] text-stone-400">Verkauf: Welle 5 / Trendbruch</div>
+          </div>
+        </div>
       ) : (
         <p className="text-[15px] text-stone-300">{res ? "Kein Einstieg – abwarten." : "Keine Daten für diesen Zeitraum."}</p>
       )}
 
-      {/* Zeile 4 */}
+      {/* Zeile 4: Signalstärke – je höher, desto stärker (Kauf und Short gleich) */}
       <div className="flex items-center gap-3">
-        <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-white/10" aria-label={`Score ${res?.total.toFixed(0) ?? "–"} von 100`}>
-          <div className="absolute inset-y-0 left-1/2 w-px bg-white/30" />
-          <div className="h-full rounded-full bg-gold" style={{ width: `${Math.max(2, Math.min(100, res?.total ?? 50))}%` }} />
-        </div>
-        <span className="num text-[15px] font-semibold text-stone-200">{res ? res.total.toFixed(0) : "–"}</span>
-        {badge}
+        {coreFocus ? (
+          <span className="flex-1 text-[14px] text-stone-400">Langfristig halten – ohne Punkte, solange der Trend intakt ist.</span>
+        ) : (
+          <>
+            <span className="label shrink-0">Stärke</span>
+            <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-white/10" aria-label={`Signalstärke ${strength?.toFixed(0) ?? "–"} von 100`}>
+              <div className={`h-full rounded-full ${strength == null ? "bg-stone-600" : strength >= 65 ? "bg-emerald-400" : strength >= 55 ? "bg-gold" : "bg-stone-400"}`} style={{ width: `${Math.max(2, Math.min(100, strength ?? 0))}%` }} />
+            </div>
+            <span className="num text-[15px] font-semibold text-stone-200">{strength != null ? strength.toFixed(0) : "–"}</span>
+          </>
+        )}
+        {coreFocus ? <span className="badge-core">Kernposition</span> : badge}
         {plan && riskPct > RISK_LIMIT && <span className="badge-risk">Hohes Risiko</span>}
       </div>
 
-      {(coreLine || isNachkauf || conflict) && (
+      {!coreFocus && (coreLine || isNachkauf || conflict) && (
         <div className="space-y-1.5 text-[14px]">
           {isNachkauf && <p className="text-sky-200">Nachkauf-Zone zur bestehenden Kernposition.</p>}
           {coreLine && <p className={myCore ? "text-sky-200" : "text-stone-400"}>{coreLine}</p>}
