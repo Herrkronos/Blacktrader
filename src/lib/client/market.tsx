@@ -17,6 +17,7 @@ export type LiveStatus = "live" | "delayed" | "offline" | "loading";
 export interface LiveState {
   price?: number;
   changePct?: number;
+  currency?: string;
   time?: number;
   status: LiveStatus;
   source?: string;
@@ -91,7 +92,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         if (inst.binanceSymbol && Date.now() - lastWs < 30e3) return;
         try {
           const q = await api.quote(inst);
-          set(key, { price: q.price, changePct: q.changePct, time: q.time, status: q.delayed ? "delayed" : "live", source: q.source, error: undefined, updated: Date.now() });
+          set(key, { price: q.price, changePct: q.changePct, currency: q.currency, time: q.time, status: q.delayed ? "delayed" : "live", source: q.source, error: undefined, updated: Date.now() });
         } catch (e) {
           const prev = liveRef.current[key];
           const stale = !prev?.updated || Date.now() - prev.updated > pollMs * 3;
@@ -107,7 +108,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
             lastWs = Date.now();
             const c = Number(m.c);
             const o = Number(m.o);
-            set(key, { price: c, changePct: o ? ((c - o) / o) * 100 : 0, time: Math.floor(Number(m.E) / 1000), status: "live", source: "Binance WebSocket", error: undefined, updated: Date.now() });
+            set(key, { price: c, changePct: o ? ((c - o) / o) * 100 : 0, currency: "USDT", time: Math.floor(Number(m.E) / 1000), status: "live", source: "Binance WebSocket", error: undefined, updated: Date.now() });
           }),
         );
       }
@@ -200,7 +201,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         lastCalc.current[item.id] = { version: r.version, price: lv?.price, at: Date.now() };
         const result =
           r.candles.length >= 30
-            ? analyze({ symbol: item.symbol, name: item.name, candles: r.candles, horizon: r.horizon, interval: r.interval, fundamentals: r.fundamentals, news: r.news, weights: d.settings.weights, livePrice: lv?.price })
+            ? analyze({ symbol: item.symbol, name: item.name, candles: r.candles, horizon: r.horizon, interval: r.interval, fundamentals: r.fundamentals, news: r.news, weights: d.settings.weights, livePrice: lv?.price, kind: item.kind, currency: lv?.currency ?? item.currency })
             : null;
         next[item.id] = { horizon: r.horizon, interval: r.interval, result, candles: r.candles, fundamentals: r.fundamentals, news: r.news, candleSource: r.source, error: r.error ?? (r.candles.length < 30 && r.candles.length > 0 ? "Zu wenig Historie für eine Analyse" : undefined), loading: false };
         if (result) checkSignal(item, r.horizon, result);
@@ -231,10 +232,9 @@ function checkSignal(item: WatchItem, horizon: Horizon, res: AnalysisResult) {
   actions.setSignal(key, level);
   if (!prev || level === "neutral") return; // erstes Signal bzw. Rückfall auf neutral: kein Alarm
   const buy = level.includes("buy");
-  const p = res.plan;
   notify(
     `${SIGNAL_LABEL[level]}: ${item.symbol}`,
-    `${buy ? "Einstiegssignal" : "Ausstiegs-/Short-Signal"} (${res.total.toFixed(0)}/100)` + (p ? ` · Einstieg ${fmtPrice(p.entry)} · Stop ${fmtPrice(p.stop)} · Ziel ${fmtPrice(p.targets[0])}` : ""),
+    `${res.commentary.summary}. ${res.commentary.reason}`,
     { sound: d.settings.sound, notifications: d.settings.notifications, kind: buy ? "buy" : "sell" },
   );
 }

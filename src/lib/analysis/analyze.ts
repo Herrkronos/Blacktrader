@@ -32,6 +32,9 @@ export interface AnalyzeInput {
   weights?: Weights;
   /** Aktueller Live-Kurs (überschreibt den letzten Schlusskurs) */
   livePrice?: number;
+  kind?: "stock" | "crypto";
+  /** Währung für Texte, z. B. EUR */
+  currency?: string;
   now?: number;
 }
 
@@ -71,6 +74,8 @@ export function analyze(input: AnalyzeInput): AnalysisResult | null {
     plan,
     news: input.news ?? [],
     horizonLabel: HORIZON_LABEL[input.horizon],
+    kind: input.kind,
+    currency: input.currency,
   });
   return {
     symbol: input.symbol,

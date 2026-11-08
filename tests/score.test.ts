@@ -125,3 +125,19 @@ describe("Gesamtanalyse und Backtest", () => {
     expect(bt.stats.trades).toBe(bt.trades.length);
   });
 });
+
+describe("Kurzbegründung in Alltagssprache", () => {
+  it("nennt Einstieg und Stop mit Währung und einen einfachen Grund", async () => {
+    const { money, plainReason } = await import("../src/lib/analysis/persona");
+    expect(money(12.5, "EUR")).toBe("12,50 €");
+    expect(money(10, "EUR")).toBe("10,00 €");
+    const c = { pattern: "zigzag", complete: true, bias: 1, labels: ["A", "B", "C"] } as unknown as WaveCount;
+    expect(plainReason(c, "die Aktie")).toMatch(/lokalen Boden/);
+    const candles = candlesFromWaypoints([150, 130, 138, 100, 124, 109.2, 112], 15, 0.004, 3);
+    const res = analyze({ symbol: "T", name: "T", candles, horizon: "medium", interval: "1d", kind: "stock", currency: "EUR" })!;
+    if (res.decision.level !== "neutral") {
+      expect(res.commentary.summary).toMatch(/^(Short-)?Einstieg bei .+ € · Stop bei .+ €/);
+      expect(res.commentary.reason).toMatch(/die Aktie, da sie /);
+    } else expect(res.commentary.summary).toBe("Kein Einstieg");
+  });
+});

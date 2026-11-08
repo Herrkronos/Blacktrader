@@ -11,7 +11,7 @@ export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; anal
   const [entry, setEntry] = useState(String(+(plan?.entry ?? analysis.price).toPrecision(6)));
   const [stop, setStop] = useState(plan ? String(+plan.stop.toPrecision(6)) : "");
   const [targets, setTargets] = useState(plan ? plan.targets.map((t) => +t.toPrecision(6)).join("; ") : "");
-  const [reason, setReason] = useState([c.headline, c.elliott, c.fundamental, c.volume, c.plan, c.invalidation].join("\n\n"));
+  const [reason, setReason] = useState(`${c.summary}\n${c.reason}\n\nDetails: ${c.elliott} ${c.invalidation}`);
   const [err, setErr] = useState<string | null>(null);
 
   const save = () => {

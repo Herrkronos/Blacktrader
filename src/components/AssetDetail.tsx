@@ -91,8 +91,8 @@ export function AssetDetail() {
   }, [candles, live?.price, source]);
 
   const analysis = useMemo(
-    () => (item && chartCandles.length >= 30 ? analyze({ symbol: item.symbol, name: item.name, candles: chartCandles, horizon, interval, fundamentals, news, weights: settings.weights }) : null),
-    [item, chartCandles, horizon, interval, fundamentals, news, settings.weights],
+    () => (item && chartCandles.length >= 30 ? analyze({ symbol: item.symbol, name: item.name, candles: chartCandles, horizon, interval, fundamentals, news, weights: settings.weights, kind: item.kind, currency: live?.currency ?? item.currency }) : null),
+    [item, chartCandles, horizon, interval, fundamentals, news, settings.weights, live?.currency],
   );
 
   if (!item)

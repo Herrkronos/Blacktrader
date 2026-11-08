@@ -72,7 +72,7 @@ export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: str
     setBusy(true);
     setErr(null);
     try {
-      const facts = [`Wert: ${item.name} (${item.symbol})`, `Signal: ${SIGNAL_LABEL[a.decision.level]}`, `Überschrift: ${c.headline}`, ...sections.map(([k, v]) => `${k}: ${v}`), `Fazit: ${c.verdict}`].join("\n");
+      const facts = [`Wert: ${item.name} (${item.symbol})`, `Signal: ${SIGNAL_LABEL[a.decision.level]}`, `Kurzfassung: ${c.summary}`, `Grund: ${c.reason}`, ...sections.map(([k, v]) => `${k}: ${v}`), `Fazit: ${c.verdict}`].join("\n");
       setLlm(await api.llm(facts));
     } catch (e) {
       setErr((e as Error).message);
@@ -90,21 +90,23 @@ export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: str
           </button>
         )}
       </div>
-      <p className="font-display text-base leading-snug text-gold-light">{c.headline}</p>
-      {llm ? (
-        <div className="whitespace-pre-wrap text-sm leading-relaxed text-stone-200">{llm}</div>
-      ) : (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
+      <p className={`text-lg font-semibold leading-snug ${a.decision.level === "neutral" ? "text-stone-200" : a.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{c.summary}</p>
+      <p className="text-base leading-relaxed text-stone-100">{c.reason}</p>
+      {llm && <div className="whitespace-pre-wrap text-sm leading-relaxed text-stone-300">{llm}</div>}
+      <details className="text-sm">
+        <summary className="cursor-pointer text-xs text-gold/80">Details zur Analyse</summary>
+        <p className="mt-2 font-display text-sm text-gold-light">{c.headline}</p>
+        <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
           {sections.map(([k, v]) => (
             <div key={k} className="contents">
               <dt className="pt-0.5 text-[11px] uppercase tracking-wider text-gold/80">{k}</dt>
-              <dd className="text-stone-200">{v}</dd>
+              <dd className="text-stone-300">{v}</dd>
             </div>
           ))}
         </dl>
-      )}
+        <p className="mt-2 text-xs italic text-stone-400">{c.verdict}</p>
+      </details>
       {err && <p className="text-xs text-red-400">{err}</p>}
-      <p className="border-t border-gold/15 pt-2 text-xs italic text-stone-400">{c.verdict}</p>
     </div>
   );
 }
