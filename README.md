@@ -16,7 +16,7 @@ npm run build      # Produktions-Build
 
 **Hintergrund:** Lege das Wappen als `public/background.jpg` ab. Es wird fixiert, zentriert und mit „contain“ dargestellt. Ohne Datei bleibt der Hintergrund schwarz.
 
-**Vercel:** Repository importieren, Framework „Next.js“, keine Umgebungsvariablen nötig.
+**Vercel:** Repository importieren, Framework „Next.js“, keine Umgebungsvariablen nötig. `vercel.json` legt die Server-Region auf Frankfurt (`fra1`) fest, damit Binance und europäische Kursdaten erreichbar sind.
 
 ## Datenquellen (alle kostenlos, ohne Key)
 
