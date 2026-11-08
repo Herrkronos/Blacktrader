@@ -92,7 +92,7 @@ export default function JournalPage() {
             </li>
             <li>Auto-Papiertrading (in den Einstellungen, standardmäßig an) übernimmt jedes neue Signal deiner Watchlist automatisch.</li>
             <li>
-              Wie profitabel der Analyst in der Vergangenheit gewesen wäre, zeigt der <Link href="/backtest" className="text-gold underline">Backtest</Link> sofort.
+              Wie profitabel der Analyst in der Vergangenheit gewesen wäre, zeigt das <Link href="/echochart" className="text-gold underline">EchoChart</Link> sofort.
             </li>
           </ul>
           <p className="text-xs text-stone-500">Trades werden verfolgt, solange die App geöffnet ist, und bei Ziel oder Stop automatisch geschlossen.</p>

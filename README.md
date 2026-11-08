@@ -46,7 +46,7 @@ src/lib/analysis/   reine, getestete Analyse-Module
   volume.ts         Volumen/RSI-Score
   score.ts          Gewichtung, Signalstufen, Trade-Plan, Veto („lieber kein Trade“)
   persona.ts        regelbasierte Begründungstexte im Analysten-Stil
-  backtest.ts       Walk-Forward-Backtest ohne Blick in die Zukunft
+  backtest.ts       EchoChart: Walk-Forward-Backtest ohne Blick in die Zukunft
 src/lib/data/       Server: Provider, Cache, Drosselung, Rate-Limit
 src/app/api/        Proxy-Routen (resolve, candles, quote, fundamentals, news, llm)
 src/lib/client/     Live-Kurse (WebSocket/Polling), Alarme, Trade-Verfolgung

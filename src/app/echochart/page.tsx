@@ -8,7 +8,7 @@ import { api } from "@/lib/client/api";
 import { useAppData } from "@/lib/store/store";
 import { HORIZON_INTERVALS, type Horizon, type Interval } from "@/lib/types";
 
-export default function BacktestPage() {
+export default function EchoChartPage() {
   const watchlist = useAppData((d) => d.watchlist);
   const weights = useAppData((d) => d.settings.weights);
   const intervals = useAppData((d) => d.settings.intervals);
@@ -43,10 +43,18 @@ export default function BacktestPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl text-gold sm:text-3xl">Backtest</h1>
-        <p className="text-sm text-stone-400">
-          Wie hätte der Analyst in der Vergangenheit abgeschnitten? Wert wählen, „Backtest starten“ – die App spielt die letzten Monate/Jahre durch, als wäre es live gewesen, und zeigt Gewinn, Trefferquote und alle Trades.
-        </p>
+        <h1 className="text-2xl text-gold sm:text-3xl">EchoChart</h1>
+        <p className="text-sm text-stone-300">Das Echo der Vergangenheit: Wie viel hättest du verdient, wenn du den Signalen des Analysten früher gefolgt wärst?</p>
+        <details className="mt-1 text-sm text-stone-400">
+          <summary className="cursor-pointer text-gold/80">So funktioniert&apos;s</summary>
+          <ol className="mt-2 list-inside list-decimal space-y-1">
+            <li>Wert und Zeitraum wählen, dann „EchoChart starten“ tippen.</li>
+            <li>Die App spielt die vergangenen Kurse Schritt für Schritt durch – der Analyst kennt dabei immer nur, was bis zu diesem Tag passiert war.</li>
+            <li>Bei jedem Signal wird ein Übungs-Trade mit seinem Einstieg, Stop und Ziel eröffnet und bei Ziel oder Stop geschlossen.</li>
+            <li>Am Ende siehst du den Gewinn, die Trefferquote und den Vergleich mit „einfach kaufen und halten“.</li>
+          </ol>
+          <p className="mt-2 text-xs text-stone-500">Firmenzahlen und Nachrichten von damals fehlen und zählen neutral. Berührt der Kurs Stop und Ziel in derselben Kerze, wird vorsichtig mit dem Stop gerechnet. Gute Ergebnisse von früher sind keine Garantie für die Zukunft.</p>
+        </details>
       </div>
       <div className="panel flex flex-col gap-3 p-3 sm:flex-row sm:items-end">
         <label className="flex-1 text-xs text-stone-400">
@@ -84,15 +92,15 @@ export default function BacktestPage() {
           </div>
         </div>
         <button className="btn-primary sm:w-40" disabled={!item || busy} onClick={run}>
-          {busy ? "Rechne …" : "Backtest starten"}
+          {busy ? "Rechne …" : "EchoChart starten"}
         </button>
       </div>
       {error && <p className="text-sm text-red-400">{error}</p>}
       {result && s && (
         <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            <Stat label="Strategie" value={`${s.totalReturn >= 0 ? "+" : ""}${s.totalReturn.toFixed(1)} %`} tone={s.totalReturn >= 0 ? "up" : "down"} hint={`${result.symbol} · ${result.bars} Kerzen`} />
-            <Stat label="Buy & Hold" value={`${result.buyAndHold >= 0 ? "+" : ""}${result.buyAndHold.toFixed(1)} %`} />
+            <Stat label="Mit dem Analysten" value={`${s.totalReturn >= 0 ? "+" : ""}${s.totalReturn.toFixed(1)} %`} tone={s.totalReturn >= 0 ? "up" : "down"} hint={`${result.symbol} · ${result.bars} Kerzen`} />
+            <Stat label="Einfach gehalten" value={`${result.buyAndHold >= 0 ? "+" : ""}${result.buyAndHold.toFixed(1)} %`} />
             <Stat label="Trades" value={s.trades} hint={`Trefferquote ${(s.winRate * 100).toFixed(0)} %`} />
             <Stat label="Ø Gewinn / Verlust" value={`${s.avgWin.toFixed(1)} / ${s.avgLoss.toFixed(1)} %`} />
             <Stat label="Max. Drawdown" value={`${s.maxDrawdown.toFixed(1)} %`} tone="down" />
@@ -100,7 +108,7 @@ export default function BacktestPage() {
           </div>
           {s.trades < 10 && <p className="text-xs text-amber-300">Weniger als 10 Trades – statistisch nicht belastbar. Ehrlich gesagt: Das ist eine Anekdote, kein Beweis.</p>}
           <div className="panel p-3">
-            <div className="panel-title mb-2">Equity-Kurve</div>
+            <div className="panel-title mb-2">Gewinnkurve</div>
             <EquityChart data={s.curve} compare={result.buyAndHold} />
           </div>
           <div className="panel overflow-x-auto">

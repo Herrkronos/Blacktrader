@@ -6,7 +6,7 @@ const NAV = [
   { href: "/", label: "Watchlist" },
   { href: "/chancen", label: "Chancen" },
   { href: "/journal", label: "Journal" },
-  { href: "/backtest", label: "Backtest" },
+  { href: "/echochart", label: "EchoChart" },
   { href: "/einstellungen", label: "Einstellungen", short: "⚙" },
 ];
 
