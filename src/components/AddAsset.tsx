@@ -80,7 +80,7 @@ export function AddAsset() {
                   <span>
                     <span className="font-semibold text-gold-light">{c.symbol}</span> <span className="text-stone-300">{c.name}</span>
                   </span>
-                  <span className="text-xs text-stone-500">{c.kind === "crypto" ? "Krypto" : c.exchange ?? "Aktie/ETF"}</span>
+                  <span className="text-xs text-stone-500">{c.kind === "crypto" ? "Krypto" : c.kind === "commodity" ? "Rohstoff" : c.exchange ?? "Aktie/ETF"}</span>
                 </button>
               </li>
             ))}

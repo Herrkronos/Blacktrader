@@ -54,7 +54,7 @@ export const api = {
     ),
   news: (a: Instrument) => {
     const name = a.name.replace(/\b(Inc\.?|Corp\.?|AG|SE|plc|N\.V\.|S\.A\.|Ltd\.?|Holdings?|Class [A-C]|ETF|UCITS)\b/gi, "").replace(/[,.]+$/, "").trim();
-    const q = a.kind === "crypto" ? `${name} ${a.symbol} crypto` : name || a.symbol;
+    const q = a.kind === "crypto" ? `${name} ${a.symbol} crypto` : a.kind === "commodity" ? `${name} Preis` : name || a.symbol;
     return memoized(`n:${q}`, 15 * 60e3, () => get<{ news: NewsItem[] }>(`/api/news?${qs({ q, yahoo: a.yahooSymbol })}`, true));
   },
   llm: async (facts: string) => {

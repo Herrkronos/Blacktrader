@@ -6,9 +6,9 @@ import { SignalBadge } from "@/components/ui";
 import { analyze, type AnalysisResult } from "@/lib/analysis/analyze";
 import { api } from "@/lib/client/api";
 import { hasOpenTrade, openPaperTrade } from "@/lib/client/autotrade";
-import { SCAN_PRESETS } from "@/lib/client/presets";
+import { SCAN_GROUPS, SCAN_PRESETS } from "@/lib/client/presets";
 import { actions, getData, useAppData, type WatchItem } from "@/lib/store/store";
-import { HORIZON_LABEL, type Horizon, type ResolvedAsset } from "@/lib/types";
+import { HORIZON_LABEL, type AssetKind, type Horizon, type ResolvedAsset } from "@/lib/types";
 
 interface Hit {
   asset: ResolvedAsset;
@@ -34,6 +34,7 @@ export default function ChancenPage() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [horizonFilter, setHorizonFilter] = useState<Horizon | "all">("all");
+  const [groupFilter, setGroupFilter] = useState<AssetKind | "all">("all");
   const [dialog, setDialog] = useState<Hit | null>(null);
 
   const assets = (() => {
@@ -89,7 +90,7 @@ export default function ChancenPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const hits = (scan?.hits ?? []).filter((h) => horizonFilter === "all" || h.res.horizon === horizonFilter);
+  const hits = (scan?.hits ?? []).filter((h) => (horizonFilter === "all" || h.res.horizon === horizonFilter) && (groupFilter === "all" || h.asset.kind === groupFilter));
   const takeAll = () => {
     let n = 0;
     for (const h of hits) if (openPaperTrade(h.asset, h.res)) n++;
@@ -102,7 +103,7 @@ export default function ChancenPage() {
         <div>
           <h1 className="text-2xl text-gold sm:text-3xl">Chancen</h1>
           <p className="text-sm text-stone-400">
-            Der Analyst prüft {assets.length} bekannte Aktien und Coins (plus deine Watchlist) in allen drei Zeiträumen und zeigt nur echte Einstiegsmöglichkeiten.
+            Der Analyst prüft 15 Aktien, 8 Kryptowährungen und 7 Rohstoffe (plus deine Watchlist) in allen drei Zeiträumen und zeigt nur echte Einstiegsmöglichkeiten.
           </p>
         </div>
         <div className="flex gap-2">
@@ -124,6 +125,16 @@ export default function ChancenPage() {
       )}
 
       <div className="flex flex-wrap gap-1">
+        {(["all", ...SCAN_GROUPS.map((g) => g.kind)] as const).map((k) => {
+          const n = (scan?.hits ?? []).filter((h) => k === "all" || h.asset.kind === k).length;
+          return (
+            <button key={k} onClick={() => setGroupFilter(k)} className={`chip ${groupFilter === k ? "border-gold bg-gold text-black" : "border-gold/40 text-gold-light"}`}>
+              {k === "all" ? "Alle" : SCAN_GROUPS.find((g) => g.kind === k)!.title} {scan ? `(${n})` : ""}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-1">
         {(["all", "short", "medium", "long"] as const).map((h) => (
           <button key={h} onClick={() => setHorizonFilter(h)} className={`chip ${horizonFilter === h ? "border-gold bg-gold/20 text-gold-light" : "border-stone-700 text-stone-400"}`}>
             {h === "all" ? "Alle Zeiträume" : HORIZON_LABEL[h]}
@@ -131,17 +142,25 @@ export default function ChancenPage() {
         ))}
       </div>
 
-      {scan && !busy && hits.length === 0 && (
-        <div className="panel p-6 text-center text-sm text-stone-300">
-          <p className="font-display text-gold">Gerade keine sauberen Einstiege.</p>
-          <p className="mt-2 text-stone-400">
-            {scan.checked} Prüfungen, keine erfüllt die Ansprüche des Analysten. Lieber kein Trade als ein schwacher. Schau später wieder vorbei – die Suche läuft bei jedem Öffnen neu.
-          </p>
-        </div>
+      {scan && !busy && (scan.hits.length === 0) && (
+        <p className="text-sm text-stone-400">Gerade erfüllt kein Wert die Ansprüche des Analysten. Lieber kein Trade als ein schwacher – die Suche läuft bei jedem Öffnen neu.</p>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2">
-        {hits.map((h) => {
+      {SCAN_GROUPS.filter((g) => groupFilter === "all" || g.kind === groupFilter).map((g) => {
+        const groupHits = hits.filter((h) => h.asset.kind === g.kind);
+        return (
+          <section key={g.kind} className="space-y-2">
+            <h2 className="flex items-baseline gap-2 text-lg text-gold">
+              {g.title}
+              <span className="font-sans text-xs text-stone-500">
+                {g.assets.map((x) => x.name).join(" · ")}
+              </span>
+            </h2>
+            {scan && !busy && groupHits.length === 0 && (
+              <p className="panel px-4 py-3 text-sm text-stone-400">Keine Einstiege {horizonFilter === "all" ? "" : `(${HORIZON_LABEL[horizonFilter]}) `}– abwarten.</p>
+            )}
+            <div className="grid gap-3 md:grid-cols-2">
+        {groupHits.map((h) => {
           const c = h.res.commentary;
           const open = hasOpenTrade(h.asset.symbol, h.res.horizon);
           const inList = watchlist.some((w) => w.kind === h.asset.kind && w.symbol === h.asset.symbol);
@@ -178,7 +197,10 @@ export default function ChancenPage() {
             </div>
           );
         })}
-      </div>
+            </div>
+          </section>
+        );
+      })}
       {scan && !busy && (
         <p className="text-xs text-stone-500">
           Letzte Suche: {new Date(scan.at).toLocaleTimeString("de-DE")} · {scan.checked} Prüfungen{scan.failed ? ` · ${scan.failed} ohne Daten` : ""} · {trades.filter((t) => t.status === "open").length} offene Papier-Trades

@@ -119,7 +119,7 @@ export function AssetDetail() {
               {item.exchange ?? ""} {source ? `· Kerzen: ${source}` : ""}
             </span>
           </div>
-          {item.kind === "stock" && <p className="mt-1 text-xs text-amber-300/80">Aktienkurse per Polling (alle {settings.pollSeconds} s), je nach Börse verzögert.</p>}
+          {item.kind !== "crypto" && <p className="mt-1 text-xs text-amber-300/80">Kurse per Polling (alle {settings.pollSeconds} s), je nach Börse verzögert.</p>}
         </div>
         <div className="flex flex-col items-start gap-2 md:items-end">
           <HorizonToggle allowDefault value={item.horizon} onChange={(h) => actions.setItemHorizon(item.id, h)} />
@@ -165,7 +165,7 @@ export function AssetDetail() {
           </div>
           <div className="space-y-4">
             {settings.expertMode && <VolumePanel a={analysis} />}
-            <FundamentalsPanel a={analysis} f={fundamentals} />
+            {item.kind !== "commodity" && <FundamentalsPanel a={analysis} f={fundamentals} />}
             <NewsPanel news={news} score={analysis.fundamental.newsScore} />
           </div>
         </div>

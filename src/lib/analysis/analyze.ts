@@ -32,7 +32,7 @@ export interface AnalyzeInput {
   weights?: Weights;
   /** Aktueller Live-Kurs (überschreibt den letzten Schlusskurs) */
   livePrice?: number;
-  kind?: "stock" | "crypto";
+  kind?: "stock" | "crypto" | "commodity";
   /** Währung für Texte, z. B. EUR */
   currency?: string;
   now?: number;

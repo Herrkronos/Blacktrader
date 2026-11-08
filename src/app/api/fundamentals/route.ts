@@ -12,6 +12,7 @@ export async function GET(req: Request) {
   const finnhubKey = req.headers.get("x-finnhub-key") || undefined;
   const avKey = req.headers.get("x-alphavantage-key") || undefined;
   return handle(req, async () => {
+    if (kind === "commodity") return { fundamentals: null, note: "Rohstoffe haben keine Firmenzahlen." };
     if (kind === "crypto") {
       if (!id) return { fundamentals: null, note: "Keine CoinGecko-ID – Fundamentaldaten nicht verfügbar." };
       return { fundamentals: await coingeckoFundamentals(id) };

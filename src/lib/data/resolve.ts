@@ -13,6 +13,7 @@ const fromYahoo = (q: YahooSearchQuote, isin?: string): ResolvedAsset => {
     const base = q.symbol.split("-")[0];
     return { kind: "crypto", symbol: base, name: q.longname ?? q.shortname ?? base, yahooSymbol: q.symbol, binanceSymbol: `${base}USDT`, exchange: "Krypto" };
   }
+  if (q.quoteType === "FUTURE") return { kind: "commodity", symbol: q.symbol, name: q.longname ?? q.shortname ?? q.symbol, exchange: q.exchDisp ?? q.exchange, yahooSymbol: q.symbol };
   return { kind: "stock", symbol: q.symbol, name: q.longname ?? q.shortname ?? q.symbol, isin, exchange: q.exchDisp ?? q.exchange, yahooSymbol: q.symbol };
 };
 

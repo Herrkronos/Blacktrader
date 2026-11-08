@@ -1,6 +1,8 @@
 // Gemeinsame Typen für Daten, Analyse und Speicher.
 
-export type AssetKind = "stock" | "crypto";
+export type AssetKind = "stock" | "crypto" | "commodity";
+
+export const KIND_LABEL: Record<AssetKind, string> = { stock: "Aktien", crypto: "Krypto", commodity: "Rohstoffe" };
 export type Horizon = "short" | "medium" | "long";
 export type Interval = "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M";
 

@@ -44,7 +44,7 @@ export function money(x: number, currency?: string): string {
   return sign ? `${fmtPrice(x)} ${sign}` : fmtPrice(x);
 }
 
-export type AssetKindNoun = "stock" | "crypto";
+export type AssetKindNoun = "stock" | "crypto" | "commodity";
 
 /** Sehr kurze Setup-Beschreibung ohne Fachbegriffe (für Journal, Backtest, Listen). */
 export function plainSetup(c: WaveCount | undefined): string {
@@ -118,9 +118,9 @@ export function writeCommentary(input: {
   const label = SIGNAL_LABEL[decision.level];
 
   // --- Kurzfassung in Alltagssprache
-  const noun = input.kind === "crypto" ? "den Coin" : "die Aktie";
-  const it = input.kind === "crypto" ? "der Coin" : "die Aktie";
-  const pron = input.kind === "crypto" ? "er" : "sie";
+  const noun = input.kind === "crypto" ? "den Coin" : input.kind === "commodity" ? "den Rohstoff" : "die Aktie";
+  const it = input.kind === "crypto" ? "der Coin" : input.kind === "commodity" ? "der Preis" : "die Aktie";
+  const pron = input.kind === "stock" || !input.kind ? "sie" : "er";
   const cur = input.currency;
   let summary: string;
   let reason: string;

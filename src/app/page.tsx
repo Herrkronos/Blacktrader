@@ -7,7 +7,7 @@ import { actions, useAppData } from "@/lib/store/store";
 export default function Dashboard() {
   const horizon = useAppData((d) => d.settings.globalHorizon);
   const poll = useAppData((d) => d.settings.pollSeconds);
-  const hasStocks = useAppData((d) => d.watchlist.some((w) => w.kind === "stock"));
+  const hasStocks = useAppData((d) => d.watchlist.some((w) => w.kind !== "crypto"));
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -24,7 +24,7 @@ export default function Dashboard() {
       <Watchlist />
       {hasStocks && (
         <p className="text-xs text-stone-500">
-          Hinweis: Aktienkurse kommen per Polling alle {poll} s von Yahoo Finance und sind je nach Börse bis zu 15–20 Minuten verzögert. Krypto-Kurse laufen live per Binance-WebSocket.
+          Hinweis: Aktien- und Rohstoffkurse kommen per Polling alle {poll} s von Yahoo Finance und sind je nach Börse bis zu 15–20 Minuten verzögert. Krypto-Kurse laufen live per Binance-WebSocket.
         </p>
       )}
     </div>
