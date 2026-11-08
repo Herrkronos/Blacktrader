@@ -92,3 +92,10 @@ einsteigen. Messung: `CORE=0.55 npx tsx scripts/evaluate.ts`.
 | S&P 500 wöchentlich (Prüfung) | +372 % | +284 % | −29 % / −53 % |
 | Gold 2013 1h (frisch) | −28 % | −8 % | −12 % / −30 % |
 | Gold 2017 1h (frisch) | +9 % | +11 % | −4 % / −9 % |
+
+## Oberfläche (v2)
+
+Bottom-Navigation: Übersicht · Chancen · Watchlist · Journal · Mehr (EchoChart, Einstellungen, Backups).
+Signalfarben: Grün = Trade, Rot = Short, Blau = Kernposition, Orange = wartende Order.
+Journal enthält nur selbst übernommene Papier-Trades; beim Update auf v2 wird vorher ein Backup im Browser angelegt
+(Mehr → Backups). Zurück zum alten Stand: Branch `backup/vor-ui-umbau`.

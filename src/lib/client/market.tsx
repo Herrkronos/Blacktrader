@@ -9,7 +9,7 @@ import { fmtPrice } from "../analysis/persona";
 import { actions, getData, useAppData, type Trade, type WatchItem } from "../store/store";
 import type { Candle, Fundamentals, Horizon, Interval, NewsItem, ResolvedAsset } from "../types";
 import { notify } from "./alerts";
-import { openPaperTrade, syncCoreTrade } from "./autotrade";
+import { syncCoreTrade } from "./autotrade";
 import { coreStatus, type CoreStatus } from "../analysis/core";
 import { api } from "./api";
 import { binanceStream } from "./binanceWs";
@@ -209,7 +209,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
             : null;
         next[item.id] = { core: r.core, horizon: r.horizon, interval: r.interval, result, candles: r.candles, fundamentals: r.fundamentals, news: r.news, candleSource: r.source, error: r.error ?? (r.candles.length < 30 && r.candles.length > 0 ? "Zu wenig Historie für eine Analyse" : undefined), loading: false };
         if (result) checkSignal(item, r.horizon, result);
-        if (result && r.core && d.settings.autoTrade) {
+        if (result && r.core) {
           const msg = syncCoreTrade(item, result, r.core);
           if (msg) notify(`Kernposition ${item.symbol}`, msg, { sound: d.settings.sound, notifications: d.settings.notifications, kind: r.core.state === "hold" ? "buy" : "sell" });
         }
@@ -236,15 +236,13 @@ function checkSignal(item: WatchItem, horizon: Horizon, res: AnalysisResult) {
   const key = `${item.id}:${horizon}`;
   const prev = d.signals[key];
   const level = res.decision.level;
-  // Auto-Papiertrading: jedes aktive Signal wird als Übungs-Trade verfolgt
-  const opened = d.settings.autoTrade && level !== "neutral" ? openPaperTrade(item, res) : false;
   if (prev?.level === level) return;
   actions.setSignal(key, level);
-  if ((!prev && !opened) || level === "neutral") return; // erstes Signal bzw. Rückfall auf neutral: kein Alarm
+  if (!prev || level === "neutral") return; // erstes Signal bzw. Rückfall auf neutral: kein Alarm
   const buy = level.includes("buy");
   notify(
     `${SIGNAL_LABEL[level]}: ${item.symbol}`,
-    `${res.commentary.summary}. ${res.commentary.reason}${opened ? " (Papier-Trade eröffnet)" : ""}`,
+    `${res.commentary.summary}. ${res.commentary.reason}`,
     { sound: d.settings.sound, notifications: d.settings.notifications, kind: buy ? "buy" : "sell" },
   );
 }

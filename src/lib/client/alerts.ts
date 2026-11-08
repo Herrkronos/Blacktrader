@@ -1,4 +1,5 @@
 "use client";
+import { getData } from "../store/store";
 // Browser-Benachrichtigung + Signalton (Web Audio, keine Audiodatei nötig).
 
 let ctx: AudioContext | null = null;
@@ -31,8 +32,18 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return Notification.requestPermission();
 }
 
-export async function notify(title: string, body: string, opts: { sound: boolean; notifications: boolean; kind?: "buy" | "sell" | "info" }) {
+/** Haptisches Feedback (Android; iPhone-Safari unterstützt keine Vibration). */
+export function haptic(pattern: number | number[] = 30) {
+  try {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(pattern);
+  } catch {
+    /* nicht verfügbar */
+  }
+}
+
+export async function notify(title: string, body: string, opts: { sound: boolean; notifications: boolean; kind?: "buy" | "sell" | "info"; haptics?: boolean }) {
   if (opts.sound) playTone(opts.kind);
+  if (opts.haptics ?? getData().settings.haptics) haptic([40, 60, 40]);
   if (!opts.notifications || typeof Notification === "undefined" || Notification.permission !== "granted") return;
   try {
     const reg = await navigator.serviceWorker?.getRegistration();

@@ -217,7 +217,7 @@ export default function EchoChartPage() {
           </details>
           </>
           )}
-          <p className="text-[11px] text-stone-500">
+          <p className="text-[13px] text-stone-500">
             Kernposition: im Aufwärtstrend halten, nach erkannter 5. Welle Gewinne mitnehmen, nach einem Boden (abgeschlossene Korrektur) wieder einsteigen. „Größter Rückgang“ = stärkster Verlust vom Höchststand zwischendurch.
           </p>
         </div>

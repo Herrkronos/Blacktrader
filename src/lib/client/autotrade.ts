@@ -57,37 +57,42 @@ export function openCoreTrade(symbol: string, horizon: AnalysisResult["horizon"]
 
 const CORE_EXIT_TEXT = { welle5: "Welle 5 beendet – Gewinne mitgenommen", trendbruch: "Aufwärtstrend gebrochen – verkauft" } as const;
 
-/** Synchronisiert die Papier-Kernposition mit dem aktuellen Kernstatus. Gibt eine Meldung zurück, wenn sich etwas geändert hat. */
+/**
+ * Schließt eine SELBST übernommene Kernposition, wenn der Analyst das Ende der 5. Welle erkennt oder der Trend bricht.
+ * Es werden niemals automatisch Positionen eröffnet.
+ */
 export function syncCoreTrade(asset: Asset, res: AnalysisResult, status: CoreStatus): string | null {
   const open = openCoreTrade(asset.symbol, res.horizon);
-  if (status.state === "hold" && !open) {
-    const why = status.last?.type === "boden" ? "Boden gefunden – wieder eingestiegen" : status.last?.type === "neues-hoch" ? "Neues Hoch – Trend läuft weiter, wieder eingestiegen" : "Aufwärtstrend bestätigt – Kernposition eröffnet";
-    actions.addTrade({
-      strategy: "core",
-      symbol: asset.symbol,
-      name: asset.name,
-      kind: asset.kind,
-      binanceSymbol: asset.binanceSymbol,
-      yahooSymbol: asset.yahooSymbol,
-      direction: "long",
-      horizon: res.horizon,
-      interval: res.interval,
-      entry: res.price,
-      stop: 0,
-      targets: [],
-      openedAt: Date.now(),
-      reason: `Kernposition: ${why}. Gehalten wird, bis der Analyst das Ende der 5. Welle erkennt oder der Aufwärtstrend bricht.`,
-      score: res.total,
-      signal: "buy",
-      pattern: why,
-      lastPrice: res.price,
-    });
-    return why;
-  }
   if (status.state !== "hold" && open) {
     const reason = status.state === "wait-bottom" ? "welle5" : "trendbruch";
     actions.updateTrade(open.id, { status: "closed", exit: res.price, closedAt: Date.now(), closeReason: reason, returnPct: tradeReturnPct("long", open.entry, res.price), lastPrice: res.price });
     return `${CORE_EXIT_TEXT[reason]} (${tradeReturnPct("long", open.entry, res.price) >= 0 ? "+" : ""}${tradeReturnPct("long", open.entry, res.price).toFixed(2)} %)`;
   }
   return null;
+}
+
+/** Kernposition selbst übernehmen (über Chancen oder Watchlist). */
+export function openManualCoreTrade(asset: Asset, res: Pick<AnalysisResult, "horizon" | "interval" | "price" | "total">, note: string): boolean {
+  if (openCoreTrade(asset.symbol, res.horizon)) return false;
+  actions.addTrade({
+    strategy: "core",
+    symbol: asset.symbol,
+    name: asset.name,
+    kind: asset.kind,
+    binanceSymbol: asset.binanceSymbol,
+    yahooSymbol: asset.yahooSymbol,
+    direction: "long",
+    horizon: res.horizon,
+    interval: res.interval,
+    entry: res.price,
+    stop: 0,
+    targets: [],
+    openedAt: Date.now(),
+    reason: `Kernposition: ${note}. Gehalten wird, bis der Analyst das Ende der 5. Welle erkennt oder der Aufwärtstrend bricht.`,
+    score: res.total,
+    signal: "buy",
+    pattern: note,
+    lastPrice: res.price,
+  });
+  return true;
 }

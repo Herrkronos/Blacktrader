@@ -1,91 +1,103 @@
 "use client";
-import { useMemo, useState } from "react";
+// Suche nach ISIN, Symbol oder Name (z. B. "Apple") mit Vorschlagsliste.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { looksLikeIsin, validateIsin } from "@/lib/analysis/isin";
+import { haptic } from "@/lib/client/alerts";
 import { api } from "@/lib/client/api";
-import { actions } from "@/lib/store/store";
+import { actions, getData } from "@/lib/store/store";
 import type { ResolvedAsset } from "@/lib/types";
+import { IconSearch } from "./Icons";
+
+const kindLabel = (c: ResolvedAsset) => (c.kind === "crypto" ? "Krypto" : c.kind === "commodity" ? "Rohstoff" : c.exchange ?? "Aktie/ETF");
 
 export function AddAsset() {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<ResolvedAsset[]>([]);
+  const [added, setAdded] = useState<string | null>(null);
+  const seq = useRef(0);
 
   const isinState = useMemo(() => {
     const s = q.trim();
     if (!s) return null;
-    if (looksLikeIsin(s)) return validateIsin(s);
-    // 12 Zeichen mit Ländercode, aber falsche Zeichen → vermutlich ISIN-Tippfehler
-    if (/^[A-Za-z]{2}\w{10}$/.test(s) && /\d/.test(s)) return validateIsin(s);
+    if (looksLikeIsin(s) || (/^[A-Za-z]{2}\w{10}$/.test(s) && /\d/.test(s))) return validateIsin(s);
     return null;
   }, [q]);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Vorschläge während der Eingabe (ab 2 Zeichen, mit Verzögerung)
+  useEffect(() => {
     const s = q.trim();
-    if (!s || (isinState && !isinState.valid)) return;
-    setBusy(true);
     setError(null);
-    setCandidates([]);
-    try {
-      const r = await api.resolve(s);
-      if (r.candidates.length === 0) setError("Nichts gefunden. Prüfe ISIN oder Symbol (z. B. AAPL, SAP.DE, BTC).");
-      else if (r.candidates.length === 1) {
-        actions.addWatch(r.candidates[0]);
-        setQ("");
-      } else setCandidates(r.candidates);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
+    if (s.length < 2 || (isinState && !isinState.valid)) {
+      setCandidates([]);
+      return;
     }
-  };
+    const my = ++seq.current;
+    const t = setTimeout(async () => {
+      setBusy(true);
+      try {
+        const r = await api.resolve(s);
+        if (my !== seq.current) return;
+        setCandidates(r.candidates);
+        if (r.candidates.length === 0) setError("Nichts gefunden. Name, Symbol (AAPL, SAP.DE, BTC) oder ISIN prüfen.");
+      } catch (e) {
+        if (my === seq.current) setError((e as Error).message);
+      } finally {
+        if (my === seq.current) setBusy(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [q, isinState]);
 
   const choose = (c: ResolvedAsset) => {
     actions.addWatch(c);
+    if (getData().settings.haptics) haptic(20);
+    setAdded(c.name);
     setCandidates([]);
     setQ("");
+    setTimeout(() => setAdded(null), 2500);
   };
 
   return (
-    <div className="panel p-3">
-      <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row">
-        <div className="flex-1">
-          <input
-            className={`input ${isinState && !isinState.valid ? "border-red-500/70 focus:border-red-500" : isinState?.valid ? "border-emerald-500/60" : ""}`}
-            placeholder="ISIN (z. B. US0378331005) oder Symbol (AAPL, SAP.DE, BTC, ETH)"
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setError(null);
-            }}
-            autoCapitalize="characters"
-            spellCheck={false}
-          />
-          {isinState && !isinState.valid && <p className="mt-1 text-xs text-red-400">Ungültige ISIN: {isinState.reason}</p>}
-          {isinState?.valid && <p className="mt-1 text-xs text-emerald-400">Gültige ISIN – Prüfziffer korrekt.</p>}
-        </div>
-        <button className="btn-primary sm:w-40" disabled={busy || !q.trim() || (isinState ? !isinState.valid : false)}>
-          {busy ? "Suche …" : "Hinzufügen"}
-        </button>
-      </form>
-      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+    <div className="card p-3">
+      <label className="relative block">
+        <span className="sr-only">Wert suchen</span>
+        <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-stone-500" />
+        <input
+          className={`input pl-11 ${isinState && !isinState.valid ? "border-red-400/70" : isinState?.valid ? "border-emerald-400/60" : ""}`}
+          placeholder="Name, Symbol oder ISIN"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          autoCapitalize="characters"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          inputMode="search"
+          enterKeyHint="search"
+        />
+      </label>
+      {isinState && !isinState.valid && <p className="mt-2 text-[14px] text-red-300">Ungültige ISIN: {isinState.reason}</p>}
+      {isinState?.valid && <p className="mt-2 text-[14px] text-emerald-300">Gültige ISIN – Prüfziffer korrekt.</p>}
+      {busy && <p className="mt-2 text-[14px] text-stone-400">Suche …</p>}
+      {error && !busy && <p className="mt-2 text-[14px] text-red-300">{error}</p>}
+      {added && <p className="mt-2 text-[14px] text-emerald-300">{added} zur Watchlist hinzugefügt.</p>}
       {candidates.length > 0 && (
-        <div className="mt-3">
-          <p className="mb-2 text-xs text-stone-400">Mehrere Treffer – bitte wählen:</p>
-          <ul className="grid gap-1 sm:grid-cols-2">
-            {candidates.map((c) => (
-              <li key={`${c.kind}:${c.symbol}`}>
-                <button onClick={() => choose(c)} className="flex w-full items-center justify-between rounded-lg border border-gold/15 bg-black/40 px-3 py-2 text-left text-sm hover:border-gold/60">
-                  <span>
-                    <span className="font-semibold text-gold-light">{c.symbol}</span> <span className="text-stone-300">{c.name}</span>
+        <ul className="mt-2 divide-y divide-white/5 overflow-hidden rounded-xl border border-white/10">
+          {candidates.map((c) => (
+            <li key={`${c.kind}:${c.symbol}`}>
+              <button onClick={() => choose(c)} className="flex min-h-[52px] w-full items-center justify-between gap-3 px-3 py-2 text-left active:bg-white/10">
+                <span className="min-w-0">
+                  <span className="block truncate text-[15px] font-medium text-stone-100">{c.name}</span>
+                  <span className="text-[13px] text-stone-400">
+                    {c.symbol} · {kindLabel(c)}
                   </span>
-                  <span className="text-xs text-stone-500">{c.kind === "crypto" ? "Krypto" : c.kind === "commodity" ? "Rohstoff" : c.exchange ?? "Aktie/ETF"}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+                </span>
+                <span className="text-[13px] text-gold">+ Hinzufügen</span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

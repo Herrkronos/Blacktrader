@@ -2,6 +2,7 @@ import { coingeckoFundamentals } from "@/lib/data/coingecko";
 import { UpstreamError } from "@/lib/data/http";
 import { alphaVantageFundamentals, finnhubFundamentals, mergeFundamentals } from "@/lib/data/optional";
 import { handle, param } from "@/lib/data/route-helpers";
+import { nasdaqFundamentals } from "@/lib/data/nasdaq";
 import { yahooFundamentals } from "@/lib/data/yahoo";
 import type { StockFundamentals } from "@/lib/types";
 
@@ -15,7 +16,11 @@ export async function GET(req: Request) {
     if (kind === "commodity") return { fundamentals: null, note: "Rohstoffe haben keine Firmenzahlen." };
     if (kind === "crypto") {
       if (!id) return { fundamentals: null, note: "Keine CoinGecko-ID – Fundamentaldaten nicht verfügbar." };
-      return { fundamentals: await coingeckoFundamentals(id) };
+      try {
+        return { fundamentals: await coingeckoFundamentals(id) };
+      } catch (e) {
+        return { fundamentals: null, note: `CoinGecko: ${(e as Error).message}` };
+      }
     }
     if (!symbol) throw new UpstreamError("Symbol fehlt", 400);
     const errors: string[] = [];
@@ -34,6 +39,14 @@ export async function GET(req: Request) {
         errors.push((e as Error).message);
       }
     }
+    // Zweite kostenlose Quelle für US-Aktien, wenn Yahoo nichts oder zu wenig liefert
+    if (plain && (!f || f.pe == null)) {
+      try {
+        f = mergeFundamentals(f, await nasdaqFundamentals(plain));
+      } catch (e) {
+        errors.push((e as Error).message);
+      }
+    }
     if (avKey && plain && (!f || f.pe == null)) {
       try {
         f = mergeFundamentals(f, await alphaVantageFundamentals(plain, avKey));
@@ -41,6 +54,7 @@ export async function GET(req: Request) {
         errors.push((e as Error).message);
       }
     }
-    return { fundamentals: f, note: f ? undefined : `Fundamentaldaten nicht verfügbar (${errors.join(" · ")})` };
+    if (!f && !plain) errors.push("Für Nicht-US-Aktien gibt es außer Yahoo keine kostenlose Quelle ohne Schlüssel");
+    return { fundamentals: f, note: f ? undefined : errors.join(" · ") || "Keine Quelle hat Daten geliefert" };
   }, finnhubKey || avKey ? 0 : 3600);
 }

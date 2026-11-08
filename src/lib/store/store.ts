@@ -47,6 +47,10 @@ export interface Trade {
   closeReason?: "target" | "stop" | "manual" | "cancelled" | "welle5" | "trendbruch";
   /** "core" = Kernposition (Welle 5 / Boden), sonst Zonen-Trade */
   strategy?: "zone" | "core";
+  /** "manual" = vom Nutzer selbst übernommen (nur solche Trades gehören ins Journal) */
+  source?: "manual";
+  /** Herkunft unklar (vor dem Update angelegt) – Nutzer entscheidet einmalig */
+  unverified?: boolean;
   returnPct?: number;
 }
 
@@ -61,8 +65,10 @@ export interface Settings {
   closeAtTarget: "first" | "last";
   /** Expertenansicht: Wellenzählung, Fachbegriffe, Detailwerte */
   expertMode: boolean;
-  /** Signale automatisch als Papier-Trades übernehmen */
+  /** Veraltet: automatisches Papiertrading (entfernt, bleibt aus Kompatibilitätsgründen immer false) */
   autoTrade: boolean;
+  /** Vibration bei Alarm und Trade-Übernahme */
+  haptics: boolean;
   keys: {
     finnhub: string;
     alphavantage: string;
@@ -80,6 +86,10 @@ export interface AppData {
   settings: Settings;
   /** Letztes Signal je Wert+Horizont (für Alarme) */
   signals: Record<string, { level: SignalLevel; time: number }>;
+  /** Bereits ausgeführte Daten-Migrationen */
+  migrations: string[];
+  /** Hinweis nach der Migration (einmalig anzeigen) */
+  migrationNotice?: { removedAuto: number; unverified: number; backupKey: string; at: number } | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -91,11 +101,13 @@ export const DEFAULT_SETTINGS: Settings = {
   sound: true,
   closeAtTarget: "first",
   expertMode: false,
-  autoTrade: true,
+  autoTrade: false,
+  haptics: true,
   keys: { finnhub: "", alphavantage: "", openfigi: "", llm: "", llmProvider: "anthropic", llmModel: "" },
 };
 
-const DEFAULT_DATA: AppData = { version: 1, watchlist: [], trades: [], settings: DEFAULT_SETTINGS, signals: {} };
+const DEFAULT_DATA: AppData = { version: 1, watchlist: [], trades: [], settings: DEFAULT_SETTINGS, signals: {}, migrations: [], migrationNotice: null };
+export const BACKUP_PREFIX = "black-ship-trading-analyst:backup:";
 const KEY = "black-ship-trading-analyst:v1";
 
 let data: AppData = DEFAULT_DATA;
@@ -110,6 +122,8 @@ function sanitize(raw: unknown): AppData {
     watchlist: Array.isArray(d.watchlist) ? d.watchlist.filter((w) => w && w.id && w.symbol) : [],
     trades: Array.isArray(d.trades) ? d.trades.filter((t) => t && t.id && t.symbol) : [],
     signals: d.signals && typeof d.signals === "object" ? d.signals : {},
+    migrations: Array.isArray(d.migrations) ? d.migrations : [],
+    migrationNotice: d.migrationNotice ?? null,
     settings: {
       ...DEFAULT_SETTINGS,
       ...s,
@@ -117,6 +131,7 @@ function sanitize(raw: unknown): AppData {
       intervals: { ...DEFAULT_SETTINGS.intervals, ...(s.intervals ?? {}) },
       keys: { ...DEFAULT_SETTINGS.keys, ...(s.keys ?? {}) },
       pollSeconds: Math.min(60, Math.max(15, Number(s.pollSeconds) || DEFAULT_SETTINGS.pollSeconds)),
+      autoTrade: false,
     },
   };
 }
@@ -126,7 +141,10 @@ function load() {
   loaded = true;
   try {
     const raw = window.localStorage.getItem(KEY);
-    if (raw) data = sanitize(JSON.parse(raw));
+    if (raw) {
+      data = sanitize(JSON.parse(raw));
+      migrate(raw);
+    }
   } catch {
     data = DEFAULT_DATA;
   }
@@ -140,6 +158,53 @@ function load() {
       }
     }
   });
+}
+
+/**
+ * v2: Journal enthält nur noch selbst übernommene Trades.
+ * Vorher vollständiges Backup; automatisch erzeugte Kernpositions-Einträge entfernen;
+ * Trades mit unklarer Herkunft markieren (Nutzer entscheidet im Journal).
+ */
+function migrate(rawBefore: string) {
+  if (data.migrations.includes("v2-manual-journal")) return;
+  const backupKey = `${BACKUP_PREFIX}${new Date().toISOString()}`;
+  try {
+    window.localStorage.setItem(backupKey, rawBefore);
+  } catch {
+    /* Speicher voll: Migration trotzdem, Hinweis zeigt fehlendes Backup */
+  }
+  const auto = data.trades.filter((t) => t.strategy === "core" && t.source !== "manual");
+  const rest = data.trades.filter((t) => !(t.strategy === "core" && t.source !== "manual"));
+  const unverified = rest.filter((t) => t.source !== "manual");
+  data = {
+    ...data,
+    trades: rest.map((t) => (t.source === "manual" ? t : { ...t, unverified: true })),
+    settings: { ...data.settings, autoTrade: false },
+    migrations: [...data.migrations, "v2-manual-journal"],
+    migrationNotice: auto.length || unverified.length ? { removedAuto: auto.length, unverified: unverified.length, backupKey, at: Date.now() } : null,
+  };
+  persist();
+}
+
+export function listBackups(): { key: string; date: string }[] {
+  const out: { key: string; date: string }[] = [];
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i)!;
+      if (k.startsWith(BACKUP_PREFIX)) out.push({ key: k, date: k.slice(BACKUP_PREFIX.length) });
+    }
+  } catch {
+    /* nicht verfügbar */
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export function readBackup(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
 function persist() {
@@ -206,11 +271,30 @@ export const actions = {
   setKeys(patch: Partial<Settings["keys"]>) {
     update((d) => ({ ...d, settings: { ...d.settings, keys: { ...d.settings.keys, ...patch } } }));
   },
+  /** Nur für selbst übernommene Trades (source = manual). */
   addTrade(t: Omit<Trade, "id" | "status"> & { status?: Trade["status"] }) {
-    update((d) => ({ ...d, trades: [...d.trades, { ...t, id: uid(), status: t.status ?? "open" }] }));
+    update((d) => ({ ...d, trades: [...d.trades, { ...t, id: uid(), status: t.status ?? "open", source: "manual" }] }));
   },
   updateTrade(id: string, patch: Partial<Trade>) {
     update((d) => ({ ...d, trades: d.trades.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
+  },
+  /** Entscheidung zu Trades mit unklarer Herkunft */
+  resolveUnverified(keep: boolean) {
+    update((d) => ({
+      ...d,
+      trades: keep ? d.trades.map((t) => (t.unverified ? { ...t, unverified: false, source: "manual" as const } : t)) : d.trades.filter((t) => !t.unverified),
+      migrationNotice: d.migrationNotice ? { ...d.migrationNotice, unverified: 0 } : null,
+    }));
+  },
+  dismissMigrationNotice() {
+    update((d) => ({ ...d, migrationNotice: null }));
+  },
+  restoreBackup(key: string) {
+    const raw = readBackup(key);
+    if (!raw) throw new Error("Backup nicht gefunden");
+    const parsed = sanitize(JSON.parse(raw));
+    // Wiederhergestellt: Trades gelten als selbst übernommen, Migration nicht erneut ausführen
+    update(() => ({ ...parsed, trades: parsed.trades.map((t) => ({ ...t, source: "manual" as const, unverified: false })), migrations: [...parsed.migrations, "v2-manual-journal"], migrationNotice: null }));
   },
   removeTrade(id: string) {
     update((d) => ({ ...d, trades: d.trades.filter((t) => t.id !== id) }));

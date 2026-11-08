@@ -1,197 +1,287 @@
 "use client";
+// Journal: nur selbst übernommene Papier-Trades, als Karten-Liste.
 import Link from "next/link";
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { EquityChart } from "@/components/EquityChart";
-import { EntryLegend, SignalBadge, Stat } from "@/components/ui";
-import { fmtPrice } from "@/lib/analysis/persona";
+import { Legend } from "@/components/Legend";
+import { Sheet } from "@/components/Sheet";
+import { money } from "@/lib/analysis/persona";
 import { performance, tradeReturnPct } from "@/lib/analysis/stats";
 import { instrumentKey, useMarket } from "@/lib/client/market";
 import { actions, useAppData, type Trade } from "@/lib/store/store";
 import { HORIZON_LABEL, type Horizon } from "@/lib/types";
 
+const signed = (x: number, d = 2) => `${x >= 0 ? "+" : ""}${x.toFixed(d).replace(".", ",")} %`;
+
+function Tile({ label, value, tone }: { label: string; value: string; tone?: "up" | "down" }) {
+  return (
+    <div className="card px-3 py-2.5">
+      <div className="label">{label}</div>
+      <div className={`num text-[19px] font-semibold ${tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-stone-50"}`}>{value}</div>
+    </div>
+  );
+}
+
+function statusText(t: Trade) {
+  if (t.status === "pending") return { text: "wartend", cls: "badge-wait" };
+  if (t.status === "open") return { text: t.trailing ? "offen · Stop läuft mit" : "offen", cls: "badge-muted" };
+  const r = t.closeReason;
+  return {
+    text: r === "target" ? "geschlossen · Ziel" : r === "stop" ? "geschlossen · Stop" : r === "cancelled" ? "verfallen" : r === "welle5" ? "geschlossen · Welle 5" : r === "trendbruch" ? "geschlossen · Trendbruch" : "geschlossen",
+    cls: "badge-muted",
+  };
+}
+
+function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction: (t: Trade) => void }) {
+  const [dx, setDx] = useState(0);
+  const start = useRef<number | null>(null);
+  const [open, setOpen] = useState(false);
+  const edge = t.strategy === "core" ? "edge-core" : t.direction === "long" ? "edge-trade" : "edge-short";
+  const kind = t.strategy === "core" ? <span className="badge-core">Kernposition</span> : t.direction === "long" ? <span className="badge-trade">Trade</span> : <span className="badge-short">Short</span>;
+  const cur = t.status === "closed" ? t.exit : price ?? t.lastPrice;
+  const ret = t.status === "closed" ? t.returnPct : t.status === "open" && cur ? tradeReturnPct(t.direction, t.entry, cur) : undefined;
+  const st = statusText(t);
+  return (
+    <div className="relative">
+      {/* Aktionen hinter der Karte (nur beim Wischen nach links sichtbar) */}
+      <div className={`absolute inset-y-0 right-0 flex items-center pr-3 transition-opacity ${dx < 0 ? "opacity-100" : "pointer-events-none opacity-0"}`}>
+        <button className="btn-primary" onClick={() => onAction(t)}>
+          Aktionen
+        </button>
+      </div>
+      <article
+        className={`card relative p-4 transition-transform ${edge}`}
+        style={{ transform: `translateX(${dx}px)` }}
+        onTouchStart={(e) => (start.current = e.touches[0].clientX)}
+        onTouchMove={(e) => start.current != null && setDx(Math.min(0, Math.max(-120, e.touches[0].clientX - start.current)))}
+        onTouchEnd={() => {
+          setDx(dx < -60 ? -120 : 0);
+          start.current = null;
+        }}
+        onClick={() => (dx ? setDx(0) : setOpen(!open))}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate text-[16px] font-semibold text-stone-50">{t.name}</div>
+            <div className="text-[13px] text-stone-400">
+              {t.symbol} · {HORIZON_LABEL[t.horizon]}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className={`num text-[19px] font-semibold ${ret == null ? "text-amber-300" : ret >= 0 ? "text-up" : "text-down"}`}>{ret == null ? "–" : signed(ret)}</div>
+            <div className="text-[13px] text-stone-400">{t.status === "closed" ? "Ergebnis" : "Stand"}</div>
+          </div>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {kind}
+          <span className={st.cls}>{st.text}</span>
+          {t.unverified && <span className="badge-wait">Herkunft unklar</span>}
+        </div>
+        <div className="num mt-2 grid grid-cols-3 gap-2 text-[14px]">
+          <span>
+            <span className="label block">Einstieg</span>
+            {money(t.entry)}
+          </span>
+          <span>
+            <span className="label block">{t.status === "closed" ? "Ausstieg" : "Kurs"}</span>
+            {cur != null ? money(cur) : "–"}
+          </span>
+          <span>
+            <span className="label block">{t.strategy === "core" ? "Bis" : "Stop / Ziel"}</span>
+            {t.strategy === "core" ? "Welle 5" : `${money(t.stop)} / ${t.targets[0] != null ? money(t.targets[0]) : "–"}`}
+          </span>
+        </div>
+        {open && (
+          <div className="mt-3 space-y-2 border-t border-white/10 pt-3 text-[14px] text-stone-300">
+            <p className="text-stone-400">Übernommen am {new Date(t.openedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</p>
+            <p className="whitespace-pre-wrap">{t.reason}</p>
+            <button
+              className="btn w-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAction(t);
+              }}
+            >
+              Aktionen
+            </button>
+          </div>
+        )}
+      </article>
+    </div>
+  );
+}
+
 export default function JournalPage() {
   const trades = useAppData((d) => d.trades);
+  const notice = useAppData((d) => d.migrationNotice);
   const { live } = useMarket();
   const [horizon, setHorizon] = useState<Horizon | "all">("all");
-  const [asset, setAsset] = useState<string>("all");
-  const [open, setOpen] = useState<string | null>(null);
+  const [art, setArt] = useState<"all" | "trade" | "short" | "core">("all");
+  const [action, setAction] = useState<Trade | null>(null);
+  const [exitPrice, setExitPrice] = useState("");
 
-  const assets = useMemo(() => [...new Set(trades.map((t) => t.symbol))].sort(), [trades]);
-  const filtered = trades.filter((t) => (horizon === "all" || t.horizon === horizon) && (asset === "all" || t.symbol === asset));
+  const filtered = useMemo(
+    () =>
+      trades
+        .filter((t) => (horizon === "all" || t.horizon === horizon) && (art === "all" || (art === "core" ? t.strategy === "core" : t.strategy !== "core" && (art === "trade" ? t.direction === "long" : t.direction === "short"))))
+        .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0) || b.openedAt - a.openedAt),
+    [trades, horizon, art],
+  );
   const closed = filtered.filter((t) => t.status === "closed" && t.returnPct != null);
-  const openTrades = filtered.filter((t) => t.status === "open");
-  const pendingTrades = filtered.filter((t) => t.status === "pending");
   const stats = performance(closed.map((t) => ({ returnPct: t.returnPct!, closedAt: t.closedAt! })));
-  // Unrealisierter Stand der offenen Trades (Durchschnitt)
-  const openReturns = openTrades
+  const openRets = filtered
+    .filter((t) => t.status === "open")
     .map((t) => {
       const p = live[instrumentKey(t)]?.price ?? t.lastPrice;
       return p ? tradeReturnPct(t.direction, t.entry, p) : null;
     })
     .filter((x): x is number => x != null);
-  const openAvg = openReturns.length ? openReturns.reduce((a, b) => a + b, 0) / openReturns.length : null;
-
-  const closeManually = (t: Trade) => {
-    const lv = live[instrumentKey(t)];
-    const suggestion = lv?.price ?? t.lastPrice ?? t.entry;
-    const input = window.prompt(`Ausstiegskurs für ${t.symbol}:`, String(+suggestion.toPrecision(6)));
-    if (!input) return;
-    const exit = parseFloat(input.replace(",", "."));
-    if (!(exit > 0)) return;
-    actions.updateTrade(t.id, { status: "closed", exit, closedAt: Date.now(), closeReason: "manual", returnPct: tradeReturnPct(t.direction, t.entry, exit) });
-  };
+  const openAvg = openRets.length ? openRets.reduce((a, b) => a + b, 0) / openRets.length : null;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl text-gold sm:text-3xl">Trade-Journal</h1>
-          <p className="text-sm text-stone-400">Deine Übungs-Trades: Sie werden mit Live-Kursen verfolgt und bei Ziel oder Stop automatisch geschlossen.</p>
+          <h1 className="text-[22px] text-gold">Journal</h1>
+          <p className="text-[15px] text-stone-400">Nur Trades, die du selbst übernommen hast.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <select className="input w-auto" value={horizon} onChange={(e) => setHorizon(e.target.value as Horizon | "all")}>
-            <option value="all">Alle Horizonte</option>
-            {(["short", "medium", "long"] as Horizon[]).map((h) => (
-              <option key={h} value={h}>
-                {HORIZON_LABEL[h]}
-              </option>
-            ))}
-          </select>
-          <select className="input w-auto" value={asset} onChange={(e) => setAsset(e.target.value)}>
-            <option value="all">Alle Werte</option>
-            {assets.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Legend />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-        <Stat
-          label="Offene Trades jetzt"
-          value={openAvg == null ? "–" : `${openAvg >= 0 ? "+" : ""}${openAvg.toFixed(2)} %`}
-          tone={openAvg == null ? undefined : openAvg >= 0 ? "up" : "down"}
-          hint={`Ø von ${openTrades.length} offenen · ${pendingTrades.length} wartend`}
-        />
-        <Stat label="Abgeschlossen" value={`${stats.totalReturn >= 0 ? "+" : ""}${stats.totalReturn.toFixed(2)} %`} tone={stats.totalReturn >= 0 ? "up" : "down"} />
-        <Stat label="Trefferquote" value={`${(stats.winRate * 100).toFixed(0)} %`} hint={`${stats.wins} / ${stats.trades} Trades`} />
-        <Stat label="Ø Gewinn" value={`+${stats.avgWin.toFixed(2)} %`} tone="up" />
-        <Stat label="Ø Verlust" value={`${stats.avgLoss.toFixed(2)} %`} tone="down" />
-        <Stat label="Max. Drawdown" value={`${stats.maxDrawdown.toFixed(2)} %`} tone="down" />
-        <Stat label="Profit-Faktor" value={stats.profitFactor == null ? "∞" : stats.profitFactor.toFixed(2)} hint={`${openTrades.length} offen`} />
-      </div>
-
-      {trades.length === 0 && (
-        <div className="panel space-y-2 p-4 text-sm text-stone-300">
-          <p className="font-display text-gold">Noch keine Trades – deshalb noch keine Gewinnkurve.</p>
-          <p>So füllt sich dein Journal:</p>
-          <ul className="list-inside list-disc space-y-1 text-stone-400">
-            <li>
-              Unter <Link href="/chancen" className="text-gold underline">Chancen</Link> Einstiegsmöglichkeiten ansehen und als Papier-Trade übernehmen.
-            </li>
-            <li>Auto-Papiertrading (in den Einstellungen, standardmäßig an) übernimmt jedes neue Signal deiner Watchlist automatisch.</li>
-            <li>
-              Wie profitabel der Analyst in der Vergangenheit gewesen wäre, zeigt das <Link href="/echochart" className="text-gold underline">EchoChart</Link> sofort.
-            </li>
-          </ul>
-          <p className="text-xs text-stone-500">Trades werden verfolgt, solange die App geöffnet ist, und bei Ziel oder Stop automatisch geschlossen.</p>
+      {notice && (notice.removedAuto > 0 || notice.unverified > 0) && (
+        <div className="card edge-wait space-y-2 p-4 text-[15px]">
+          <p className="font-semibold text-stone-100">Journal bereinigt</p>
+          {notice.removedAuto > 0 && (
+            <p className="text-stone-300">
+              {notice.removedAuto === 1 ? "1 automatisch erzeugter Kernpositions-Eintrag wurde" : `${notice.removedAuto} automatisch erzeugte Kernpositions-Einträge wurden`} entfernt.
+            </p>
+          )}
+          {notice.unverified > 0 && <p className="text-stone-300">Bei {notice.unverified === 1 ? "1 älteren Trade" : `${notice.unverified} älteren Trades`} ist nicht erkennbar, ob du sie selbst übernommen hast. Sollen sie bleiben?</p>}
+          <p className="text-[13px] text-stone-500">Vorher wurde ein Backup gespeichert (Mehr → Backups).</p>
+          <div className="flex gap-2">
+            {notice.unverified > 0 ? (
+              <>
+                <button className="btn flex-1" onClick={() => actions.resolveUnverified(false)}>
+                  Entfernen
+                </button>
+                <button className="btn-primary flex-1" onClick={() => actions.resolveUnverified(true)}>
+                  Behalten
+                </button>
+              </>
+            ) : (
+              <button className="btn w-full" onClick={() => actions.dismissMigrationNotice()}>
+                Verstanden
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      <div className="panel p-3">
-        <div className="panel-title mb-2">Performance – kumulierte Rendite</div>
-        <EquityChart data={stats.curve} />
+      <div className="grid grid-cols-2 gap-2">
+        <Tile label="Gesamt (abgeschlossen)" value={signed(stats.totalReturn)} tone={stats.totalReturn >= 0 ? "up" : "down"} />
+        <Tile label="Offene Trades jetzt" value={openAvg == null ? "–" : signed(openAvg)} tone={openAvg == null ? undefined : openAvg >= 0 ? "up" : "down"} />
+        <Tile label="Trefferquote" value={`${(stats.winRate * 100).toFixed(0)} % (${stats.wins}/${stats.trades})`} />
+        <Tile label="Ø Gewinn / Verlust" value={`${stats.avgWin.toFixed(1).replace(".", ",")} / ${stats.avgLoss.toFixed(1).replace(".", ",")} %`} />
+        <Tile label="Max. Rückgang" value={signed(stats.maxDrawdown, 1)} tone={stats.maxDrawdown < 0 ? "down" : undefined} />
+        <Tile label="Gewinnfaktor" value={stats.profitFactor == null ? "∞" : stats.profitFactor.toFixed(2).replace(".", ",")} />
+      </div>
+      <div className="card p-3">
+        <div className="label mb-1">Kumulierte Rendite</div>
+        <EquityChart data={stats.curve} height={180} />
       </div>
 
-      <EntryLegend />
-      <div className="panel overflow-x-auto">
-        <table className="w-full min-w-[760px] text-sm">
-          <thead className="border-b border-gold/20 text-left text-[11px] uppercase tracking-wider text-stone-400">
-            <tr>
-              <th className="px-3 py-2">Wert</th>
-              <th className="px-2 py-2">Datum</th>
-              <th className="px-2 py-2">Horizont</th>
-              <th className="px-2 py-2">Signal</th>
-              <th className="px-2 py-2 text-right">Einstieg</th>
-              <th className="px-2 py-2 text-right">Stop</th>
-              <th className="px-2 py-2 text-right">Ziel(e)</th>
-              <th className="px-2 py-2 text-right">Kurs / Exit</th>
-              <th className="px-2 py-2 text-right">Rendite</th>
-              <th className="px-2 py-2">Status</th>
-              <th className="px-2 py-2" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gold/10">
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={11} className="p-6 text-center text-stone-400">
-                  Noch keine Trades. Übernimm ein Signal auf der Analyse-Seite.
-                </td>
-              </tr>
-            )}
-            {[...filtered].sort((a, b) => b.openedAt - a.openedAt).map((t) => {
-              const lv = live[instrumentKey(t)];
-              const cur = t.status !== "closed" ? lv?.price ?? t.lastPrice : t.exit;
-              const ret = t.status === "closed" ? t.returnPct : t.status === "open" && cur ? tradeReturnPct(t.direction, t.entry, cur) : undefined;
-              return (
-                <Fragment key={t.id}>
-                  <tr className={`cursor-pointer hover:brightness-125 ${t.strategy === "core" ? "core-row" : t.direction === "short" ? "sell-row" : "trade-row"}`} onClick={() => setOpen(open === t.id ? null : t.id)}>
-                    <td className="px-3 py-2">
-                      <div className="font-semibold text-gold-light">{t.symbol}</div>
-                      <div className="mt-0.5">
-                        {t.strategy === "core" ? <span className="core-tag">Kernposition</span> : t.direction === "short" ? <span className="sell-tag">Verkauf ↓</span> : <span className="trade-tag">Kauf ↑</span>}
-                      </div>
-                    </td>
-                    <td className="px-2 py-2 text-xs text-stone-400">{new Date(t.openedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</td>
-                    <td className="px-2 py-2 text-xs">{HORIZON_LABEL[t.horizon]} <span className="text-stone-500">{t.interval}</span></td>
-                    <td className="px-2 py-2"><SignalBadge level={t.signal} small /></td>
-                    <td className="num px-2 py-2 text-right">{fmtPrice(t.entry)}</td>
-                    <td className="num px-2 py-2 text-right text-down">{t.strategy === "core" ? "–" : fmtPrice(t.stop)}</td>
-                    <td className="num px-2 py-2 text-right text-up">{t.strategy === "core" ? "bis Welle 5" : t.targets.map(fmtPrice).join(" / ")}</td>
-                    <td className="num px-2 py-2 text-right">{cur ? fmtPrice(cur) : "–"}</td>
-                    <td className={`num px-2 py-2 text-right ${ret == null ? "" : ret >= 0 ? "text-up" : "text-down"}`}>{ret == null ? "–" : `${ret >= 0 ? "+" : ""}${ret.toFixed(2)} %`}</td>
-                    <td className="px-2 py-2 text-xs">
-                      {t.status === "open" ? (
-                        <span className="text-gold-light">{t.trailing ? "offen · Stop läuft mit" : "offen"}</span>
-                      ) : t.status === "pending" ? (
-                        <span className="text-amber-300" title="Limit-Order wartet, bis der Kurs die Zone erreicht">wartet auf Einstieg</span>
-                      ) : (
-                        <span className="text-stone-400">{t.closeReason === "target" ? "Ziel" : t.closeReason === "stop" ? "Stop" : t.closeReason === "cancelled" ? "verfallen (kein Einstieg)" : t.closeReason === "welle5" ? "Welle 5 – Gewinn mitgenommen" : t.closeReason === "trendbruch" ? "Trendbruch" : "manuell"}</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                      {t.status === "open" && (
-                        <button className="btn mr-1 px-2 py-1 text-xs" onClick={() => closeManually(t)}>
-                          Schließen
-                        </button>
-                      )}
-                      {t.status === "pending" && (
-                        <button className="btn mr-1 px-2 py-1 text-xs" onClick={() => actions.updateTrade(t.id, { status: "closed", closedAt: Date.now(), closeReason: "cancelled" })}>
-                          Order löschen
-                        </button>
-                      )}
-                      <button className="text-stone-500 hover:text-red-400" onClick={() => window.confirm("Trade löschen?") && actions.removeTrade(t.id)} title="Löschen">
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                  {open === t.id && (
-                    <tr>
-                      <td colSpan={11} className="bg-black/40 px-4 py-3 text-xs leading-relaxed whitespace-pre-wrap text-stone-300">
-                        <b className="text-gold">Begründung{t.pattern ? ` · ${t.pattern}` : ""}</b>
-                        {"\n"}
-                        {t.reason}
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="-mx-3 flex gap-2 overflow-x-auto px-3 [scrollbar-width:none]">
+        {(
+          [
+            ["all", "Alle"],
+            ["trade", "Trade"],
+            ["short", "Short"],
+            ["core", "Kernposition"],
+          ] as const
+        ).map(([k, l]) => (
+          <button key={k} onClick={() => setArt(k)} className={`chip shrink-0 ${art === k ? "border-gold bg-white/10 font-semibold text-gold-light" : "border-white/10 text-stone-400"}`}>
+            {l}
+          </button>
+        ))}
+        <select className="chip shrink-0 border-white/10 bg-transparent text-stone-300" value={horizon} onChange={(e) => setHorizon(e.target.value as Horizon | "all")} aria-label="Zeitraum">
+          <option value="all">Alle Zeiträume</option>
+          {(["short", "medium", "long"] as Horizon[]).map((h) => (
+            <option key={h} value={h}>
+              {HORIZON_LABEL[h]}
+            </option>
+          ))}
+        </select>
       </div>
+
+      {filtered.length === 0 ? (
+        <div className="card p-5 text-center text-[15px] text-stone-300">
+          Noch keine Trades. Übernimm eine Einstiegsmöglichkeit unter{" "}
+          <Link href="/chancen" className="text-gold underline">
+            Chancen
+          </Link>{" "}
+          mit „Als Papier-Trade übernehmen“.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((t) => (
+            <TradeCard
+              key={t.id}
+              t={t}
+              price={live[instrumentKey(t)]?.price}
+              onAction={(x) => {
+                setAction(x);
+                setExitPrice(String(+(live[instrumentKey(x)]?.price ?? x.lastPrice ?? x.entry).toPrecision(6)));
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      <Sheet open={!!action} onClose={() => setAction(null)} title={action ? `${action.name} – Aktionen` : ""}>
+        {action && (
+          <div className="space-y-3">
+            {action.status === "open" && (
+              <>
+                <label className="block text-[14px] text-stone-300">
+                  Ausstiegskurs
+                  <input className="input mt-1 num" value={exitPrice} onChange={(e) => setExitPrice(e.target.value)} inputMode="decimal" />
+                </label>
+                <button
+                  className="btn-primary w-full"
+                  onClick={() => {
+                    const exit = parseFloat(exitPrice.replace(",", "."));
+                    if (!(exit > 0)) return;
+                    actions.updateTrade(action.id, { status: "closed", exit, closedAt: Date.now(), closeReason: "manual", returnPct: tradeReturnPct(action.direction, action.entry, exit) });
+                    setAction(null);
+                  }}
+                >
+                  Trade jetzt schließen
+                </button>
+              </>
+            )}
+            {action.status === "pending" && (
+              <button
+                className="btn-primary w-full"
+                onClick={() => {
+                  actions.updateTrade(action.id, { status: "closed", closedAt: Date.now(), closeReason: "cancelled" });
+                  setAction(null);
+                }}
+              >
+                Wartende Order löschen
+              </button>
+            )}
+            <button
+              className="btn-danger w-full"
+              onClick={() => {
+                actions.removeTrade(action.id);
+                setAction(null);
+              }}
+            >
+              Aus dem Journal entfernen
+            </button>
+          </div>
+        )}
+      </Sheet>
     </div>
   );
 }

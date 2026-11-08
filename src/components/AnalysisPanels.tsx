@@ -22,9 +22,9 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
         <span className="panel-title">
           Signal{" "}
           {a.plan?.direction === "short" && a.decision.level !== "neutral" ? (
-            <span className="sell-tag ml-1 align-middle normal-case tracking-normal">Verkauf</span>
+            <span className="sell-tag ml-1 align-middle">Verkauf</span>
           ) : (
-            <span className="trade-tag ml-1 align-middle normal-case tracking-normal">Kauf</span>
+            <span className="trade-tag ml-1 align-middle">Kauf</span>
           )}
         </span>
         <SignalBadge level={a.decision.level} />
@@ -118,14 +118,14 @@ export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: str
       <p className="text-base leading-relaxed text-stone-100">{c.reason}</p>
       {llm && <div className="whitespace-pre-wrap text-sm leading-relaxed text-stone-300">{llm}</div>}
       {c.risk && <p className="text-sm text-stone-300">{c.risk}</p>}
-      {expert && (
+      {(
       <details className="text-sm">
         <summary className="cursor-pointer text-xs text-gold/80">Details zur Analyse</summary>
         <p className="mt-2 font-display text-sm text-gold-light">{c.headline}</p>
         <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
           {sections.map(([k, v]) => (
             <div key={k} className="contents">
-              <dt className="pt-0.5 text-[11px] uppercase tracking-wider text-gold/80">{k}</dt>
+              <dt className="pt-0.5 text-[13px] text-gold/80">{k}</dt>
               <dd className="text-stone-300">{v}</dd>
             </div>
           ))}
@@ -143,7 +143,7 @@ function CountBlock({ c, title }: { c: WaveCount; title: string }) {
     <div className="rounded-lg border border-gold/15 bg-black/30 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <div className="text-[11px] uppercase tracking-wider text-stone-400">{title}</div>
+          <div className="text-[13px] text-stone-400">{title}</div>
           <div className="font-semibold text-gold-light">{c.patternLabel}</div>
         </div>
         <div className="text-right text-xs text-stone-400">
@@ -208,101 +208,76 @@ export function WavePanel({ a }: { a: AnalysisResult }) {
 const fmtPct = (x?: number) => (x == null ? "–" : `${(x * 100).toFixed(1)} %`);
 const fmtNum = (x?: number, d = 2) => (x == null ? "–" : x.toLocaleString("de-DE", { maximumFractionDigits: d }));
 
-const SIMPLE_NAMES: Record<string, string> = {
-  KGV: "Bewertung (Preis je Gewinn)",
-  KUV: "Preis im Verhältnis zum Umsatz",
-  KBV: "Preis im Verhältnis zum Firmenwert",
-  "EPS-Wachstum": "Gewinnwachstum",
-  Umsatzwachstum: "Umsatzwachstum",
-  Nettomarge: "Gewinnmarge",
-  "Verschuldung (D/E)": "Schulden",
-  "Free Cashflow": "Freier Geldzufluss",
-  Dividendenrendite: "Dividende",
-  Marktkapitalisierung: "Größe",
-  "Volumen / Market Cap": "Handelsaktivität",
-  "Angebot im Umlauf": "Coins im Umlauf",
-  "Entwicklung (Commits 4 W.)": "Aktivität der Entwickler",
-};
+const fmtPctF = (x?: number) => (x == null ? null : `${(x * 100).toFixed(1).replace(".", ",")} %`);
+const fmtNumF = (x?: number, d = 2) => (x == null ? null : x.toLocaleString("de-DE", { maximumFractionDigits: d }));
 
-export function FundamentalsPanel({ a, f }: { a: AnalysisResult; f: Fundamentals | null }) {
-  const expert = useAppData((d) => d.settings.expertMode);
-  if (!expert) {
-    const items = a.fundamental.items;
-    const s = a.fundamental.fundamentalScore;
+/** Fundamentalzahlen: immer echte Werte mit kurzer Einordnung; ohne Daten sichtbarer Grund. */
+export function FundamentalsPanel({ a, f, note, kind }: { a: AnalysisResult; f: Fundamentals | null; note?: string; kind?: string }) {
+  if (kind === "commodity")
     return (
-      <div className="panel p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="panel-title">{f?.kind === "crypto" ? "Kennzahlen" : "Firmenzahlen"}</span>
-          {s != null && <span className={`text-xs ${s >= 58 ? "text-up" : s <= 42 ? "text-down" : "text-stone-400"}`}>{s >= 58 ? "eher gut" : s <= 42 ? "eher schwach" : "durchschnittlich"}</span>}
-        </div>
-        {items.length === 0 ? (
-          <p className="text-sm text-stone-400">Keine Zahlen verfügbar.</p>
-        ) : (
-          <ul className="space-y-1 text-sm">
-            {items.map((i) => (
-              <li key={i.name} className="flex justify-between gap-3">
-                <span className="text-stone-300">{SIMPLE_NAMES[i.name] ?? i.name}</span>
-                <span className={`text-right ${i.score >= 60 ? "text-up" : i.score < 45 ? "text-down" : "text-stone-300"}`}>{i.comment}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {a.fundamental.warnings.map((w) => (
-          <p key={w} className="mt-2 text-xs text-amber-300">
-            {w}
-          </p>
-        ))}
+      <div className="card p-4">
+        <div className="panel-title mb-1">Fundamentalzahlen</div>
+        <p className="text-[15px] text-stone-400">Rohstoffe haben keine Firmenzahlen – bewertet werden Chartbild, Nachrichten und Kaufinteresse.</p>
       </div>
     );
-  }
-  const rows: [string, string][] = !f
+  const comment = (name: string) => a.fundamental.items.find((i) => i.name === name);
+  const rows: [string, string | null, string?][] = !f
     ? []
     : f.kind === "stock"
       ? [
-          ["KGV", fmtNum(f.pe)],
-          ["KUV", fmtNum(f.ps)],
-          ["KBV", fmtNum(f.pb)],
-          ["EPS-Wachstum", fmtPct(f.epsGrowth)],
-          ["Umsatzwachstum", fmtPct(f.revenueGrowth)],
-          ["Nettomarge", fmtPct(f.profitMargin)],
-          ["Verschuldung D/E", f.debtToEquity == null ? "–" : `${fmtNum(f.debtToEquity / 100)}×`],
-          ["Free Cashflow", f.freeCashflow == null ? "–" : compactNumber(f.freeCashflow)],
-          ["Marktkapitalisierung", f.marketCap == null ? "–" : compactNumber(f.marketCap)],
-          ["Dividendenrendite", fmtPct(f.dividendYield)],
-          ["Nächste Quartalszahlen", f.nextEarnings ? new Date(f.nextEarnings).toLocaleDateString("de-DE") : "–"],
+          ["KGV (Preis je Gewinn)", fmtNumF(f.pe), "KGV"],
+          ["KUV (Preis je Umsatz)", fmtNumF(f.ps), "KUV"],
+          ["KBV (Preis je Buchwert)", fmtNumF(f.pb), "KBV"],
+          ["Gewinnwachstum", fmtPctF(f.epsGrowth), "EPS-Wachstum"],
+          ["Umsatzwachstum", fmtPctF(f.revenueGrowth), "Umsatzwachstum"],
+          ["Gewinnmarge", fmtPctF(f.profitMargin), "Nettomarge"],
+          ["Verschuldung (Schulden/Eigenkapital)", f.debtToEquity == null ? null : `${fmtNumF(f.debtToEquity / 100)}×`, "Verschuldung (D/E)"],
+          ["Freier Geldzufluss", f.freeCashflow == null ? null : compactNumber(f.freeCashflow), "Free Cashflow"],
+          ["Dividendenrendite", fmtPctF(f.dividendYield), "Dividendenrendite"],
+          ["Marktkapitalisierung", f.marketCap == null ? null : compactNumber(f.marketCap)],
+          ["Nächste Quartalszahlen", f.nextEarnings ? new Date(f.nextEarnings).toLocaleDateString("de-DE") : null],
         ]
       : [
-          ["Marktkapitalisierung", f.marketCap == null ? "–" : `${compactNumber(f.marketCap)} $`],
-          ["Rang", fmtNum(f.marketCapRank, 0)],
-          ["Volumen 24h", f.volume24h == null ? "–" : `${compactNumber(f.volume24h)} $`],
-          ["Volumen / MCap", f.volume24h && f.marketCap ? fmtPct(f.volume24h / f.marketCap) : "–"],
-          ["Umlauf", f.circulatingSupply == null ? "–" : compactNumber(f.circulatingSupply)],
-          ["Max. Angebot", f.maxSupply == null ? "unbegrenzt" : compactNumber(f.maxSupply)],
-          ["Änderung 7 T / 30 T", `${fmtNum(f.change7d, 1)} % / ${fmtNum(f.change30d, 1)} %`],
-          ["Abstand ATH", f.athChangePct == null ? "–" : `${fmtNum(f.athChangePct, 1)} %`],
-          ["Commits (4 W.)", fmtNum(f.devCommits4w, 0)],
-          ["GitHub-Sterne", fmtNum(f.devStars, 0)],
+          ["Marktkapitalisierung", f.marketCap == null ? null : `${compactNumber(f.marketCap)} $`, "Marktkapitalisierung"],
+          ["Rang", fmtNumF(f.marketCapRank, 0)],
+          ["Handelsvolumen 24 h", f.volume24h == null ? null : `${compactNumber(f.volume24h)} $`, "Volumen / Market Cap"],
+          ["Coins im Umlauf", f.circulatingSupply == null ? null : compactNumber(f.circulatingSupply), "Angebot im Umlauf"],
+          ["Maximale Menge", f.maxSupply == null ? "unbegrenzt" : compactNumber(f.maxSupply)],
+          ["Entwickler-Aktivität (Commits 4 Wochen)", fmtNumF(f.devCommits4w, 0), "Entwicklung (Commits 4 W.)"],
+          ["Abstand zum Höchststand", f.athChangePct == null ? null : `${fmtNumF(f.athChangePct, 1)} %`],
         ];
+  const shown = rows.filter(([, v]) => v != null);
+  const s = a.fundamental.fundamentalScore;
   return (
-    <div className="panel p-4">
+    <div className="card p-4">
       <div className="mb-2 flex items-center justify-between">
-        <span className="panel-title">Fundamentaldaten</span>
-        <span className="text-xs text-stone-400">Score {a.fundamental.fundamentalScore ?? "–"}{f ? ` · ${f.source}` : ""}</span>
+        <span className="panel-title">{f?.kind === "crypto" || kind === "crypto" ? "Kennzahlen" : "Fundamentalzahlen"}</span>
+        {s != null && <span className={`text-[13px] ${s >= 58 ? "text-up" : s <= 42 ? "text-down" : "text-stone-400"}`}>{s >= 58 ? "eher gut" : s <= 42 ? "eher schwach" : "durchschnittlich"} ({s})</span>}
       </div>
-      {rows.length === 0 ? (
-        <p className="text-sm text-stone-400">Nicht verfügbar – zählt neutral (50). Optional: Finnhub-/Alpha-Vantage-Key in den Einstellungen.</p>
+      {shown.length === 0 ? (
+        <p className="rounded-xl bg-white/5 p-3 text-[15px] text-stone-300">
+          Keine Daten verfügbar – Grund: {note ?? (f ? "Die Quelle hat keine Kennzahlen zu diesem Wert geliefert." : "Die Datenquelle hat nicht geantwortet.")}
+          <span className="mt-1 block text-[13px] text-stone-500">Tipp: Ein kostenloser Finnhub-Schlüssel (Mehr → Einstellungen) liefert Zahlen für US-Aktien zuverlässiger.</span>
+        </p>
       ) : (
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          {rows.map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="text-stone-400">{k}</dt>
-              <dd className="num text-right text-stone-100">{v}</dd>
-            </div>
-          ))}
-        </dl>
+        <ul className="divide-y divide-white/5">
+          {shown.map(([label, value, key]) => {
+            const c = key ? comment(key) : undefined;
+            return (
+              <li key={label} className="flex items-baseline justify-between gap-3 py-2">
+                <span className="text-[15px] text-stone-300">{label}</span>
+                <span className="text-right">
+                  <span className="num text-[16px] font-semibold text-stone-50">{value}</span>
+                  {c && <span className={`block text-[13px] ${c.score >= 60 ? "text-up" : c.score < 45 ? "text-down" : "text-stone-400"}`}>{c.comment}</span>}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       )}
+      {f && <p className="mt-2 text-[13px] text-stone-500">Quelle: {f.source}</p>}
       {a.fundamental.warnings.map((w) => (
-        <p key={w} className="mt-2 text-xs text-amber-300">
+        <p key={w} className="mt-2 text-[14px] text-amber-300">
           {w}
         </p>
       ))}
@@ -325,10 +300,10 @@ export function NewsPanel({ news, score }: { news: NewsItem[]; score: number | n
             <li key={n.link + n.title} className="flex gap-2 text-sm">
               <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.sentiment === "positive" ? "bg-emerald-400" : n.sentiment === "negative" ? "bg-red-500" : "bg-stone-500"}`} title={n.sentiment} />
               <div className="min-w-0">
-                <a href={n.link} target="_blank" rel="noopener noreferrer" className="text-stone-200 hover:text-gold-light hover:underline">
+                <a href={n.link} target="_blank" rel="noopener noreferrer" className="block min-h-[44px] py-1 text-[15px] text-stone-200 hover:text-gold-light">
                   {n.title}
                 </a>
-                <div className="text-[11px] text-stone-500">
+                <div className="text-[13px] text-stone-500">
                   {n.source} · {new Date(n.published).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}
                 </div>
               </div>
@@ -370,12 +345,12 @@ export function VolumePanel({ a }: { a: AnalysisResult }) {
       </ul>
       {data.length > 0 && (
         <>
-          <div className="mb-1 text-[11px] uppercase tracking-wider text-stone-400">Volume Profile (POC {fmtPrice(v.profile!.poc)})</div>
+          <div className="mb-1 text-[13px] text-stone-400">Volume Profile (POC {fmtPrice(v.profile!.poc)})</div>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} layout="vertical" margin={{ left: 4, right: 8, top: 0, bottom: 0 }} barCategoryGap={1}>
                 <XAxis type="number" hide />
-                <YAxis type="category" dataKey="price" width={64} tick={{ fill: "#8f887a", fontSize: 10 }} tickFormatter={(x: number) => fmtPrice(x)} interval={2} />
+                <YAxis type="category" dataKey="price" width={64} tick={{ fill: "#8f887a", fontSize: 13 }} tickFormatter={(x: number) => fmtPrice(x)} interval={2} />
                 <Tooltip cursor={{ fill: "rgba(201,162,74,0.08)" }} contentStyle={{ background: "#0b0b0b", border: "1px solid rgba(201,162,74,0.3)", fontSize: 12 }} formatter={(x) => [`${x} %`, "Volumenanteil"]} labelFormatter={(l) => fmtPrice(Number(l))} />
                 <ReferenceLine y={data.reduce((best, d) => (d.share > best.share ? d : best), data[0]).price} stroke="#C9A24A" strokeDasharray="3 3" />
                 <Bar dataKey="share" isAnimationActive={false}>
@@ -415,7 +390,7 @@ export function CoreCard({ core, currency }: { core: CoreStatus | null | undefin
     <div className={`panel space-y-2 p-4 ${core.state === "hold" ? "core-bg" : ""}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="panel-title">
-          Kernposition <span className="core-tag ml-1 align-middle normal-case tracking-normal">langfristig</span>
+          Kernposition <span className="core-tag ml-1 align-middle">langfristig</span>
         </span>
         <span className={`chip ${tone}`}>{title}</span>
       </div>
@@ -425,7 +400,7 @@ export function CoreCard({ core, currency }: { core: CoreStatus | null | undefin
           Letztes Ereignis: {CORE_EVENT_TEXT[core.last.type]} am {new Date(core.last.time * 1000).toLocaleDateString("de-DE")} bei {money(core.last.price, currency)}.
         </p>
       )}
-      <p className="text-[11px] text-stone-500">Kernposition = im Aufwärtstrend halten, nach der 5. Welle Gewinne mitnehmen, nach einem Boden wieder einsteigen. Läuft zusätzlich zu den Zonen-Trades.</p>
+      <p className="text-[13px] text-stone-500">Kernposition = im Aufwärtstrend halten, nach der 5. Welle Gewinne mitnehmen, nach einem Boden wieder einsteigen. Läuft zusätzlich zu den Zonen-Trades.</p>
     </div>
   );
 }

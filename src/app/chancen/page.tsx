@@ -1,237 +1,163 @@
 "use client";
-// Chancen-Scanner: durchsucht bekannte Aktien und Coins in allen drei Zeithorizonten nach Einstiegssignalen.
-import { useEffect, useState } from "react";
-import { TradeBox, simpleReason } from "@/components/TradeBox";
-import { TradeDialog } from "@/components/TradeDialog";
-import { SignalBadge } from "@/components/ui";
-import { analyze, type AnalysisResult } from "@/lib/analysis/analyze";
-import { api } from "@/lib/client/api";
-import { hasOpenTrade, openPaperTrade } from "@/lib/client/autotrade";
-import { SCAN_GROUPS, SCAN_PRESETS } from "@/lib/client/presets";
-import { actions, getData, useAppData, type WatchItem } from "@/lib/store/store";
-import { HORIZON_LABEL, type AssetKind, type Horizon, type ResolvedAsset } from "@/lib/types";
+// Chancen: alle Werte (Watchlist + feste Liste) in allen Zeiträumen – Trade (grün), Short (rot), Kernposition (blau).
+import { useEffect, useMemo, useState } from "react";
+import { AssetCard, type HorizonView } from "@/components/AssetCard";
+import { useAssetSheet } from "@/components/AssetSheet";
+import { Legend } from "@/components/Legend";
+import { ConfirmSheet } from "@/components/Sheet";
+import { haptic } from "@/lib/client/alerts";
+import { openPaperTrade } from "@/lib/client/autotrade";
+import { entryDistance, entryKinds, runScan, useScan, type ScanEntry, type SignalKind } from "@/lib/client/scanner";
+import { SCAN_GROUPS } from "@/lib/client/presets";
+import { getData } from "@/lib/store/store";
+import type { AssetKind, Horizon } from "@/lib/types";
 
-interface Hit {
-  asset: ResolvedAsset;
-  res: AnalysisResult;
+type KindFilter = "all" | SignalKind;
+const KIND_FILTERS: { k: KindFilter; label: string; cls: string }[] = [
+  { k: "all", label: "Alle", cls: "border-gold/60 text-gold-light" },
+  { k: "trade", label: "Trade", cls: "border-emerald-400/60 text-emerald-300" },
+  { k: "short", label: "Short", cls: "border-red-400/60 text-red-300" },
+  { k: "core", label: "Kernposition", cls: "border-sky-400/60 text-sky-300" },
+];
+
+function views(e: ScanEntry): Partial<Record<Horizon, HorizonView>> {
+  const v: Partial<Record<Horizon, HorizonView>> = {};
+  for (const [k, x] of Object.entries(e.horizons)) if (x) v[k as Horizon] = { res: x.res, candles: x.candles };
+  return v;
 }
 
-// Ergebnis bleibt beim Seitenwechsel erhalten
-let lastScan: { at: number; hits: Hit[]; checked: number; failed: number } | null = null;
-
-/** Abstand vom aktuellen Kurs bis zum Einstieg in % (0 = jetzt in der Zone) */
-function distance(h: Hit): number {
-  const p = h.res.plan;
-  if (!p || p.orderType !== "limit") return 0;
-  return (Math.abs(h.res.price - p.entry) / h.res.price) * 100;
-}
-
-async function pool<T>(items: T[], limit: number, fn: (x: T) => Promise<void>) {
-  let i = 0;
-  await Promise.all(
-    Array.from({ length: limit }, async () => {
-      while (i < items.length) await fn(items[i++]);
-    }),
-  );
+/** Sortierung: jetzt in der Zone zuerst, dann nach Abstand, Kernposition-only danach. */
+function rank(e: ScanEntry, filter: KindFilter): number {
+  const active = Object.values(e.horizons).filter((h) => h && h.res.plan && h.res.decision.level !== "neutral" && (filter === "all" || filter === "core" || (filter === "trade" ? h.res.plan.direction === "long" : h.res.plan.direction === "short")));
+  if (!active.length) return 1000 + (e.core?.last ? -e.core.last.time / 1e10 : 0);
+  return Math.min(...active.map((h) => entryDistance(h!.res)));
 }
 
 export default function ChancenPage() {
-  const watchlist = useAppData((d) => d.watchlist);
-  const trades = useAppData((d) => d.trades);
-  const [scan, setScan] = useState(lastScan);
-  const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [horizonFilter, setHorizonFilter] = useState<Horizon | "all">("all");
-  const [groupFilter, setGroupFilter] = useState<AssetKind | "all">("all");
-  const [dialog, setDialog] = useState<Hit | null>(null);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-
-  const assets = (() => {
-    const map = new Map<string, ResolvedAsset>();
-    for (const a of [...watchlist, ...SCAN_PRESETS]) if (!map.has(`${a.kind}:${a.symbol}`)) map.set(`${a.kind}:${a.symbol}`, a);
-    return [...map.values()];
-  })();
-
-  const run = async () => {
-    setBusy(true);
-    setProgress(0);
-    const { settings } = getData();
-    const jobs = assets.flatMap((asset) => (["short", "medium", "long"] as Horizon[]).map((horizon) => ({ asset, horizon })));
-    const hits: Hit[] = [];
-    let done = 0;
-    let failed = 0;
-    await pool(jobs, 4, async ({ asset, horizon }) => {
-      try {
-        const interval = settings.intervals[horizon];
-        const { candles } = await api.candles(asset, interval, 60e3);
-        const first = analyze({ symbol: asset.symbol, name: asset.name, candles, horizon, interval, weights: settings.weights, kind: asset.kind, currency: asset.currency });
-        if (first && first.decision.level !== "neutral") {
-          // Kandidat: mit Firmenzahlen und Nachrichten vollständig bewerten
-          const [f, n] = await Promise.allSettled([api.fundamentals(asset), api.news(asset)]);
-          const full = analyze({
-            symbol: asset.symbol,
-            name: asset.name,
-            candles,
-            horizon,
-            interval,
-            weights: settings.weights,
-            kind: asset.kind,
-            currency: asset.currency,
-            fundamentals: f.status === "fulfilled" ? f.value.fundamentals : null,
-            news: n.status === "fulfilled" ? n.value.news : [],
-          });
-          if (full && full.decision.level !== "neutral") hits.push({ asset, res: full });
-        }
-      } catch {
-        failed++;
-      }
-      done++;
-      setProgress(done / jobs.length);
-    });
-    hits.sort((a, b) => distance(a) - distance(b));
-    lastScan = { at: Date.now(), hits, checked: jobs.length, failed };
-    setScan(lastScan);
-    setBusy(false);
-  };
+  const scan = useScan();
+  const [kind, setKind] = useState<KindFilter>("all");
+  const [group, setGroup] = useState<AssetKind | "all">("all");
+  const [confirmAll, setConfirmAll] = useState(false);
+  const [more, setMore] = useState(10);
+  const { open, sheet } = useAssetSheet();
 
   useEffect(() => {
-    if (!lastScan || Date.now() - lastScan.at > 15 * 60e3) run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    runScan();
   }, []);
 
-  const hits = (scan?.hits ?? []).filter((h) => (horizonFilter === "all" || h.res.horizon === horizonFilter) && (groupFilter === "all" || h.asset.kind === groupFilter));
-  const takeAll = () => {
-    let n = 0;
-    for (const h of hits) if (openPaperTrade(h.asset, h.res)) n++;
-    window.alert(n ? `${n} Papier-Trade(s) eröffnet – zu sehen im Journal.` : "Alle Chancen sind bereits als Trade offen.");
-  };
+  const list = useMemo(
+    () =>
+      scan.entries
+        .filter((e) => (group === "all" || e.asset.kind === group) && entryKinds(e).length > 0 && (kind === "all" || entryKinds(e).includes(kind)))
+        .sort((a, b) => rank(a, kind) - rank(b, kind)),
+    [scan.entries, kind, group],
+  );
+  const counts = useMemo(() => {
+    const c: Record<KindFilter, number> = { all: 0, trade: 0, short: 0, core: 0 };
+    for (const e of scan.entries) {
+      if (group !== "all" && e.asset.kind !== group) continue;
+      const ks = entryKinds(e);
+      if (ks.length) c.all++;
+      ks.forEach((k) => c[k]++);
+    }
+    return c;
+  }, [scan.entries, group]);
+
+  const tradable = list.flatMap((e) =>
+    Object.values(e.horizons)
+      .filter((h) => h && h.res.plan && h.res.decision.level !== "neutral" && (kind === "all" || kind === "core" || (kind === "trade" ? h.res.plan.direction === "long" : h.res.plan.direction === "short")))
+      .map((h) => ({ asset: e.asset, res: h!.res })),
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl text-gold sm:text-3xl">Chancen</h1>
-          <p className="text-sm text-stone-400">
-            Der Analyst prüft 15 Aktien, 8 Kryptowährungen und 7 Rohstoffe (plus deine Watchlist) in allen drei Zeiträumen und zeigt nur echte Einstiegsmöglichkeiten.
-          </p>
+          <h1 className="text-[22px] text-gold">Chancen</h1>
+          <p className="text-[15px] text-stone-400">15 Aktien, 8 Krypto, 7 Rohstoffe und deine Watchlist – in allen Zeiträumen.</p>
         </div>
-        <div className="flex gap-2">
-          <button className="btn" onClick={run} disabled={busy}>
-            {busy ? `Suche … ${Math.round(progress * 100)} %` : "Neu suchen"}
+        <Legend />
+      </div>
+
+      <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none]">
+        {KIND_FILTERS.map((f) => (
+          <button key={f.k} onClick={() => setKind(f.k)} className={`chip shrink-0 ${kind === f.k ? `${f.cls} bg-white/10 font-semibold` : "border-white/10 text-stone-400"}`}>
+            {f.label} {scan.at ? `(${counts[f.k]})` : ""}
           </button>
-          {hits.length > 0 && (
-            <button className="btn-primary" onClick={takeAll}>
-              Alle als Papier-Trades
-            </button>
-          )}
-        </div>
+        ))}
       </div>
-
-      {busy && (
-        <div className="h-1.5 overflow-hidden rounded-full bg-stone-800">
-          <div className="h-full bg-gold transition-all" style={{ width: `${progress * 100}%` }} />
-        </div>
-      )}
-
-      <div className="flex flex-wrap gap-1">
-        {(["all", ...SCAN_GROUPS.map((g) => g.kind)] as const).map((k) => {
-          const n = (scan?.hits ?? []).filter((h) => k === "all" || h.asset.kind === k).length;
-          return (
-            <button key={k} onClick={() => setGroupFilter(k)} className={`chip ${groupFilter === k ? "border-gold bg-gold text-black" : "border-gold/40 text-gold-light"}`}>
-              {k === "all" ? "Alle" : SCAN_GROUPS.find((g) => g.kind === k)!.title} {scan ? `(${n})` : ""}
-            </button>
-          );
-        })}
-      </div>
-      <div className="flex flex-wrap gap-1">
-        {(["all", "short", "medium", "long"] as const).map((h) => (
-          <button key={h} onClick={() => setHorizonFilter(h)} className={`chip ${horizonFilter === h ? "border-gold bg-gold/20 text-gold-light" : "border-stone-700 text-stone-400"}`}>
-            {h === "all" ? "Alle Zeiträume" : HORIZON_LABEL[h]}
+      <div className="seg w-full">
+        {[{ k: "all" as const, t: "Alle" }, ...SCAN_GROUPS.map((g) => ({ k: g.kind, t: g.title }))].map((g) => (
+          <button key={g.k} aria-pressed={group === g.k} onClick={() => setGroup(g.k)} className="flex-1">
+            {g.t}
           </button>
         ))}
       </div>
 
-      {scan && !busy && (scan.hits.length === 0) && (
-        <p className="text-sm text-stone-400">Gerade erfüllt kein Wert die Ansprüche des Analysten. Lieber kein Trade als ein schwacher – die Suche läuft bei jedem Öffnen neu.</p>
+      {scan.busy && (
+        <div className="card p-3">
+          <div className="mb-1.5 flex justify-between text-[14px] text-stone-300">
+            <span>Analyst sucht Chancen …</span>
+            <span className="num">{Math.round(scan.progress * 100)} %</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full bg-gold transition-all" style={{ width: `${scan.progress * 100}%` }} />
+          </div>
+        </div>
       )}
 
-      {SCAN_GROUPS.filter((g) => groupFilter === "all" || g.kind === groupFilter).map((g) => {
-        const groupHits = hits.filter((h) => h.asset.kind === g.kind);
-        return (
-          <section key={g.kind} className="space-y-2">
-            <h2 className="flex items-baseline gap-2 text-lg text-gold">
-              {g.title}
-              <span className="font-sans text-xs text-stone-500">
-                {g.assets.map((x) => x.name).join(" · ")}
-              </span>
-            </h2>
-            {scan && !busy && groupHits.length === 0 && (
-              <p className="panel px-4 py-3 text-sm text-stone-400">Keine Einstiege {horizonFilter === "all" ? "" : `(${HORIZON_LABEL[horizonFilter]}) `}– abwarten.</p>
-            )}
-            <div className="grid gap-3 md:grid-cols-2">
-        {(expanded[g.kind] ? groupHits : groupHits.slice(0, 6)).map((h) => {
-          const c = h.res.commentary;
-          const open = hasOpenTrade(h.asset.symbol, h.res.horizon);
-          const inList = watchlist.some((w) => w.kind === h.asset.kind && w.symbol === h.asset.symbol);
-          return (
-            <div key={`${h.asset.symbol}-${h.res.horizon}`} className={`panel space-y-2 p-4 ${h.res.plan?.direction === "short" ? "sell-bg" : "trade-bg"}`}>
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="text-lg font-semibold text-gold-light">{h.asset.name}</div>
-                  <div className="text-xs text-stone-400">{HORIZON_LABEL[h.res.horizon]}</div>
-                </div>
-                {h.res.plan?.direction === "short" ? <span className="sell-tag text-sm">Verkaufen</span> : <span className="trade-tag text-sm">Kaufen</span>}
-              </div>
-              {distance(h) === 0 ? (
-                <p className="text-sm font-medium text-emerald-300">● Jetzt einsteigen – der Kurs ist im richtigen Bereich.</p>
-              ) : (
-                <p className="text-sm font-medium text-amber-300">◷ Noch warten – der Kurs ist {distance(h).toFixed(1).replace(".", ",")} % entfernt.</p>
-              )}
-              {h.res.plan && <TradeBox plan={h.res.plan} currency={h.asset.currency} />}
-              {h.res.plan && <p className="text-sm text-stone-200">{simpleReason(h.res.plan, h.asset.currency)}</p>}
-              <details className="text-xs text-stone-400">
-                <summary className="cursor-pointer text-gold/80">Mehr erfahren</summary>
-                <div className="mt-2 space-y-1">
-                  <p>{c.summary}</p>
-                  <p>{c.reason}</p>
-                  {c.risk && <p>{c.risk}</p>}
-                  <p>
-                    {h.asset.symbol} · Kerzen {h.res.interval} · {h.res.total.toFixed(0)} Punkte · Signal: <SignalBadge level={h.res.decision.level} small />
-                  </p>
-                </div>
-              </details>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {open ? (
-                  <span className="chip border-gold/40 text-gold-light">Trade läuft (Journal)</span>
-                ) : (
-                  <button className="btn-primary px-3 py-1.5 text-xs" onClick={() => setDialog(h)}>
-                    Als Papier-Trade übernehmen
-                  </button>
-                )}
-                {!inList && (
-                  <button className="btn px-3 py-1.5 text-xs" onClick={() => actions.addWatch(h.asset)}>
-                    + Watchlist
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-            </div>
-            {groupHits.length > 6 && (
-              <button className="btn w-full text-xs" onClick={() => setExpanded((e) => ({ ...e, [g.kind]: !e[g.kind] }))}>
-                {expanded[g.kind] ? "Weniger anzeigen" : `Alle ${groupHits.length} anzeigen`}
-              </button>
-            )}
-          </section>
-        );
+      {!scan.busy && scan.at && list.length === 0 && (
+        <div className="card p-5 text-center text-[15px] text-stone-300">Gerade keine passenden Einstiege. Lieber kein Trade als ein schwacher – die Suche läuft bei jedem Öffnen neu.</div>
+      )}
+
+      {list.slice(0, more).map((e) => {
+        const v = views(e);
+        const initial = (["short", "medium", "long"] as Horizon[]).find((h) => {
+          const p = v[h]?.res?.plan;
+          if (!p || v[h]?.res?.decision.level === "neutral") return false;
+          return kind === "all" || kind === "core" || (kind === "trade" ? p.direction === "long" : p.direction === "short");
+        });
+        return <AssetCard key={`${e.asset.kind}:${e.asset.symbol}`} asset={e.asset} views={v} core={e.core} initial={initial ?? "medium"} onOpen={(h) => open(e.asset, h)} />;
       })}
-      {scan && !busy && (
-        <p className="text-xs text-stone-500">
-          Letzte Suche: {new Date(scan.at).toLocaleTimeString("de-DE")} · {scan.checked} Prüfungen{scan.failed ? ` · ${scan.failed} ohne Daten` : ""} · {trades.filter((t) => t.status !== "closed").length} laufende/wartende Papier-Trades
+      {list.length > more && (
+        <button className="btn w-full" onClick={() => setMore(more + 10)}>
+          Weitere {Math.min(10, list.length - more)} anzeigen
+        </button>
+      )}
+
+      <div className="flex gap-2">
+        <button className="btn flex-1" onClick={() => runScan(0)} disabled={scan.busy}>
+          Neu suchen
+        </button>
+        {tradable.length > 0 && kind !== "core" && (
+          <button className="btn flex-1" onClick={() => setConfirmAll(true)}>
+            Alle als Papier-Trades
+          </button>
+        )}
+      </div>
+      {scan.at && !scan.busy && (
+        <p className="text-[13px] text-stone-500">
+          Letzte Suche {new Date(scan.at).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} · {scan.checked} Prüfungen{scan.failed ? ` · ${scan.failed} ohne Daten` : ""}
         </p>
       )}
-      {dialog && <TradeDialog item={{ ...dialog.asset, id: "scan", addedAt: 0 } as WatchItem} analysis={dialog.res} onClose={() => setDialog(null)} />}
+
+      <ConfirmSheet
+        open={confirmAll}
+        title="Alle als Papier-Trades übernehmen?"
+        confirm={`${tradable.length} übernehmen`}
+        onClose={() => setConfirmAll(false)}
+        onConfirm={() => {
+          let n = 0;
+          for (const t of tradable) if (openPaperTrade(t.asset, t.res)) n++;
+          if (n && getData().settings.haptics) haptic(30);
+        }}
+        text={
+          <p>
+            Es werden {tradable.length} Papier-Trades ins Journal übernommen (bereits laufende werden übersprungen). Einstieg, Stop und Ziele kommen unverändert vom Analysten.
+          </p>
+        }
+      />
+      {sheet}
     </div>
   );
 }

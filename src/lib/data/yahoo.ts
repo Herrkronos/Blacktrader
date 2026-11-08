@@ -168,17 +168,45 @@ export async function yahooSearch(q: string): Promise<YahooSearchQuote[]> {
 // --- Fundamentaldaten über quoteSummary (benötigt Cookie + Crumb)
 let crumbCache: { cookie: string; crumb: string; expires: number } | null = null;
 
+function cookiesFrom(r: Response): string {
+  const list = typeof r.headers.getSetCookie === "function" ? r.headers.getSetCookie() : [r.headers.get("set-cookie") ?? ""];
+  return list.map((c) => c.split(";")[0]).filter(Boolean).join("; ");
+}
+
+/**
+ * Cookie + Crumb für quoteSummary. In der EU leitet Yahoo teils auf eine Zustimmungsseite um –
+ * daher mehrere Wege: fc.yahoo.com, dann finance.yahoo.com; Crumb von query2, dann query1.
+ */
 async function getCrumb(): Promise<{ cookie: string; crumb: string }> {
   if (crumbCache && crumbCache.expires > Date.now()) return crumbCache;
-  const r1 = await fetchRaw("https://fc.yahoo.com", { headers: { "User-Agent": UA } });
-  const setCookies = typeof r1.headers.getSetCookie === "function" ? r1.headers.getSetCookie() : [r1.headers.get("set-cookie") ?? ""];
-  const cookie = setCookies.map((c) => c.split(";")[0]).filter(Boolean).join("; ");
-  if (!cookie) throw new UpstreamError("Yahoo: kein Cookie erhalten");
-  const r2 = await fetchRaw(`${BASES[1]}/v1/test/getcrumb`, { headers: { Cookie: cookie } });
-  const crumb = (await r2.text()).trim();
-  if (!r2.ok || !crumb || crumb.includes("<")) throw new UpstreamError("Yahoo: kein Crumb erhalten");
-  crumbCache = { cookie, crumb, expires: Date.now() + 30 * 60e3 };
-  return crumbCache;
+  const errors: string[] = [];
+  for (const cookieUrl of ["https://fc.yahoo.com", "https://finance.yahoo.com/quote/AAPL/", "https://finance.yahoo.com/"]) {
+    let cookie = "";
+    try {
+      cookie = cookiesFrom(await fetchRaw(cookieUrl, { headers: { "User-Agent": UA, "Accept-Language": "en-US,en;q=0.9" } }));
+    } catch (e) {
+      errors.push((e as Error).message);
+      continue;
+    }
+    if (!cookie) {
+      errors.push(`kein Cookie von ${new URL(cookieUrl).host}`);
+      continue;
+    }
+    for (const base of [BASES[1], BASES[0]]) {
+      try {
+        const r2 = await fetchRaw(`${base}/v1/test/getcrumb`, { headers: { Cookie: cookie } });
+        const crumb = (await r2.text()).trim();
+        if (r2.ok && crumb && !crumb.includes("<") && crumb.length < 40) {
+          crumbCache = { cookie, crumb, expires: Date.now() + 30 * 60e3 };
+          return crumbCache;
+        }
+        errors.push(`Crumb HTTP ${r2.status}`);
+      } catch (e) {
+        errors.push((e as Error).message);
+      }
+    }
+  }
+  throw new UpstreamError(`Yahoo-Fundamentaldaten gesperrt (${[...new Set(errors)].slice(0, 3).join(", ")})`);
 }
 
 type Raw = { raw?: number } | undefined;

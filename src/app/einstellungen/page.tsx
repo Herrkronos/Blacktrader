@@ -67,16 +67,16 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl text-gold sm:text-3xl">Einstellungen</h1>
+      <h1 className="text-[22px] text-gold">Einstellungen</h1>
 
       <Section title="Ansicht" hint="Einfache Ansicht: kurze, verständliche Sätze ohne Fachbegriffe. Expertenansicht: zusätzlich Wellenzählung, Fibonacci-Linien, Volumen-/RSI-Details.">
         <label className="flex items-center gap-2 text-sm text-stone-200">
           <input type="checkbox" className="accent-[#C9A24A]" checked={s.expertMode} onChange={(e) => actions.setSettings({ expertMode: e.target.checked })} />
           Expertenansicht anzeigen
         </label>
-        <label className="flex items-center gap-2 text-sm text-stone-200">
-          <input type="checkbox" className="accent-[#C9A24A]" checked={s.autoTrade} onChange={(e) => actions.setSettings({ autoTrade: e.target.checked })} />
-          Auto-Papiertrading: Signale der Watchlist automatisch als Übungs-Trades ins Journal übernehmen
+        <label className="flex min-h-[44px] items-center gap-3 text-[15px] text-stone-200">
+          <input type="checkbox" className="h-5 w-5 accent-[#C9A24A]" checked={s.haptics} onChange={(e) => actions.setSettings({ haptics: e.target.checked })} />
+          Vibration bei Alarm und Trade-Übernahme (Android)
         </label>
       </Section>
 
@@ -137,7 +137,7 @@ export default function SettingsPage() {
                 actions.setSettings({ notifications: e.target.checked });
               }}
             />
-            Browser-Benachrichtigungen
+            Benachrichtigungen bei neuen Signalen, Zielen und Stops
           </label>
           <label className="flex items-center gap-2">
             <input type="checkbox" className="accent-[#C9A24A]" checked={s.sound} onChange={(e) => actions.setSettings({ sound: e.target.checked })} />
@@ -204,7 +204,7 @@ export default function SettingsPage() {
         </div>
         {msg && <p className="text-sm text-gold-light">{msg}</p>}
       </Section>
-      <p className="text-center text-[11px] text-stone-600">Standardwerte: Polling {DEFAULT_SETTINGS.pollSeconds} s · Gewichtung 60/20/20</p>
+      <p className="text-center text-[13px] text-stone-600">Standardwerte: Polling {DEFAULT_SETTINGS.pollSeconds} s · Gewichtung 60/20/20</p>
     </div>
   );
 }
