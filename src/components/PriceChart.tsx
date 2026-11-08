@@ -142,8 +142,9 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
     }
     if (plan) {
       linesRef.current.push(s.candle.createPriceLine({ price: plan.entry, color: plan.direction === "short" ? "#f87171" : "#34d399", lineStyle: LineStyle.Solid, lineWidth: 2, axisLabelVisible: true, title: plan.direction === "short" ? "Verkauf" : "Kauf" }));
-      if (simple) {
-        linesRef.current.push(s.candle.createPriceLine({ price: plan.stop, color: WINE, lineStyle: LineStyle.Dashed, lineWidth: 2, axisLabelVisible: true, title: "Stop" }));
+      {
+        // Stop und Ziele des Trades immer zeigen (auch in der Expertenansicht neben den Wellen-Levels)
+        linesRef.current.push(s.candle.createPriceLine({ price: plan.stop, color: WINE, lineStyle: LineStyle.Dashed, lineWidth: 2, axisLabelVisible: true, title: simple ? "Stop" : "Trade-Stop" }));
         plan.targets.forEach((t, i) =>
           linesRef.current.push(s.candle.createPriceLine({ price: t, color: "rgba(63,174,106,0.9)", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: true, title: `Ziel ${i + 1}` })),
         );

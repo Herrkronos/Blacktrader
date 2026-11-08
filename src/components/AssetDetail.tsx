@@ -147,6 +147,13 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
         </div>
       </div>
 
+      <label className="ls-hide flex min-h-[44px] items-center justify-between gap-3 rounded-xl bg-white/5 px-3 text-[15px] text-stone-200">
+        <span>
+          Expertenansicht
+          <span className="block text-[13px] text-stone-400">Wellen-Labels, Alternativzählung, Fibonacci, Teil-Scores</span>
+        </span>
+        <input type="checkbox" className="h-6 w-6 accent-[#C9A24A]" checked={settings.expertMode} onChange={(e) => actions.setSettings({ expertMode: e.target.checked })} />
+      </label>
       <div className="ls-row space-y-3">
       <div className="seg w-full" role="tablist" aria-label="Zeitraum">
         {HORIZONS.map((h) => (
@@ -172,14 +179,19 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
             candles={chartCandles}
             best={analysis?.elliott.best}
             alternative={analysis?.elliott.alternative}
-            plan={analysis?.decision.level !== "neutral" ? analysis?.plan : null}
-            showAlternative={false}
-            simple={false}
+            plan={settings.expertMode || analysis?.decision.level !== "neutral" ? analysis?.plan : null}
+            showAlternative={settings.expertMode}
+            simple={!settings.expertMode}
             height={typeof window !== "undefined" && window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches ? Math.max(240, window.innerHeight - 110) : 360}
             coreEntry={core?.state === "hold" ? core.last?.price : undefined}
           />
         )}
-        <p className="px-2 pb-1.5 text-[13px] text-stone-400">Gold: Wellenzählung · Grün: Einstieg/Ziele · Rot: Stop · Blau: Kernposition. Zoomen mit zwei Fingern, Antippen zeigt den Kurs.</p>
+        <p className="px-2 pb-1.5 text-[13px] text-stone-400">
+          {settings.expertMode
+            ? "Experte: Gold = Primärzählung mit Wellen-Labels, gestrichelt = Alternativzählung, Linien = Fibonacci-Ziele/-Retracements, Rot = Invalidierung, Blau = Kernposition."
+            : "Grün = Einstieg und Ziele · Rot = Stop · Blau = Kernposition."}{" "}
+          Zoomen mit zwei Fingern, Antippen zeigt den Kurs.
+        </p>
       </div>
 
       {analysis ? (
@@ -189,13 +201,13 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
           <Commentary a={analysis} item={asset} />
           <FundamentalsPanel a={analysis} f={fundamentals} note={fundNote} kind={asset.kind} />
           <NewsPanel news={news} score={analysis.fundamental.newsScore} />
-          <details className="card p-4">
+          <details className="card p-4" open={settings.expertMode}>
             <summary className="cursor-pointer text-[15px] font-medium text-gold-light">Wellenzählung im Detail</summary>
             <div className="mt-3">
               <WavePanel a={analysis} />
             </div>
           </details>
-          <details className="card p-4">
+          <details className="card p-4" open={settings.expertMode}>
             <summary className="cursor-pointer text-[15px] font-medium text-gold-light">Volumen & RSI im Detail</summary>
             <div className="mt-3">
               <VolumePanel a={analysis} />

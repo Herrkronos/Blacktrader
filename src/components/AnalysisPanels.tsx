@@ -119,7 +119,7 @@ export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: str
       {llm && <div className="whitespace-pre-wrap text-sm leading-relaxed text-stone-300">{llm}</div>}
       {c.risk && <p className="text-sm text-stone-300">{c.risk}</p>}
       {(
-      <details className="text-sm">
+      <details className="text-sm" open={expert}>
         <summary className="cursor-pointer text-xs text-gold/80">Details zur Analyse</summary>
         <p className="mt-2 font-display text-sm text-gold-light">{c.headline}</p>
         <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">

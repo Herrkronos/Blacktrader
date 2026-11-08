@@ -76,6 +76,7 @@ export function AssetCard({
   const [confirm, setConfirm] = useState<null | "trade" | "core">(null);
   const touch = useRef<number | null>(null);
   const trades = useAppData((d) => d.trades);
+  const expert = useAppData((d) => d.settings.expertMode);
   const view = views[h];
   const res = view?.res ?? null;
   const coreFocus = focus === "core";
@@ -206,6 +207,21 @@ export function AssetCard({
         </div>
       ) : (
         <p className="text-[15px] text-stone-300">{res ? "Kein Einstieg – abwarten." : "Keine Daten für diesen Zeitraum."}</p>
+      )}
+
+      {expert && res && !coreFocus && (
+        <div className="rounded-xl border border-gold/20 bg-black/30 px-3 py-2 text-[13px] text-stone-300">
+          {res.elliott.best ? (
+            <div className="text-gold-light">
+              {res.elliott.best.patternLabel} · {res.elliott.best.phase} · Wahrscheinlichkeit {Math.round(res.elliott.best.probability * 100)} %
+            </div>
+          ) : (
+            <div className="text-stone-400">Keine regelkonforme Wellenzählung</div>
+          )}
+          <div className="num mt-0.5">
+            Elliott {res.elliott.score} · Fundamental {res.fundamental.score} · Volumen/RSI {res.volume.score} · Gesamt {res.total.toFixed(0)}
+          </div>
+        </div>
       )}
 
       {/* Zeile 4: Signalstärke – je höher, desto stärker (Kauf und Short gleich) */}
