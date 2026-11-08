@@ -35,6 +35,12 @@ export interface Trade {
   cancelAbove?: number;
   /** Ablauf der wartenden Order (ms) */
   expiresAt?: number;
+  /** Nachzieh-Abstand ab Ziel 1 */
+  trailDistance?: number;
+  /** true, sobald Ziel 1 erreicht ist (Stop läuft mit) */
+  trailing?: boolean;
+  /** ursprünglicher Stop (für Anzeige) */
+  initialStop?: number;
   lastPrice?: number;
   exit?: number;
   closedAt?: number;

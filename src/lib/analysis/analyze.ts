@@ -93,6 +93,7 @@ export function analyze(input: AnalyzeInput): AnalysisResult | null {
           zoneStart: zone.zoneStart,
           zoneEnd: zone.zoneEnd,
           cancelAbove: zone.cancelAbove,
+          trailDistance: 4 * zone.atr,
         }
       : null;
     const vetoes: string[] = [];

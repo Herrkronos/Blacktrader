@@ -273,7 +273,25 @@ function trackTrades(trades: Trade[], live: Record<string, LiveState>) {
     const target = s.closeAtTarget === "last" ? sortedTargets[sortedTargets.length - 1] : sortedTargets[0];
     let closeReason: Trade["closeReason"] | null = null;
     let exit = price;
-    if ((price - t.stop) * dir <= 0) {
+    if (t.trailDistance) {
+      // Gewinne laufen lassen: ab Ziel 1 Stop auf Einstieg, dann mit Abstand nachziehen
+      let stop = t.stop;
+      let trailing = !!t.trailing;
+      if (!trailing && (price - sortedTargets[0]) * dir >= 0) {
+        trailing = true;
+        stop = dir === 1 ? Math.max(stop, t.entry) : Math.min(stop, t.entry);
+        notify(`Ziel 1 erreicht: ${t.symbol}`, `Stop auf Einstieg ${fmtPrice(t.entry)} gezogen – der Trade läuft jetzt ohne Verlustrisiko weiter.`, { sound: s.sound, notifications: s.notifications, kind: "info" });
+      }
+      if (trailing) {
+        const trail = price - dir * t.trailDistance;
+        if ((trail - stop) * dir > 0) stop = trail;
+      }
+      if (stop !== t.stop || trailing !== !!t.trailing) actions.updateTrade(t.id, { stop, trailing, initialStop: t.initialStop ?? t.stop });
+      if ((price - stop) * dir <= 0) {
+        closeReason = trailing ? "target" : "stop";
+        exit = price;
+      }
+    } else if ((price - t.stop) * dir <= 0) {
       closeReason = "stop";
       exit = price;
     } else if (target != null && (price - target) * dir >= 0) {

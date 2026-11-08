@@ -74,7 +74,8 @@ Stand der Messung auf Prüfdaten (letzte 40 %, vom Analysten nie gesehen):
 |---|---|---|---|
 | Elliott-Sofort-Einstieg (alt) | 145 | 16 % | 0,51 |
 | + Trendfilter + Stop ≥ 2 ATR | 138 | 35 % | 0,66 |
-| **Zielzonen-Einstieg (aktuell)** | **383** | **36 %** | **1,18** |
+| Zielzonen-Einstieg, Ausstieg bei Ziel 1 | 383 | 36 % | 1,18 |
+| **Zielzonen + Gewinne laufen lassen (aktuell)** | **283** | **34 %** | **1,67** |
 
 Zielzonen (`src/lib/analysis/zones.ts`): im Trend die letzte Welle A→B, Limit-Einstieg bei 61,8 % Korrektur
-(Zone bis 78,6 %), Stop jenseits von A, Ziel 1 = B + 27,2 %. `ZONE='{...}'` bzw. `ZONEGRID=1` für Messungen.
+(Zone bis 78,6 %), Stop jenseits von A, Ziel 1 = B + 27,2 %. Ab Ziel 1 Stop auf Einstieg und mit 4 × ATR nachziehen. `ZONE='{...}'` bzw. `ZONEGRID=1` für Messungen.

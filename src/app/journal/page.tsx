@@ -151,7 +151,7 @@ export default function JournalPage() {
                     <td className={`num px-2 py-2 text-right ${ret == null ? "" : ret >= 0 ? "text-up" : "text-down"}`}>{ret == null ? "–" : `${ret >= 0 ? "+" : ""}${ret.toFixed(2)} %`}</td>
                     <td className="px-2 py-2 text-xs">
                       {t.status === "open" ? (
-                        <span className="text-gold-light">offen</span>
+                        <span className="text-gold-light">{t.trailing ? "offen · Stop läuft mit" : "offen"}</span>
                       ) : t.status === "pending" ? (
                         <span className="text-sky-300" title="Limit-Order wartet, bis der Kurs die Zone erreicht">wartet auf Einstieg</span>
                       ) : (

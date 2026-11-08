@@ -166,6 +166,7 @@ export function writeCommentary(input: {
       plan.direction === "long"
         ? `Fällt der Kurs unter ${money(plan.stop, cur)}, wird verkauft – Verlust ca. ${lossPct.toFixed(1).replace(".", ",")} %. Möglicher Gewinn bis zum ersten Ziel: ca. ${gainPct.toFixed(1).replace(".", ",")} %.`
         : `Steigt der Kurs über ${money(plan.stop, cur)}, wird die Wette auf fallende Kurse beendet – Verlust ca. ${lossPct.toFixed(1).replace(".", ",")} %. Möglicher Gewinn bis zum ersten Ziel: ca. ${gainPct.toFixed(1).replace(".", ",")} %.`;
+    if (plan.trailDistance) risk += ` Ab dem ersten Ziel wird der Stop auf den Einstieg gezogen und dem Kurs nachgezogen – Gewinne laufen lassen.`;
     if (plan.orderType === "limit" && plan.cancelAbove != null)
       risk += ` ${plan.direction === "long" ? "Steigt" : "Fällt"} der Kurs vorher ${plan.direction === "long" ? "über" : "unter"} ${money(plan.cancelAbove, cur)}, verfällt die Order.`;
     if (decision.level === "neutral") risk = "";

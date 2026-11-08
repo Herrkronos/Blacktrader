@@ -2,6 +2,7 @@
 import type { Candle } from "../types";
 import type { BacktestResult, BacktestTrade } from "./backtest";
 import { MIN_RISK_REWARD } from "./score";
+import { atr } from "./indicators";
 import { performance, tradeReturnPct } from "./stats";
 import { DEFAULT_ZONE_OPTIONS, findZoneSetup, type ZoneOptions } from "./zones";
 
@@ -16,6 +17,16 @@ export interface ZoneBacktestOptions {
   maxHold?: number;
   /** Welches Ziel schließt den Trade (0 = Ziel 1) */
   targetIndex?: number;
+  /**
+   * Ausstieg: "fixed" = bei Ziel 1; "trail" = ab Ziel 1 Stop auf Einstieg und mit `trailAtr` × ATR nachziehen;
+   * "partial" = Hälfte bei Ziel 1, Rest wie "trail".
+   */
+  exitMode?: "fixed" | "trail" | "partial";
+  trailAtr?: number;
+  /** Nachzieh-Abstand fest mit dem ATR beim Setup (wie die Papier-Trades in der App) statt laufend */
+  trailAtSignal?: boolean;
+  /** Einstieg erst, wenn eine Kerze in der Zone in Trade-Richtung über das Hoch der Vorkerze schließt */
+  confirmEntry?: boolean;
 }
 
 function* steps(candles: Candle[], opts: ZoneBacktestOptions): Generator<number, BacktestResult> {
@@ -26,6 +37,9 @@ function* steps(candles: Candle[], opts: ZoneBacktestOptions): Generator<number,
   const maxWait = opts.maxWait ?? 60;
   const maxHold = opts.maxHold ?? 200;
   const ti = opts.targetIndex ?? 0;
+  const exitMode = opts.exitMode ?? "trail"; // gemessen: Prüfdaten Gewinnfaktor 1,59 (fixed: 1,18)
+  const trailAtr = opts.trailAtr ?? 4;
+  const atrs = atr(candles);
   const trades: BacktestTrade[] = [];
   let evaluated = 0;
   let i = warmup;
@@ -46,14 +60,29 @@ function* steps(candles: Candle[], opts: ZoneBacktestOptions): Generator<number,
       fillIdx = i;
       fill = candles[i].close;
     } else {
+      let touched = false;
       for (let j = i + 1; j < candles.length && j <= i + maxWait; j++) {
         const c = candles[j];
-        if ((dir === 1 ? c.high > setup.cancelAbove : c.low < setup.cancelAbove) && !(dir === 1 ? c.low <= setup.entry : c.high >= setup.entry)) {
+        const reached = dir === 1 ? c.low <= setup.entry : c.high >= setup.entry;
+        if ((dir === 1 ? c.high > setup.cancelAbove : c.low < setup.cancelAbove) && !reached && !touched) {
           break; // Setup verfällt: neues Extrem ohne Einstieg
         }
-        if (dir === 1 ? c.low <= setup.entry : c.high >= setup.entry) {
+        if (!opts.confirmEntry) {
+          if (reached) {
+            fillIdx = j;
+            fill = dir === 1 ? Math.min(setup.entry, c.open) : Math.max(setup.entry, c.open);
+            break;
+          }
+          continue;
+        }
+        // Mit Bestätigung: fällt der Kurs vor der Bestätigung durch den Stop, wurde nie eingestiegen
+        if (dir === 1 ? c.low <= setup.stop : c.high >= setup.stop) break;
+        if (reached) touched = true;
+        // Bestätigung: Kerze schließt in Trade-Richtung über/unter der Vorkerze, Kurs noch unter dem alten Extrem
+        const prev = candles[j - 1];
+        if (touched && (c.close - c.open) * dir > 0 && (dir === 1 ? c.close > prev.high : c.close < prev.low) && (c.close - setup.cancelAbove) * dir < 0) {
           fillIdx = j;
-          fill = dir === 1 ? Math.min(setup.entry, c.open) : Math.max(setup.entry, c.open);
+          fill = c.close;
           break;
         }
       }
@@ -66,36 +95,52 @@ function* steps(candles: Candle[], opts: ZoneBacktestOptions): Generator<number,
     let exitIdx = -1;
     let exit = 0;
     let reason: BacktestTrade["reason"] = "end";
-    for (let j = fillIdx + (setup.inZone ? 1 : 0); j < candles.length && j <= fillIdx + maxHold; j++) {
+    let stop = setup.stop;
+    let reachedT1 = false;
+    let partialExit: number | null = null;
+    const startJ = fillIdx + (setup.inZone || opts.confirmEntry ? 1 : 0);
+    const holdLimit = exitMode === "fixed" ? maxHold : maxHold * 5;
+    for (let j = startJ; j < candles.length && j <= fillIdx + holdLimit; j++) {
       const c = candles[j];
       if (j === fillIdx) {
-        // Einstiegskerze: nur Stop prüfen (Reihenfolge innerhalb der Kerze unbekannt)
-        if (dir === 1 ? c.low <= setup.stop : c.high >= setup.stop) {
+        if (dir === 1 ? c.low <= stop : c.high >= stop) {
           exitIdx = j;
-          exit = setup.stop;
+          exit = stop;
           reason = "stop";
           break;
         }
         continue;
       }
-      if (dir === 1 ? c.low <= setup.stop : c.high >= setup.stop) {
+      if (dir === 1 ? c.low <= stop : c.high >= stop) {
         exitIdx = j;
-        exit = dir === 1 ? Math.min(setup.stop, c.open) : Math.max(setup.stop, c.open);
-        reason = "stop";
+        exit = dir === 1 ? Math.min(stop, c.open) : Math.max(stop, c.open);
+        reason = reachedT1 ? "target" : "stop";
         break;
       }
-      if (dir === 1 ? c.high >= target : c.low <= target) {
-        exitIdx = j;
-        exit = target;
-        reason = "target";
-        break;
+      if (!reachedT1 && (dir === 1 ? c.high >= target : c.low <= target)) {
+        if (exitMode === "fixed") {
+          exitIdx = j;
+          exit = target;
+          reason = "target";
+          break;
+        }
+        reachedT1 = true;
+        if (exitMode === "partial") partialExit = target;
+        stop = fill; // Stop auf Einstieg
+      }
+      if (reachedT1) {
+        const a = opts.trailAtSignal ?? true ? setup.atr : atrs[j] ?? 0; // Standard wie in der App: fester Abstand
+        const trail = dir === 1 ? c.close - trailAtr * a : c.close + trailAtr * a;
+        if ((trail - stop) * dir > 0) stop = trail;
       }
     }
     if (exitIdx < 0) {
-      exitIdx = Math.min(candles.length - 1, fillIdx + maxHold);
+      exitIdx = Math.min(candles.length - 1, fillIdx + holdLimit);
       exit = candles[exitIdx].close;
       reason = exitIdx === candles.length - 1 ? "end" : "timeout";
     }
+    // Teilausstieg: Hälfte bei Ziel 1, Rest beim endgültigen Ausstieg
+    const effExit = partialExit != null ? (partialExit + exit) / 2 : exit;
     trades.push({
       direction: setup.direction,
       entryTime: candles[fillIdx].time,
@@ -103,9 +148,9 @@ function* steps(candles: Candle[], opts: ZoneBacktestOptions): Generator<number,
       stop: setup.stop,
       target,
       exitTime: candles[exitIdx].time,
-      exit,
+      exit: effExit,
       reason,
-      returnPct: tradeReturnPct(setup.direction, fill, exit),
+      returnPct: tradeReturnPct(setup.direction, fill, effExit),
       score: setup.riskReward,
       pattern: setup.direction === "long" ? "Kaufzone im Aufwärtstrend" : "Verkaufszone im Abwärtstrend",
     });

@@ -50,6 +50,8 @@ export interface ZoneSetup {
   cancelAbove: number;
   /** Kurs ist bereits in der Zone */
   inZone: boolean;
+  /** ATR zum Zeitpunkt des Setups (für das Nachziehen des Stops) */
+  atr: number;
 }
 
 /**
@@ -101,7 +103,7 @@ export function findZoneSetup(candles: Candle[], o: ZoneOptions = DEFAULT_ZONE_O
     const risk = (entry - stop) * dir;
     if (!(risk > 0)) continue;
     const riskReward = ((targets[0] - entry) * dir) / risk;
-    return { direction: dir === 1 ? "long" : "short", a, b, zoneStart, zoneEnd, entry, stop, targets, riskReward, cancelAbove: b.price, inZone };
+    return { direction: dir === 1 ? "long" : "short", a, b, zoneStart, zoneEnd, entry, stop, targets, riskReward, cancelAbove: b.price, inZone, atr: a_ };
   }
   return null;
 }

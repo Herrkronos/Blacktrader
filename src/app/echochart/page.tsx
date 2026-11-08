@@ -23,7 +23,7 @@ export default function EchoChartPage() {
   const [phase, setPhase] = useState<{ label: string; p: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [result, setResult] = useState<(BacktestResult & { symbol: string; bars: number; from: number; to: number; note?: string }) | null>(null);
+  const [result, setResult] = useState<(BacktestResult & { symbol: string; bars: number; from: number; to: number; note?: string; interval: Interval }) | null>(null);
 
   // Auswahl: Watchlist + feste Gruppen (Aktien, Krypto, Rohstoffe)
   const options = useMemo(() => {
@@ -48,7 +48,7 @@ export default function EchoChartPage() {
       setPhase({ label: "Analyst spielt die Vergangenheit durch", p: 0 });
       const r = await runZoneBacktestAsync(candles, {}, (p) => setPhase({ label: "Analyst spielt die Vergangenheit durch", p }));
       setShowAll(false);
-      setResult({ ...r, symbol: asset.name, bars: candles.length, from: candles[0].time, to: candles[candles.length - 1].time, note: plan.note });
+      setResult({ ...r, symbol: asset.name, bars: candles.length, from: candles[0].time, to: candles[candles.length - 1].time, note: plan.note, interval });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -101,6 +101,7 @@ export default function EchoChartPage() {
                 value={horizon}
                 onChange={(h) => {
                   if (!h) return;
+                  setResult(null);
                   setHorizon(h);
                   setInterval_(intervals[h]);
                 }}
@@ -111,7 +112,7 @@ export default function EchoChartPage() {
             Kerzengröße
             <div className="mt-1 flex gap-1">
               {HORIZON_INTERVALS[horizon].map((iv) => (
-                <button key={iv} onClick={() => setInterval_(iv)} className={`chip ${iv === interval ? "border-gold bg-gold/20 text-gold-light" : "border-stone-700 text-stone-400"}`}>
+                <button key={iv} onClick={() => { setInterval_(iv); setResult(null); }} className={`chip ${iv === interval ? "border-gold bg-gold/20 text-gold-light" : "border-stone-700 text-stone-400"}`}>
                   {{ "5m": "5 Min", "15m": "15 Min", "1h": "1 Std", "4h": "4 Std", "1d": "1 Tag", "1w": "1 Woche", "1M": "1 Monat" }[iv]}
                 </button>
               ))}
@@ -126,7 +127,7 @@ export default function EchoChartPage() {
               return (
                 <button
                   key={l.days}
-                  onClick={() => setDays(l.days)}
+                  onClick={() => { setDays(l.days); setResult(null); }}
                   className={`chip ${l.days === days ? "border-gold bg-gold/20 text-gold-light" : ok ? "border-stone-700 text-stone-300" : "border-stone-800 text-stone-600 line-through"}`}
                 >
                   {l.label}
@@ -160,7 +161,7 @@ export default function EchoChartPage() {
       {error && <p className="text-sm text-red-400">{error}</p>}
       {result && (
         <p className="text-sm text-stone-300">
-          <b className="text-gold-light">{result.symbol}</b> · {fmtDate(result.from)} – {fmtDate(result.to)} · {result.bars.toLocaleString("de-DE")} Kerzen ({interval})
+          <b className="text-gold-light">{result.symbol}</b> · {fmtDate(result.from)} – {fmtDate(result.to)} · {result.bars.toLocaleString("de-DE")} Kerzen ({result.interval})
           {result.note ? <span className="block text-xs text-stone-500">{result.note}</span> : null}
         </p>
       )}

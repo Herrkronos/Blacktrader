@@ -51,6 +51,8 @@ export interface TradePlan {
   zoneEnd?: number;
   /** Order verfällt, wenn der Kurs vorher darüber (Long) bzw. darunter (Short) läuft */
   cancelAbove?: number;
+  /** Ab Ziel 1: Stop auf Einstieg, danach mit diesem Abstand nachziehen */
+  trailDistance?: number;
 }
 
 export const MIN_RISK_REWARD = 1.5;
