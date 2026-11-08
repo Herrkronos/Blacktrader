@@ -71,6 +71,12 @@ export interface NewsItem {
   sentiment: Sentiment;
   /** -1 … +1 */
   sentimentScore: number;
+  /** Originaltitel, falls übersetzt */
+  originalTitle?: string;
+  /** Sprache des angezeigten Titels */
+  lang?: "de" | "en";
+  /** true = automatisch ins Deutsche übersetzt */
+  translated?: boolean;
 }
 
 export interface StockFundamentals {

@@ -160,9 +160,12 @@ export default function Uebersicht() {
                 <a href={n.link} target="_blank" rel="noopener noreferrer" className="flex min-h-[56px] gap-3 px-4 py-3 active:bg-white/5">
                   <span className={`mt-2 h-2 w-2 shrink-0 rounded-full ${n.sentiment === "positive" ? "bg-emerald-400" : n.sentiment === "negative" ? "bg-red-400" : "bg-stone-500"}`} />
                   <span className="min-w-0">
-                    <span className="line-clamp-2 text-[15px] text-stone-100">{n.title}</span>
+                    <span className="line-clamp-2 text-[15px] text-stone-100" title={n.originalTitle}>
+                      {n.title}
+                    </span>
                     <span className="text-[13px] text-stone-500">
                       {n.sym} · {n.source} · {new Date(n.published).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      {n.translated ? " · übersetzt" : n.lang === "en" ? " · EN" : ""}
                     </span>
                   </span>
                 </a>

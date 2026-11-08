@@ -4,6 +4,7 @@ import { XMLParser } from "fast-xml-parser";
 import { scoreHeadline } from "../analysis/sentiment";
 import type { NewsItem } from "../types";
 import { cached, fetchJson, fetchText } from "./http";
+import { looksGerman, translateTitles } from "./translate";
 
 const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@" });
 
@@ -58,7 +59,7 @@ async function finnhubNews(symbol: string, key: string) {
 }
 
 export async function getNews(opts: { query: string; yahooSymbol?: string; finnhubKey?: string; finnhubSymbol?: string }): Promise<NewsItem[]> {
-  const key = `news:${opts.query}:${opts.yahooSymbol ?? ""}:${opts.finnhubKey ? "fh" : ""}`;
+  const key = `news-de:${opts.query}:${opts.yahooSymbol ?? ""}:${opts.finnhubKey ? "fh" : ""}`;
   return cached(key, 15 * 60e3, async () => {
     const q = encodeURIComponent(opts.query);
     const lists = await Promise.all([
@@ -74,9 +75,24 @@ export async function getNews(opts: { query: string; yahooSymbol?: string; finnh
       const k = n.title.toLowerCase().replace(/\W+/g, "").slice(0, 60);
       if (seen.has(k) || new Date(n.published).getTime() < cutoff) continue;
       seen.add(k);
+      // Stimmung immer auf dem Originaltitel bewerten (Analyse unverändert)
       const s = scoreHeadline(n.title);
-      out.push({ ...n, sentiment: s.sentiment, sentimentScore: s.score });
+      out.push({ ...n, sentiment: s.sentiment, sentimentScore: s.score, lang: looksGerman(n.title) ? "de" : "en" });
     }
-    return out.sort((a, b) => b.published.localeCompare(a.published)).slice(0, 30);
+    // Deutsche Meldungen bevorzugen, englische automatisch übersetzen
+    const top = out.sort((a, b) => b.published.localeCompare(a.published)).slice(0, 30);
+    const en = top.filter((n) => n.lang === "en");
+    if (en.length) {
+      const tr = await translateTitles(en.map((n) => n.title)).catch(() => en.map(() => null));
+      en.forEach((n, i) => {
+        if (tr[i]) {
+          n.originalTitle = n.title;
+          n.title = tr[i]!;
+          n.lang = "de";
+          n.translated = true;
+        }
+      });
+    }
+    return top;
   });
 }

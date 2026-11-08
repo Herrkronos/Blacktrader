@@ -303,8 +303,10 @@ export function NewsPanel({ news, score }: { news: NewsItem[]; score: number | n
                 <a href={n.link} target="_blank" rel="noopener noreferrer" className="block min-h-[44px] py-1 text-[15px] text-stone-200 hover:text-gold-light">
                   {n.title}
                 </a>
+                {n.translated && n.originalTitle && <div className="text-[13px] italic text-stone-500">Original: {n.originalTitle}</div>}
                 <div className="text-[13px] text-stone-500">
                   {n.source} · {new Date(n.published).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}
+                  {n.translated ? " · übersetzt" : n.lang === "en" ? " · EN" : ""}
                 </div>
               </div>
             </li>
