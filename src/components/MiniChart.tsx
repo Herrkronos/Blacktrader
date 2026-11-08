@@ -3,8 +3,9 @@
 import type { WaveCount } from "@/lib/analysis/elliott";
 import type { TradePlan } from "@/lib/analysis/score";
 import type { Candle } from "@/lib/types";
+import { arrow, nextWave } from "./waveText";
 
-export function MiniChart({ candles, plan, best, height = 92 }: { candles: Candle[]; plan?: TradePlan | null; best?: WaveCount; height?: number }) {
+export function MiniChart({ candles, plan, best, height = 92, showWaves = true }: { candles: Candle[]; plan?: TradePlan | null; best?: WaveCount; height?: number; showWaves?: boolean }) {
   const data = candles.slice(-90);
   if (data.length < 5) return <div style={{ height }} className="rounded-xl bg-white/5" />;
   const W = 320;
@@ -21,7 +22,8 @@ export function MiniChart({ candles, plan, best, height = 92 }: { candles: Candl
   const xt = (t: number) => x(((t - t0) / (tN - t0 || 1)) * (data.length - 1));
   const path = data.map((c, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(c.close).toFixed(1)}`).join("");
   const up = data[data.length - 1].close >= data[0].close;
-  const pivots = best?.pivots.filter((p) => p.time >= t0) ?? [];
+  const pivots = showWaves ? best?.pivots.filter((p) => p.time >= t0) ?? [] : [];
+  const nx = showWaves && best ? nextWave(best) : null;
   const lastX = x(data.length - 1);
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }} role="img" aria-label="Mini-Chart mit Zonen">
@@ -37,14 +39,20 @@ export function MiniChart({ candles, plan, best, height = 92 }: { candles: Candl
         <polyline points={pivots.map((p) => `${xt(p.time).toFixed(1)},${y(p.price).toFixed(1)}`).join(" ")} fill="none" stroke="#C9A24A" strokeWidth="1" opacity="0.7" />
       )}
       {pivots.map((p, i) => {
-        const label = i === 0 ? "" : best!.labels[best!.pivots.indexOf(p) - 1];
+        const k = best!.pivots.indexOf(p);
+        const label = k === 0 ? "0" : best!.labels[k - 1];
         if (!label) return null;
         return (
-          <text key={p.time} x={xt(p.time)} y={p.type === "H" ? y(p.price) - 4 : y(p.price) + 12} fontSize="11" fill="#e3c57a" textAnchor="middle" fontFamily="Inter, sans-serif">
+          <text key={p.time} x={Math.max(6, xt(p.time))} y={Math.min(H - 2, Math.max(11, p.type === "H" ? y(p.price) - 4 : y(p.price) + 12))} fontSize="11" fill="#e3c57a" textAnchor="middle" fontFamily="Inter, sans-serif">
             {label}
           </text>
         );
       })}
+      {nx && pivots.length > 0 && (
+        <text x={W - 4} y={nx.dir === 1 ? 14 : H - 6} fontSize="13" fontWeight="600" fill={nx.dir === 1 ? "#34d399" : "#f87171"} textAnchor="end" fontFamily="Inter, sans-serif">
+          {/^[0-9A-Z]$/.test(nx.label) ? `${nx.label} ${arrow(nx.dir)}` : arrow(nx.dir)}
+        </text>
+      )}
     </svg>
   );
 }

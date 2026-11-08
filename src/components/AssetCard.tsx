@@ -11,6 +11,7 @@ import type { LiveStatus } from "@/lib/client/market";
 import { actions, getData, useAppData } from "@/lib/store/store";
 import { HORIZON_LABEL, type Candle, type Horizon, type ResolvedAsset } from "@/lib/types";
 import { MiniChart } from "./MiniChart";
+import { waveCaption } from "./waveText";
 import { ConfirmSheet } from "./Sheet";
 import { StatusPill } from "./StatusPill";
 
@@ -165,7 +166,11 @@ export function AssetCard({
       )}
 
       {/* Zeile 2 */}
-      {view && <MiniChart candles={view.candles} plan={plan} best={res?.elliott.best} />}
+      {view && <MiniChart candles={view.candles} plan={plan} best={res?.elliott.best} showWaves={!coreFocus} />}
+      {!coreFocus && waveCaption(res?.elliott.best) && <p className="-mt-1 text-[13px] text-stone-400">{waveCaption(res?.elliott.best)}</p>}
+      {coreFocus && res?.elliott.best && res.elliott.best.bias === -1 && (
+        <p className="-mt-1 text-[13px] text-amber-300">Hinweis: Die kurzfristige Wellenzählung erwartet gerade eher fallende Kurse – der große Trend (Kernposition) ist aber noch intakt.</p>
+      )}
 
       {/* Zeile 3 */}
       {plan ? (
