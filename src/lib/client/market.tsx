@@ -1,7 +1,9 @@
 "use client";
 // Zentrale Echtzeit-Überwachung: Live-Kurse (Binance-WebSocket bzw. Polling), Analysen der Watchlist,
 // Signal-Alarme und automatische Verfolgung offener Papier-Trades.
-import { learnedParams, refreshTrainerParams, trainerVersion } from "./trainerParams";
+import { exhaustionAt, rsi } from "../analysis/indicators";
+import { resumeTraining } from "./trainingSession";
+import { effectiveWeights, learnedParams, refreshTrainerParams, trainerVersion } from "./trainerParams";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
 import { SIGNAL_LABEL } from "../analysis/score";
@@ -85,6 +87,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   // ---- Live-Kurse
   useEffect(() => {
     void refreshTrainerParams();
+    resumeTraining(); // laufende Trainingssitzung nach dem Neuladen fortsetzen
   }, []);
 
   useEffect(() => {
@@ -210,10 +213,11 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         lastCalc.current[item.id] = { version: r.version, price: lv?.price, at: Date.now(), tv: trainerVersion() };
         const result =
           r.candles.length >= 30
-            ? analyze({ symbol: item.symbol, name: item.name, candles: r.candles, horizon: r.horizon, interval: r.interval, fundamentals: r.fundamentals, news: r.news, weights: d.settings.weights, livePrice: lv?.price, kind: item.kind, currency: lv?.currency ?? item.currency, params: learnedParams(item.kind, r.horizon) })
+            ? analyze({ symbol: item.symbol, name: item.name, candles: r.candles, horizon: r.horizon, interval: r.interval, fundamentals: r.fundamentals, news: r.news, weights: effectiveWeights(d.settings, item.kind, r.horizon), livePrice: lv?.price, kind: item.kind, currency: lv?.currency ?? item.currency, params: learnedParams(item.kind, r.horizon) })
             : null;
         next[item.id] = { core: r.core, horizon: r.horizon, interval: r.interval, result, candles: r.candles, fundamentals: r.fundamentals, news: r.news, candleSource: r.source, error: r.error ?? (r.candles.length < 30 && r.candles.length > 0 ? "Zu wenig Historie für eine Analyse" : undefined), loading: false };
         if (result) checkSignal(item, r.horizon, result);
+        if (r.candles.length > 50) closeOnWave5End(item.symbol, r.horizon, r.candles);
         if (result && r.core) {
           const msg = syncCoreTrade(item, result, r.core);
           if (msg) notify(`Kernposition ${item.symbol}`, msg, { sound: d.settings.sound, notifications: d.settings.notifications, kind: r.core.state === "hold" ? "buy" : "sell" });
@@ -225,7 +229,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     run();
     const t = setInterval(run, 5000);
     return () => clearInterval(t);
-  }, [dataVersion, settings.weights]);
+  }, [dataVersion, settings.weights, settings.weightsMode]);
 
   const refresh = (id?: string) => {
     if (id) delete lastCalc.current[id];
@@ -253,6 +257,21 @@ function checkSignal(item: WatchItem, horizon: Horizon, res: AnalysisResult) {
 }
 
 const lastTradeWrite: Record<string, number> = {};
+
+/** Gelernter Ausstieg: nach Ziel 1 Gewinn sichern, wenn Welle 5 mit Divergenz endet (nur abgeschlossene Kerzen bis jetzt). */
+function closeOnWave5End(symbol: string, horizon: Horizon, candles: Candle[]) {
+  const d = getData();
+  for (const t of d.trades) {
+    if (t.symbol !== symbol || t.horizon !== horizon || t.status !== "open" || !t.trailing || !t.wave5Exit || t.strategy === "core") continue;
+    const dir = t.direction === "long" ? 1 : -1;
+    const r = rsi(candles.map((c) => c.close));
+    if (!exhaustionAt(candles, r, candles.length - 1, dir)) continue;
+    const exit = candles[candles.length - 1].close;
+    const returnPct = tradeReturnPct(t.direction, t.entry, exit);
+    actions.updateTrade(t.id, { status: "closed", exit, closedAt: Date.now(), closeReason: "welle5", returnPct, lastPrice: exit });
+    notify(`Gewinn gesichert: ${t.symbol}`, `Welle 5 läuft aus (RSI wird schwächer) – Trade bei ${fmtPrice(exit)} geschlossen · ${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(2)} %`, { sound: d.settings.sound, notifications: d.settings.notifications, kind: "info" });
+  }
+}
 
 function trackTrades(trades: Trade[], live: Record<string, LiveState>) {
   const s = getData().settings;

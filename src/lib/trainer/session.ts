@@ -1,0 +1,138 @@
+// Trainingssitzung im Browser (läuft im Web Worker): feste Dauer, Bereiche nacheinander, Fortschritt speicherbar.
+// Jeder Bereich: Walk-Forward mit vielen kleinen Schritten (nur Lerndaten wählen aus), am Ende EIN Vergleich
+// alt gegen neu auf den unbekannten Prüfdaten. Übernommen wird nur, was dort besser ist (Strenge-Regeln).
+import { resolveParams, type LearnableParams, type ParamSet } from "../analysis/params";
+import type { AssetKind, Candle, Horizon } from "../types";
+import type { Metrics } from "./engine";
+import { sessionUniverse, type CellKey, type SeriesSpec } from "./universe";
+import { advanceWF, compactWF, finalizeWF, initWF, oosMetrics, type WFPhase, type WFState } from "./walkforward";
+
+export const DURATIONS = [
+  { label: "15 Min", ms: 15 * 60e3 },
+  { label: "30 Min", ms: 30 * 60e3 },
+  { label: "1 Std", ms: 60 * 60e3 },
+  { label: "3 Std", ms: 3 * 3600e3 },
+  { label: "8 Std", ms: 8 * 3600e3 },
+];
+
+export interface SessionConfig {
+  id: string;
+  durationMs: number;
+  cells: CellKey[];
+  baseVersion: number;
+  paramSet: ParamSet;
+  extra: { symbol: string; kind: AssetKind; yahooSymbol?: string }[];
+  /** Ausgangswerte je Bereich (der Server prüft, ob sie noch gelten) */
+  baseParams: Partial<Record<CellKey, LearnableParams>>;
+}
+
+export interface CellOutcome {
+  cell: CellKey;
+  base: Metrics | null;
+  cand: Metrics | null;
+  accept: boolean;
+  reasons: string[];
+  deployed: LearnableParams | null;
+  changes: string;
+  series: number;
+  /** Antwort des Servers nach dem Speichern */
+  message?: string;
+  saved?: boolean;
+}
+
+export interface SessionState {
+  cfg: SessionConfig;
+  elapsedMs: number;
+  cellIdx: number;
+  cellBudgetMs: number;
+  cellElapsedMs: number;
+  wf: WFState | null;
+  results: CellOutcome[];
+  phase: WFPhase;
+  detail: string;
+  /** Aktuell beste Trefferquote auf unbekannten Daten (nur Anzeige) und alter Stand */
+  live?: { cell: CellKey; best: number | null; old: number | null };
+  status: "running" | "done" | "stopped";
+}
+
+export function newSession(cfg: SessionConfig): SessionState {
+  return { cfg, elapsedMs: 0, cellIdx: 0, cellBudgetMs: 0, cellElapsedMs: 0, wf: null, results: [], phase: "load", detail: "", status: "running" };
+}
+
+export interface SessionIO {
+  load: (spec: SeriesSpec) => Promise<Candle[] | null>;
+  onProgress: (st: SessionState) => void;
+  onCellDone: (o: CellOutcome, st: SessionState) => Promise<void> | void;
+  shouldStop: () => boolean;
+  now?: () => number;
+  /** Länge eines Arbeitsblocks zwischen zwei Fortschrittsmeldungen */
+  chunkMs?: number;
+}
+
+const PHASE_ORDER: WFPhase[] = ["load", "backtest", "select", "verify", "done"];
+
+export async function runSession(st: SessionState, io: SessionIO): Promise<SessionState> {
+  const now = io.now ?? Date.now;
+  const chunk = io.chunkMs ?? 1500;
+  while (st.status === "running") {
+    if (st.cellIdx >= st.cfg.cells.length || st.elapsedMs >= st.cfg.durationMs) {
+      st.status = "done";
+      break;
+    }
+    const cell = st.cfg.cells[st.cellIdx];
+    if (!st.wf) {
+      const [kind, horizon] = cell.split(":") as [AssetKind, Horizon];
+      const base = resolveParams(st.cfg.paramSet, kind, horizon);
+      st.wf = initWF(cell, sessionUniverse(cell, st.cfg.extra), base, { maxSteps: 1000, candidatesPerStep: 8 });
+      // Restzeit gleichmäßig auf die verbleibenden Bereiche verteilen
+      st.cellBudgetMs = (st.cfg.durationMs - st.elapsedMs) / (st.cfg.cells.length - st.cellIdx);
+      st.cellElapsedMs = 0;
+    }
+    const t0 = now();
+    const budget = Math.min(chunk, st.cellBudgetMs - st.cellElapsedMs, st.cfg.durationMs - st.elapsedMs);
+    const finished = await advanceWF(st.wf, {
+      load: io.load,
+      now,
+      deadline: t0 + Math.max(1, budget),
+      onPhase: (p, d) => {
+        st.phase = p;
+        st.detail = d;
+      },
+    });
+    const spent = now() - t0;
+    st.elapsedMs += spent;
+    st.cellElapsedMs += spent;
+    const base = oosMetrics(st.wf, Array.from({ length: st.wf.folds }, () => st.wf!.baseKey));
+    const best = oosMetrics(st.wf, st.wf.climbers.slice(0, st.wf.folds));
+    st.live = { cell, best: best?.hitRate ?? null, old: base?.hitRate ?? null };
+    const stop = io.shouldStop();
+    if (finished || st.cellElapsedMs >= st.cellBudgetMs || st.elapsedMs >= st.cfg.durationMs || stop) {
+      st.phase = "verify";
+      st.detail = "Vergleich alt gegen neu auf unbekannten Daten";
+      io.onProgress(st);
+      const r = st.wf.result ?? finalizeWF(st.wf);
+      const series = st.wf.info.filter((x) => x && x !== "failed").length;
+      const o: CellOutcome = r && series > 0
+        ? { cell, base: r.base, cand: r.cand, accept: r.decision.accept, reasons: r.decision.reasons, deployed: r.decision.accept ? r.deployed : null, changes: r.changes, series }
+        : { cell, base: null, cand: null, accept: false, reasons: [series ? "Zu wenig Zeit für einen Vergleich" : "Keine Kursdaten erreichbar"], deployed: null, changes: "keine", series };
+      st.results.push(o);
+      st.wf = null;
+      st.cellIdx++;
+      await io.onCellDone(o, st);
+      if (stop) st.status = "stopped";
+    }
+    io.onProgress(st);
+  }
+  st.phase = "done";
+  io.onProgress(st);
+  return st;
+}
+
+/** Zum Speichern im Browser: ohne Backtest-Daten (werden beim Fortsetzen neu gerechnet). */
+export function checkpoint(st: SessionState): SessionState {
+  return { ...st, wf: st.wf ? compactWF(st.wf) : null };
+}
+
+export const phaseLabel = (p: WFPhase): string =>
+  ({ load: "Daten laden", backtest: "Wellen zählen & Backtest", select: "Beste Einstellung wählen (Lerndaten)", verify: "Prüfung auf unbekannten Daten", done: "Fertig" })[p];
+export { PHASE_ORDER };

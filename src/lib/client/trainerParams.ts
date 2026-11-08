@@ -1,7 +1,7 @@
 "use client";
 // Gelernte Werte des Trainers (für alle Nutzer gleich). Ohne Verbindung: zuletzt bekannter Stand bzw. Standardwerte.
 import { useSyncExternalStore } from "react";
-import { resolveParams, validateParams, type LearnableParams, type ParamSet } from "../analysis/params";
+import { clampWeights, resolveParams, validateParams, validateWeights, type LearnableParams, type ParamSet, type WeightSet } from "../analysis/params";
 import type { AssetKind, Horizon } from "../types";
 
 const KEY = "bsh-trainer-params";
@@ -29,8 +29,9 @@ function sanitize(x: unknown): typeof state | null {
 }
 
 let loading: Promise<void> | null = null;
-export function refreshTrainerParams(): Promise<void> {
-  loading ??= fetch("/api/trainer/params")
+export function refreshTrainerParams(force = false): Promise<void> {
+  if (force) loading = null;
+  loading ??= fetch(force ? `/api/trainer/params?t=${Date.now()}` : "/api/trainer/params", force ? { cache: "no-store" } : undefined)
     .then((r) => (r.ok ? r.json() : null))
     .then((j) => {
       const next = sanitize(j);
@@ -52,9 +53,16 @@ export function refreshTrainerParams(): Promise<void> {
 }
 
 export const trainerVersion = () => state.version;
+export const trainerParamSet = () => state;
 export function learnedParams(kind: AssetKind | undefined, horizon: Horizon): LearnableParams {
   return resolveParams(state.params, kind, horizon);
 }
+/** Gewichtung, die die Analyse verwendet: eigene (manuell, begrenzt) oder die vom Trainer gelernte. */
+export function effectiveWeights(settings: { weights: WeightSet; weightsMode?: "trainer" | "manual" }, kind: AssetKind | undefined, horizon: Horizon): WeightSet {
+  if (settings.weightsMode === "manual") return validateWeights(settings.weights).length ? clampWeights(settings.weights, "elliott") : settings.weights;
+  return learnedParams(kind, horizon).weights;
+}
+
 export function useTrainerVersion(): number {
   return useSyncExternalStore(
     (f) => {
@@ -64,4 +72,11 @@ export function useTrainerVersion(): number {
     () => state.version,
     () => 0,
   );
+}
+
+/** Vom Trainer gelernte Gewichtungen je Klasse/Horizont (nur Abweichungen vom Standard). */
+export function learnedWeightCells(): { cell: string; weights: WeightSet }[] {
+  return Object.entries(state.params)
+    .filter(([, p]) => p?.weights)
+    .map(([cell, p]) => ({ cell, weights: p!.weights! }));
 }

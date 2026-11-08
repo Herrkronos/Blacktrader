@@ -1,9 +1,16 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { clampWeights } from "@/lib/analysis/params";
+import { learnedWeightCells, refreshTrainerParams, useTrainerVersion } from "@/lib/client/trainerParams";
 import { playTone, requestNotificationPermission } from "@/lib/client/alerts";
-import { DEFAULT_WEIGHTS, normalizeWeights } from "@/lib/analysis/score";
+import { DEFAULT_WEIGHTS } from "@/lib/analysis/score";
 import { actions, DEFAULT_SETTINGS, useAppData } from "@/lib/store/store";
-import { HORIZON_INTERVALS, HORIZON_LABEL, type Horizon, type Interval } from "@/lib/types";
+import { HORIZON_INTERVALS, HORIZON_LABEL, KIND_LABEL, type AssetKind, type Horizon, type Interval } from "@/lib/types";
+
+const cellName = (c: string) => {
+  const [k, h] = c.split(":") as [AssetKind, Horizon];
+  return `${KIND_LABEL[k]} · ${HORIZON_LABEL[h]}`;
+};
 
 function Section({ title, children, hint }: { title: string; children: React.ReactNode; hint?: string }) {
   return (
@@ -45,7 +52,10 @@ export default function SettingsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [withKeys, setWithKeys] = useState(false);
-  const nw = normalizeWeights(s.weights);
+  const trainerV = useTrainerVersion();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const learned = useMemo(() => learnedWeightCells(), [trainerV]);
+  useEffect(() => void refreshTrainerParams(), []);
 
   const exportFile = () => {
     const blob = new Blob([actions.exportJson(withKeys)], { type: "application/json" });
@@ -80,18 +90,51 @@ export default function SettingsPage() {
         </label>
       </Section>
 
-      <Section title="Gewichtung des Gesamtscores" hint="Gesamtscore = Elliott × w₁ + Fundamental/News × w₂ + Volumen/RSI × w₃. Standard 60 / 20 / 20. Die Werte werden auf 100 % normiert.">
+      <Section title="Gewichtung des Gesamtscores" hint="Gesamtscore = Elliott × w₁ + Fundamental/News × w₂ + Volumen/RSI × w₃. Feste Grenzen: Elliott-Wellen mindestens 60 %, die anderen mindestens 10 %, zusammen immer 100 %.">
+        <div className="flex gap-2">
+          {(["trainer", "manual"] as const).map((m) => (
+            <button key={m} className={`btn flex-1 ${s.weightsMode === m ? "btn-primary" : ""}`} onClick={() => actions.setSettings({ weightsMode: m })}>
+              {m === "trainer" ? "Automatisch (Trainer)" : "Manuell"}
+            </button>
+          ))}
+        </div>
         {(["elliott", "fundamental", "volume"] as const).map((k) => (
-          <label key={k} className="block text-sm">
+          <label key={k} className={`block text-sm ${s.weightsMode === "trainer" ? "opacity-60" : ""}`}>
             <div className="flex justify-between text-stone-300">
-              <span>{k === "elliott" ? "Elliott-Wellen" : k === "fundamental" ? "Fundamental & News" : "Volumen & RSI"}</span>
-              <span className="num text-gold-light">{Math.round(nw[k] * 100)} %</span>
+              <span>
+                {k === "elliott" ? "Elliott-Wellen" : k === "fundamental" ? "Fundamental & News" : "Volumen & RSI"} <span className="text-stone-500">(min. {k === "elliott" ? 60 : 10} %)</span>
+              </span>
+              <span className="num text-gold-light">{Math.round(s.weights[k])} %</span>
             </div>
-            <input type="range" min={0} max={100} step={5} value={s.weights[k]} onChange={(e) => actions.setSettings({ weights: { ...s.weights, [k]: Number(e.target.value) } })} className="w-full accent-[#C9A24A]" />
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              disabled={s.weightsMode === "trainer"}
+              value={s.weights[k]}
+              onChange={(e) => actions.setSettings({ weights: clampWeights({ ...s.weights, [k]: Number(e.target.value) }, k) })}
+              className="w-full accent-[#C9A24A]"
+            />
           </label>
         ))}
+        <div className="rounded-xl bg-white/5 p-3 text-[14px] text-stone-300">
+          <b className="text-stone-100">Zuletzt vom Trainer gelernt:</b>{" "}
+          {learned.length === 0 ? (
+            <span>überall 60 / 20 / 20 (noch keine Änderung übernommen)</span>
+          ) : (
+            <ul className="mt-1 space-y-0.5">
+              {learned.map((l) => (
+                <li key={l.cell} className="num">
+                  {cellName(l.cell)}: {l.weights.elliott} / {l.weights.fundamental} / {l.weights.volume}
+                </li>
+              ))}
+              <li className="text-stone-500">alle anderen: 60 / 20 / 20</li>
+            </ul>
+          )}
+        </div>
         <button className="btn text-xs" onClick={() => actions.setSettings({ weights: DEFAULT_WEIGHTS })}>
-          Auf 60 / 20 / 20 zurücksetzen
+          Regler auf 60 / 20 / 20 zurücksetzen
         </button>
       </Section>
 

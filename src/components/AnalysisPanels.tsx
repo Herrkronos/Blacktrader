@@ -13,7 +13,7 @@ import type { Fundamentals, NewsItem } from "@/lib/types";
 import { ScoreBar, SignalBadge } from "./ui";
 
 export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => void }) {
-  const w = useAppData((d) => d.settings.weights);
+  const w = a.weights;
   const sum = w.elliott + w.fundamental + w.volume || 1;
   const expert = useAppData((d) => d.settings.expertMode);
   return (

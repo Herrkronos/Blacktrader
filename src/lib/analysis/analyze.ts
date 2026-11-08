@@ -1,6 +1,7 @@
 // Fasst alle Analyse-Module zu einem Ergebnis zusammen.
 import { HORIZON_LABEL, type Candle, type Fundamentals, type Horizon, type Interval, type NewsItem } from "../types";
 import { analyzeElliott, degreesFrom, type ElliottResult } from "./elliott";
+import { aggregateCandles } from "../data/aggregate";
 import { atr, ema } from "./indicators";
 import { DEFAULT_ZONE_OPTIONS, findZoneSetup } from "./zones";
 import { DEFAULT_PARAMS, type LearnableParams } from "./params";
@@ -20,6 +21,8 @@ export interface AnalysisResult {
   fundamental: FundamentalResult;
   volume: VolumeRsiResult;
   total: number;
+  /** Tatsächlich verwendete Gewichtung */
+  weights: Weights;
   decision: SignalDecision;
   plan: TradePlan | null;
   commentary: Commentary;
@@ -66,6 +69,38 @@ export interface AnalyzeInput {
 
 const MAX_CANDLES = 600;
 
+const INTERVAL_SEC: Record<Interval, number> = { "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400, "1w": 604800, "1M": 2592000 };
+/** Übergeordnete Zeitebene je Kerzengröße */
+const HIGHER_SEC: Record<Interval, number> = { "5m": 3600, "15m": 3600, "1h": 14400, "4h": 86400, "1d": 604800, "1w": 28 * 86400, "1M": 90 * 86400 };
+
+/**
+ * Lernbare Elliott-Prüfungen (Standard: alle aus). Jede kann ein Signal nur verhindern.
+ * - Wellenbild bestätigt die Richtung (elliottAgreement)
+ * - Kein Einstieg am Ende von Welle 5 (fertiger Impuls in Trade-Richtung oder Divergenz am Extrem)
+ * - Übergeordnete Zeitebene widerspricht nicht
+ */
+export function elliottVetoes(dir: 1 | -1, candles: Candle[], interval: Interval, elliott: ElliottResult, volume: VolumeRsiResult, P: LearnableParams): string[] {
+  const v: string[] = [];
+  if (P.elliottAgreement > 0) {
+    const ok = dir === 1 ? elliott.score >= 50 + P.elliottAgreement : elliott.score <= 50 - P.elliottAgreement;
+    if (!ok) v.push("Wellenbild bestätigt die Richtung nicht deutlich genug");
+  }
+  if (P.wave5Filter) {
+    const b = elliott.best;
+    const doneImpulse = !!b && (b.pattern === "impulse" || b.pattern === "ending-diagonal") && b.complete && b.direction === dir;
+    const div = volume.divergences.some((d) => d.type === (dir === 1 ? "bearish" : "bullish"));
+    if (doneImpulse || div) v.push("Welle 5 könnte gerade enden – Einstieg zu spät");
+  }
+  if (P.htfConfirm) {
+    const htf = aggregateCandles(candles, Math.max(HIGHER_SEC[interval], INTERVAL_SEC[interval] * 2));
+    if (htf.length >= 40) {
+      const e = analyzeElliott(htf);
+      if (e.best && e.best.bias !== dir && (dir === 1 ? e.score < 50 : e.score > 50)) v.push("Übergeordnete Welle spricht dagegen");
+    }
+  }
+  return v;
+}
+
 export function analyze(input: AnalyzeInput): AnalysisResult | null {
   let candles = input.candles.slice(-MAX_CANDLES);
   if (candles.length < 30) return null;
@@ -94,7 +129,9 @@ export function analyze(input: AnalyzeInput): AnalysisResult | null {
     relVolBreakout: P.relVolBreakout,
     relVolLow: P.relVolLow,
   });
-  const total = totalScore({ elliott: elliott.score, fundamental: fundamental.score, volume: volume.score }, input.weights ?? DEFAULT_WEIGHTS);
+  // Manuelle Gewichtung (Einstellungen) hat Vorrang, sonst die gelernte (Standard = 60/20/20)
+  const weights = input.weights ?? P.weights ?? DEFAULT_WEIGHTS;
+  const total = totalScore({ elliott: elliott.score, fundamental: fundamental.score, volume: volume.score }, weights);
   const f = { ...DEFAULT_FILTERS, ...(input.filters ?? {}) };
   const closes = candles.map((c) => c.close);
   const atrNow = atr(candles)[candles.length - 1] ?? price * 0.01;
@@ -126,6 +163,9 @@ export function analyze(input: AnalyzeInput): AnalysisResult | null {
       const strength = plan.direction === "long" ? total : 100 - total;
       if (strength < P.minStrength) vetoes.push(`Signalstärke ${strength.toFixed(0)} unter ${P.minStrength}`);
     }
+    // Zusätzliche, lernbare Elliott-Prüfungen – machen Einstiege nur strenger, nie leichter
+    if (plan && vetoes.length === 0) vetoes.push(...elliottVetoes(plan.direction === "long" ? 1 : -1, candles, input.interval, elliott, volume, P));
+    if (plan && P.wave5Exit) plan.wave5Exit = true;
     const ok = !!plan && vetoes.length === 0;
     const level: SignalDecision["level"] = !ok ? "neutral" : plan!.direction === "long" ? (total >= 72 ? "strong-buy" : "buy") : total <= 28 ? "strong-sell" : "sell";
     const decision: SignalDecision = { level, rawLevel: levelFromScore(total), vetoes };
@@ -144,7 +184,7 @@ export function analyze(input: AnalyzeInput): AnalysisResult | null {
       kind: input.kind,
       currency: input.currency,
     });
-    return { symbol: input.symbol, horizon: input.horizon, interval: input.interval, price, time: candles[candles.length - 1].time, elliott, fundamental, volume, total, decision, plan: ok ? plan : null, commentary };
+    return { symbol: input.symbol, horizon: input.horizon, interval: input.interval, price, time: candles[candles.length - 1].time, elliott, fundamental, volume, total, weights, decision, plan: ok ? plan : null, commentary };
   }
   const plan = buildPlan(elliott.best, price, f.minStopAtr * atrNow);
   const extraVetoes: string[] = [];
@@ -194,6 +234,7 @@ export function analyze(input: AnalyzeInput): AnalysisResult | null {
     fundamental,
     volume,
     total,
+    weights,
     decision,
     plan,
     commentary,

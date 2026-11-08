@@ -102,15 +102,15 @@ Journal enthält nur selbst übernommene Papier-Trades; beim Update auf v2 wird 
 
 ## Trainer (Mehr → Trainer)
 
-Der Trainer verbessert nur die **Anwendung** der festen Methode – nie die Methode selbst.
+Der Trainer verbessert nur die **Anwendung** der Methode – die Strenge wird nie aufgeweicht.
 
-- **Fest** (`src/lib/analysis/locked-config.ts`, eingefroren, `tests/locked.test.ts` schlägt bei Änderung fehl): Gewichtung 60/20/20, Elliott-Regeln und -Muster, Stop-/Ziel-Logik, Chance-Risiko ≥ 1,5, Nachziehen, Horizonte, Signalarten und Farben.
-- **Lernbar** (`src/lib/analysis/params.ts`, mit Grenzen): ZigZag-/ATR-Faktoren, Fibonacci-Toleranz, Ranking der Zählungen, RSI-Schwellen, Divergenz-Frische, Volumen-Schwellen, Kennzahl-Gewichte und News-Anteil innerhalb der 20 %, Mindest-Signalstärke – je Anlageklasse × Horizont. Standardwerte = bisheriges Verhalten (`tests/golden.test.ts`).
-- **Lernen** (`src/lib/trainer/`): Walk-Forward (lernen auf A, prüfen auf dem folgenden unbekannten B, weiterrollen), letzte 12 Monate gesperrt (einmaliger Abschlusstest je Version). Kandidaten werden nur auf Lerndaten ausgewählt und nur übernommen, wenn sie auf den Prüfdaten ≥ 200 Signale haben, eine höhere Trefferquote, keinen niedrigeren Profit-Faktor und höchstens 40 % weniger Signale pro Monat.
-- **Signal-Protokoll**: jede Nacht werden die Signale aller Scanner-Werte mit Eingaben und Werten gespeichert und später als gewonnen/verloren/verfallen ausgewertet (getrennt vom Journal).
-- **Betrieb**: Vercel Cron (`vercel.json`, täglich 02:17 UTC) ruft `/api/trainer/cron` auf; jeder Lauf hat ~48 s Zeitbudget und setzt die Arbeit beim nächsten Lauf fort. „Lernschritt jetzt ausführen“ in der App beschleunigt das.
-- **Speicher**: In Vercel unter Storage „Upstash for Redis“ verbinden (setzt `KV_REST_API_URL`/`KV_REST_API_TOKEN`). Ohne Speicher arbeitet der Trainer nur im Arbeitsspeicher und vergisst alles.
-- **Optional**: `CRON_SECRET` (schützt den Cron-Aufruf), `TRAINER_ADMIN_TOKEN` (Zugangscode für Zurücksetzen/Abschlusstest/manuellen Lauf).
-- Offline-Erstlauf auf CSV-Daten: `DATA_DIR=<ordner> npx tsx scripts/train.ts`.
-
-Hinweis: RSI-, Volumen-, Fibo- und Ranking-Werte wirken nur über die Mindest-Signalstärke (Einstieg, Stop und Ziel kommen aus der festen Zonen-Logik). Kennzahl- und News-Gewichte werden mangels historischer Kennzahlen/News nicht per Backtest trainiert und bleiben Standard.
+- **Fest** (`src/lib/analysis/locked-config.ts`, eingefroren, `tests/locked.test.ts` schlägt bei Änderung fehl): Elliott-Grundregeln und Muster, Stop-/Ziel-Logik, Chance-Risiko ≥ 1,5, Nachziehen, Wartezeit, Horizonte, Farben, **Grenzen der Gewichtung** (Elliott ≥ 60 %, Fundamental/News ≥ 10 %, Volumen/RSI ≥ 10 %, Summe 100 %) und die **Annahmeregeln** (≥ 200 Signale, Signale/Monat höchstens −40 %, Profit-Faktor und max. Rückgang nicht schlechter).
+- **Lernbar** (`src/lib/analysis/params.ts`, je Anlageklasse × Horizont): ZigZag-/Pivot-Empfindlichkeit (`elliottDegrees`, `zoneAtrMult`), Ranking alternativer Zählungen, Fibonacci-Toleranz, RSI-/Volumen-Schwellen, Divergenz-Frische, Gewichtung (in den festen Grenzen), Kennzahl-/News-Gewichte. **Nur strenger** (nie zurück): Mindest-Signalstärke, Wellen-Bestätigung (`elliottAgreement`), Welle-5-Filter, Bestätigung durch die übergeordnete Zeitebene, Gewinnsicherung bei Wellen-5-Ende (`wave5Exit`). Standardwerte = bisheriges Verhalten (`tests/golden.test.ts`).
+- **Walk-Forward** (`src/lib/trainer/walkforward.ts`): Je Parametersatz ein Backtest über die Lernzeit (jedes Signal sieht nur Kerzen bis zu seinem Zeitpunkt). Für Fold k wird NUR mit Trades gewählt, die vor dem Prüfbeginn abgeschlossen sind; gemessen wird auf dem folgenden, unbekannten Bereich. Die letzten 12 Monate bleiben gesperrt (einmaliger Abschlusstest je Version).
+- **Speichern nur, wenn besser:** Nach jeder Sitzung/jedem Bereich alt gegen neu auf unbekannten Daten. Meldung „Verbessert: 61,2 % → 63,8 % – gespeichert“ oder „Keine Verbesserung (60,9 %) – alter Stand bleibt“. Jede Version ist gespeichert und kann wiederhergestellt werden.
+- **Training im Browser:** Mehr → Trainer → Dauer (15 Min bis 8 Std) → Start/Stopp. Läuft im Web Worker, mit Ladebalken, Restzeit, Phase und bester Trefferquote. Der Bildschirm bleibt an (Wake Lock), der Fortschritt bleibt nach dem Neuladen erhalten. Ergebnisse gehen an `/api/trainer/propose`. Der Server prüft Grenzen, Strenge-Regeln und Ausgangsstand erneut. Die Messwerte selbst kommen aus dem Browser – deshalb `TRAINER_ADMIN_TOKEN` setzen, damit nur du Ergebnisse speichern kannst.
+- **Nachtlauf:** Vercel Cron (`vercel.json`, täglich 02:17 UTC) → `/api/trainer/cron`, je Lauf ~48 s, setzt die Arbeit fort. Zusätzlich wird das Signal-Protokoll ausgewertet.
+- **Gewichtung in den Einstellungen:** „Automatisch (Trainer)“ oder „Manuell“ – drei Regler, dieselben festen Grenzen, Anzeige der zuletzt gelernten Gewichtung.
+- **Wissensbasis:** `knowledge/elliott.md` (Regeln, Richtlinien, Muster → prüfbare Regeln im Code), `knowledge/analyst-principles.md` (Wie/Warum/Wann).
+- **Speicher:** In Vercel unter Storage „Upstash for Redis“ verbinden (`KV_REST_API_URL`/`KV_REST_API_TOKEN`). Optional `CRON_SECRET`, `TRAINER_ADMIN_TOKEN`.
+- Offline-Messung: `DATA_DIR=<ordner> BUDGET_S=120 npx tsx scripts/train.ts`.

@@ -1,6 +1,6 @@
 "use client";
 // Chancen-Scanner (geteilt von Übersicht und Chancen): je Wert alle drei Zeithorizonte + Kernposition.
-import { learnedParams, refreshTrainerParams } from "./trainerParams";
+import { effectiveWeights, learnedParams, refreshTrainerParams } from "./trainerParams";
 import { useSyncExternalStore } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
 import { coreStatus, type CoreStatus } from "../analysis/core";
@@ -85,7 +85,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
       const interval = settings.intervals[horizon];
       const { candles } = await api.candles(asset, interval, 60e3);
       const params = learnedParams(asset.kind, horizon);
-      let res = analyze({ symbol: asset.symbol, name: asset.name, candles, horizon, interval, weights: settings.weights, kind: asset.kind, currency: asset.currency, params });
+      let res = analyze({ symbol: asset.symbol, name: asset.name, candles, horizon, interval, weights: effectiveWeights(settings, asset.kind, horizon), kind: asset.kind, currency: asset.currency, params });
       if (res && res.decision.level !== "neutral") {
         // Kandidat: mit Firmenzahlen und Nachrichten vollständig bewerten (gleiche Analyse wie bisher)
         const [f, n] = await Promise.allSettled([api.fundamentals(asset), api.news(asset)]);
@@ -95,7 +95,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
           candles,
           horizon,
           interval,
-          weights: settings.weights,
+          weights: effectiveWeights(settings, asset.kind, horizon),
           kind: asset.kind,
           currency: asset.currency,
           params,

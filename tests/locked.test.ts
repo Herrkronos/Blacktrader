@@ -9,6 +9,9 @@ import { DEFAULT_PARAMS, LEARNABLE_KEYS, validateParams } from "../src/lib/analy
 /** Erwarteter, unveränderlicher Stand. Jede Änderung hier muss bewusst und manuell erfolgen. */
 const EXPECTED = {
   weights: { elliott: 60, fundamental: 20, volume: 20 },
+  weightBounds: { elliottMin: 60, fundamentalMin: 10, volumeMin: 10, sum: 100 },
+  minStrengthOnlyUp: true,
+  acceptance: { minSignals: 200, maxSignalDrop: 0.4, profitFactorNotLower: true, drawdownNotWorse: true },
   minRiskReward: 1.5,
   zone: { entryRetrace: 0.618, zoneDeep: 0.786, stopBufferAtr: 0.25, minWaveAtr: 4, target1Ext: 0.272, trendFilter: true },
   trade: { exitMode: "trail", trailAtr: 4, maxWaitBars: 60, maxHoldBars: 200 },
@@ -28,6 +31,10 @@ describe("Feste Werte (locked-config)", () => {
     expect(Object.isFrozen(LOCKED)).toBe(true);
     expect(Object.isFrozen(LOCKED.zone)).toBe(true);
     expect(Object.isFrozen(LOCKED.weights)).toBe(true);
+    expect(Object.isFrozen(LOCKED.weightBounds)).toBe(true);
+    expect(() => {
+      (LOCKED.weightBounds as { elliottMin: number }).elliottMin = 40;
+    }).toThrow();
     expect(() => {
       (LOCKED.weights as { elliott: number }).elliott = 50;
     }).toThrow();
@@ -40,9 +47,11 @@ describe("Feste Werte (locked-config)", () => {
     expect(DEFAULT_CORE_OPTIONS.minQuality).toBe(LOCKED.core.minQuality);
   });
   it("lernbare Werte überschneiden sich nicht mit festen Werten", () => {
-    const lockedKeys = ["weights", "minRiskReward", "entryRetrace", "zoneDeep", "stopBufferAtr", "minWaveAtr", "target1Ext", "trendFilter", "trailAtr", "exitMode", "maxWaitBars", "maxHoldBars", "minQuality", "riskBadgePct"];
+    const lockedKeys = ["weightBounds", "acceptance", "minRiskReward", "entryRetrace", "zoneDeep", "stopBufferAtr", "minWaveAtr", "target1Ext", "trendFilter", "trailAtr", "exitMode", "maxWaitBars", "maxHoldBars", "minQuality", "riskBadgePct"];
     for (const k of lockedKeys) expect(LEARNABLE_KEYS as string[]).not.toContain(k);
-    expect(validateParams({ weights: { elliott: 80 } } as never)).toContain("Nicht lernbar: weights");
+    expect(validateParams({ weightBounds: { elliottMin: 40 } } as never)).toContain("Nicht lernbar: weightBounds");
+    // Gewichtung ist lernbar, aber nur innerhalb der festen Grenzen
+    expect(validateParams({ weights: { elliott: 50, fundamental: 30, volume: 20 } }).length).toBeGreaterThan(0);
     expect(validateParams({ minRiskReward: 1 } as never)).toContain("Nicht lernbar: minRiskReward");
     expect(validateParams({ trailAtr: 2 } as never)).toContain("Nicht lernbar: trailAtr");
     expect(validateParams(DEFAULT_PARAMS)).toEqual([]);

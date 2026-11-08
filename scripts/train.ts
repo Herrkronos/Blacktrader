@@ -1,16 +1,16 @@
 // Erst-Training offline auf vorhandenen CSV-Kursreihen (gleiche Regeln wie der nächtliche Trainer).
 // Aufruf: DATA_DIR=<ordner> npx tsx scripts/train.ts
-// Ergebnis: Bericht je Anlageklasse × Horizont (Walk-Forward, unbekannte Prüfdaten) und einmaliger Abschlusstest.
+// Ergebnis: je Bereich alt gegen neu auf unbekannten Prüfdaten (Walk-Forward), mit allen Strenge-Regeln.
 import fs from "node:fs";
 import path from "node:path";
 import { aggregateCandles } from "../src/lib/data/aggregate";
-import { runJob, startFinalJob, startTrainJob, type Universe } from "../src/lib/trainer/job";
-import { initialState } from "../src/lib/trainer/state";
+import { DEFAULT_PARAMS } from "../src/lib/analysis/params";
+import type { Universe } from "../src/lib/trainer/job";
+import { advanceWF, finalizeWF, initWF } from "../src/lib/trainer/walkforward";
 import type { CellKey, SeriesSpec } from "../src/lib/trainer/universe";
 import type { Candle } from "../src/lib/types";
 
 const DIR = process.env.DATA_DIR ?? "data";
-const ROUNDS = Number(process.env.ROUNDS ?? 3);
 
 function readCsv(file: string): Candle[] {
   const lines = fs.readFileSync(path.join(DIR, file), "utf8").trim().split("\n");
@@ -30,25 +30,25 @@ function readCsv(file: string): Candle[] {
 }
 
 // Verfügbare Reihen (Datei, Zusammenfassung in Sekunden)
-const SOURCES: Record<string, { file: string; agg?: number; lastYears?: number }> = {
-  "SPY 1d": { file: "SPY_D.csv", lastYears: 5 },
-  "GOOG 1d": { file: "GOOG.csv", lastYears: 5 },
+const SOURCES: Record<string, { file: string | string[]; agg?: number; lastYears?: number }> = {
+  "SPY 1d": { file: "SPY_D.csv", lastYears: 20 },
+  "GOOG 1d": { file: "GOOG.csv" },
   "SPY 1w": { file: "SPY_D.csv", agg: 7 * 86400, lastYears: 15 },
   "Gold13 1h": { file: "xau2013_5m.csv", agg: 3600 },
-  "Gold16 1h": { file: "xau2016_5m.csv", agg: 3600 },
-  "Gold17 1h": { file: "xau2017_5m.csv", agg: 3600 },
+  "Gold16-17 1h": { file: ["xau2016_5m.csv", "xau2017_5m.csv"], agg: 3600 },
+  "Gold16-17 4h": { file: ["xau2016_5m.csv", "xau2017_5m.csv"], agg: 4 * 3600 },
 };
 const UNI: Partial<Record<CellKey, SeriesSpec[]>> = {
   "stock:medium": ["SPY 1d", "GOOG 1d"].map((symbol) => ({ symbol, kind: "stock", horizon: "medium", interval: "1d", days: 0, step: 1 })),
   "stock:long": [{ symbol: "SPY 1w", kind: "stock", horizon: "long", interval: "1w", days: 0, step: 1 }],
-  "commodity:short": ["Gold13 1h", "Gold16 1h", "Gold17 1h"].map((symbol) => ({ symbol, kind: "commodity", horizon: "short", interval: "1h", days: 0, step: 1 })),
+  "commodity:short": ["Gold13 1h", "Gold16-17 1h"].map((symbol) => ({ symbol, kind: "commodity", horizon: "short", interval: "1h", days: 0, step: 1 })),
 };
 const uni: Universe = (c) => UNI[c] ?? [];
 const cache = new Map<string, Candle[]>();
 const load = async (s: SeriesSpec) => {
   if (!cache.has(s.symbol)) {
     const src = SOURCES[s.symbol];
-    let c = readCsv(src.file);
+    let c = (Array.isArray(src.file) ? src.file : [src.file]).flatMap(readCsv).sort((a, b) => a.time - b.time);
     if (src.agg) c = aggregateCandles(c, src.agg);
     if (src.lastYears) c = c.filter((x) => x.time >= c[c.length - 1].time - src.lastYears! * 365 * 86400);
     cache.set(s.symbol, c);
@@ -57,22 +57,23 @@ const load = async (s: SeriesSpec) => {
 };
 
 async function main() {
-  const s = initialState();
+  const BUDGET = Number(process.env.BUDGET_S ?? 120) * 1000;
   const pct = (x: number) => `${(x * 100).toFixed(1)} %`;
-  for (let r = 0; r < ROUNDS; r++) {
-    for (const cell of Object.keys(UNI) as CellKey[]) {
-      startTrainJob(s, cell, uni);
-      while (s.job) await runJob(s, load, Date.now() + 600_000, { universe: uni, maxJobs: 0 });
-      const st = s.cells[cell]!;
-      console.log(`Runde ${r + 1} ${cell}: Prüfdaten ${pct(st.oos.hitRate)} | ${st.oos.trades} Signale | PF ${st.oos.profitFactor.toFixed(2)} | Ø+ ${st.oos.avgWin.toFixed(2)} % Ø− ${st.oos.avgLoss.toFixed(2)} % | DD ${st.oos.maxDrawdown.toFixed(1)} % | ${s.log[0].kind}: ${s.log[0].change} – ${s.log[0].reason}`);
+  const only = process.env.CELL as CellKey | undefined;
+  for (const cell of (Object.keys(UNI) as CellKey[]).filter((c) => !only || c === only)) {
+    const st = initWF(cell, uni(cell), DEFAULT_PARAMS, { maxSteps: 200, candidatesPerStep: 8 });
+    const done = await advanceWF(st, { load, deadline: Date.now() + BUDGET });
+    const r = done ? st.result : finalizeWF(st);
+    if (!r) {
+      console.log(`${cell}: kein Ergebnis`);
+      continue;
     }
+    const f = (m: typeof r.base) => `${pct(m.hitRate)} | ${m.trades} Signale | PF ${m.profitFactor.toFixed(2)} | Ø+ ${m.avgWin.toFixed(2)} % Ø− ${m.avgLoss.toFixed(2)} % | DD ${m.maxDrawdown.toFixed(1)} % | ${m.perMonth.toFixed(2)}/Monat`;
+    console.log(`\n${cell} (${st.step} Lernschritte, ${Object.keys(st.pool).length} geprüfte Einstellungen)`);
+    console.log(`  alt (unbekannte Daten): ${f(r.base)}`);
+    console.log(`  neu (unbekannte Daten): ${f(r.cand)}`);
+    console.log(`  ${r.decision.accept ? "ÜBERNOMMEN" : "verworfen"}: ${r.decision.reasons.join("; ") || "alle Regeln erfüllt"}`);
+    console.log(`  Werte (final): ${r.changes}`);
   }
-  // Einmaliger Abschlusstest auf den gesperrten letzten 12 Monaten
-  startFinalJob(s, uni);
-  while (s.job) await runJob(s, load, Date.now() + 600_000, { universe: uni, maxJobs: 0 });
-  const f = s.finalTests[0];
-  for (const [c, m] of Object.entries(f.cells)) if (m.trades) console.log(`Abschlusstest ${c}: ${pct(m.hitRate)} | ${m.trades} Signale | PF ${m.profitFactor.toFixed(2)}`);
-  console.log(`Versionen: ${s.versions.length} (aktiv ${s.current})`);
-  fs.writeFileSync(path.join(DIR, "train-report.json"), JSON.stringify(s, null, 1));
 }
 void main();

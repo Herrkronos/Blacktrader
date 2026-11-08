@@ -11,8 +11,14 @@ function deepFreeze<T>(o: T): T {
 }
 
 export const LOCKED = deepFreeze({
-  /** Gesamtscore = 60 % Elliott + 20 % Fundamental/News + 20 % Volumen/RSI */
+  /** Standard-Gewichtung: 60 % Elliott + 20 % Fundamental/News + 20 % Volumen/RSI */
   weights: { elliott: 60, fundamental: 20, volume: 20 },
+  /** Feste Grenzen für jede Gewichtung (Trainer UND Einstellungen): Elliott bleibt immer primär */
+  weightBounds: { elliottMin: 60, fundamentalMin: 10, volumeMin: 10, sum: 100 },
+  /** Mindest-Signalstärke darf je Version nur steigen, nie sinken */
+  minStrengthOnlyUp: true,
+  /** Regeln gegen Selbstbetrug: Mindestanzahl Signale, max. Rückgang Signale/Monat, PF und Drawdown nicht schlechter */
+  acceptance: { minSignals: 200, maxSignalDrop: 0.4, profitFactorNotLower: true, drawdownNotWorse: true },
   /** Mindest-Chance-Risiko-Verhältnis */
   minRiskReward: 1.5,
   /** Elliott-Regeln (werden in patterns.ts als harte Regeln geprüft) */

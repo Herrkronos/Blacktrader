@@ -2,6 +2,7 @@
 // Reine Datenlogik ohne Speicherzugriff (testbar).
 import type { LearnableParams, ParamSet } from "../analysis/params";
 import { metrics, type Metrics } from "./engine";
+import type { WFState } from "./walkforward";
 import type { CellKey, SeriesSpec } from "./universe";
 
 export interface ParamVersion {
@@ -10,6 +11,9 @@ export interface ParamVersion {
   params: ParamSet;
   reason: string;
   parent?: number;
+  /** Bereich und Trefferquote auf unbekannten Daten, mit der diese Version entstand */
+  cell?: CellKey;
+  hitRate?: number;
 }
 
 export type LogKind = "angenommen" | "abgelehnt" | "zurückgesetzt" | "abschlusstest" | "info";
@@ -65,16 +69,7 @@ export interface TrainJob {
   cell: CellKey;
   baseVersion: number;
   startedAt: string;
-  phase: "in" | "oos";
-  /** Index 0 = aktueller Stand, danach Kandidaten */
-  candidates: { change: string; params: LearnableParams }[];
-  specs: SeriesSpec[];
-  /** results[Kandidat][Reihe] */
-  results: (UnitResult | null)[][];
-  /** In Phase "oos": [Stand, gewählter Kandidat] */
-  chosen?: number;
-  inSample?: Metrics[];
-  failed: string[];
+  wf: WFState;
 }
 
 export interface FinalJob {
@@ -135,7 +130,7 @@ export function addHistory(s: TrainerState, p: HistoryPoint): void {
 }
 
 /** Neue Version mit geänderten Werten für eine Zelle (alle anderen Zellen bleiben). */
-export function addVersion(s: TrainerState, cell: CellKey, params: Partial<LearnableParams>, reason: string): ParamVersion {
+export function addVersion(s: TrainerState, cell: CellKey, params: Partial<LearnableParams>, reason: string, hitRate?: number): ParamVersion {
   const cur = currentVersion(s);
   const v: ParamVersion = {
     id: Math.max(...s.versions.map((x) => x.id)) + 1,
@@ -143,6 +138,8 @@ export function addVersion(s: TrainerState, cell: CellKey, params: Partial<Learn
     params: { ...cur.params, [cell]: params },
     reason,
     parent: cur.id,
+    cell,
+    hitRate,
   };
   s.versions.push(v);
   s.current = v.id;
@@ -159,6 +156,17 @@ export function rollback(s: TrainerState): ParamVersion | null {
   if (s.job?.type === "train") s.job = null; // laufender Lernschritt bezog sich auf die alte Version
   addLog(s, { kind: "zurückgesetzt", version: prev.id, reason: `Zurückgesetzt von Version ${cur.id} auf Version ${prev.id}` });
   return prev;
+}
+
+/** Auf eine bestimmte Version wechseln (nichts wird gelöscht). */
+export function rollbackTo(s: TrainerState, id: number): ParamVersion | null {
+  const v = s.versions.find((x) => x.id === id);
+  if (!v || v.id === s.current) return null;
+  const from = s.current;
+  s.current = v.id;
+  if (s.job?.type === "train") s.job = null;
+  addLog(s, { kind: "zurückgesetzt", version: v.id, reason: `Zurückgesetzt von Version ${from} auf Version ${v.id}` });
+  return v;
 }
 
 /** Nur geänderte Werte speichern (Unterschied zu den Standardwerten). */

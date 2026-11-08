@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { HORIZON_LABEL, KIND_LABEL, type AssetKind, type Horizon } from "@/lib/types";
+import { startTraining, stopTraining, TOKEN_KEY, useTraining } from "@/lib/client/trainingSession";
+import { DURATIONS, phaseLabel } from "@/lib/trainer/session";
+import { CELL_KEYS, type CellKey } from "@/lib/trainer/universe";
 
 interface M {
   trades: number;
@@ -20,7 +23,7 @@ interface Status {
   target: number;
   minSignals: number;
   current: number;
-  versions: { id: number; createdAt: string; reason: string; parent?: number; params: Record<string, Record<string, unknown>> }[];
+  versions: { id: number; createdAt: string; reason: string; parent?: number; params: Record<string, Record<string, unknown>>; cell?: string; hitRate?: number }[];
   cells: { cell: string; status: { updated: string; version: number; oos: M; series: number; bestSeen?: M; note?: string } | null }[];
   live: Record<string, (M & { open: number; expired: number }) | undefined>;
   signals: { total: number; recent: { id: string; symbol: string; horizon: Horizon; kind: AssetKind; direction: "long" | "short"; entry: number; status: string; createdAt: string; strength: number; returnPct?: number }[] };
@@ -41,7 +44,103 @@ const cellLabel = (c: string) => {
   const [k, h] = c.split(":") as [AssetKind, Horizon];
   return `${KIND_LABEL[k] ?? k} · ${HORIZON_LABEL[h] ?? h}`;
 };
-const TOKEN_KEY = "bsh-trainer-token";
+const mins = (ms: number) => {
+  const m = Math.max(0, Math.ceil(ms / 60e3));
+  return m >= 90 ? `${Math.floor(m / 60)} Std. ${m % 60} Min.` : `${m} Min.`;
+};
+
+function TrainingPanel({ onDone }: { onDone: () => void }) {
+  const t = useTraining();
+  const [dur, setDur] = useState(DURATIONS[0].ms);
+  const [area, setArea] = useState<"all" | CellKey>("all");
+  const st = t.session;
+  const running = t.running;
+  useEffect(() => {
+    if (st && !running) onDone();
+  }, [running, st, onDone]);
+  const pctDone = st ? Math.min(100, (st.elapsedMs / st.cfg.durationMs) * 100) : 0;
+  const cell = st && st.cellIdx < st.cfg.cells.length ? st.cfg.cells[st.cellIdx] : null;
+  return (
+    <section className="card space-y-3 p-4">
+      <h2 className="text-[17px] text-gold-light">Training starten</h2>
+      <p className="text-[14px] text-stone-400">Rechnet auf diesem Gerät im Hintergrund (die App bleibt bedienbar). Am Ende jedes Bereichs wird alt gegen neu auf unbekannten Daten verglichen – gespeichert wird nur, was besser ist.</p>
+      {!running && (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {DURATIONS.map((d) => (
+              <button key={d.ms} className={`btn ${dur === d.ms ? "btn-primary" : ""}`} onClick={() => setDur(d.ms)}>
+                {d.label}
+              </button>
+            ))}
+          </div>
+          <select className="input" value={area} onChange={(e) => setArea(e.target.value as "all" | CellKey)}>
+            <option value="all">Alle 9 Bereiche nacheinander</option>
+            {CELL_KEYS.map((c) => (
+              <option key={c} value={c}>
+                Nur {cellLabel(c)}
+              </option>
+            ))}
+          </select>
+          <button className="btn btn-primary w-full" onClick={() => void startTraining(dur, area === "all" ? [...CELL_KEYS] : [area])}>
+            Training starten ({DURATIONS.find((d) => d.ms === dur)?.label})
+          </button>
+        </>
+      )}
+      {st && (
+        <div className="space-y-2">
+          <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-gold transition-all" style={{ width: `${pctDone}%` }} />
+          </div>
+          <div className="flex flex-wrap justify-between gap-2 text-[14px] text-stone-300">
+            <span className="num">{pctDone.toFixed(0)} %</span>
+            <span>{running ? `noch ${mins(st.cfg.durationMs - st.elapsedMs)}` : st.status === "stopped" ? "gestoppt" : "fertig"}</span>
+          </div>
+          {running && (
+            <>
+              <p className="text-[14px] text-stone-200">
+                <b>{phaseLabel(st.phase)}</b>
+                {st.detail ? <span className="text-stone-400"> · {st.detail}</span> : null}
+              </p>
+              {cell && (
+                <p className="text-[13px] text-stone-400">
+                  Bereich {st.cellIdx + 1} von {st.cfg.cells.length}: {cellLabel(cell)}
+                </p>
+              )}
+              {st.live && st.live.old != null && (
+                <p className="text-[14px] text-stone-300">
+                  Beste Trefferquote (unbekannte Daten): <b className="num text-stone-100">{st.live.best != null ? pct(st.live.best) : "–"}</b> · alter Stand <span className="num">{pct(st.live.old)}</span>
+                </p>
+              )}
+              <p className="text-[13px] text-stone-500">{t.wakeLock ? "Bildschirm bleibt an, solange trainiert wird." : "Tipp: App geöffnet lassen – im Hintergrund pausiert das Training."}</p>
+              <button className="btn btn-danger w-full" onClick={stopTraining}>
+                Stopp (aktuellen Bereich noch auswerten)
+              </button>
+            </>
+          )}
+          {st.results.length > 0 && (
+            <ul className="space-y-1.5">
+              {st.results.map((r) => {
+                const msg = t.messages[`${st.cfg.id}:${r.cell}`];
+                const ok = msg?.startsWith("Verbessert");
+                return (
+                  <li key={r.cell} className={`rounded-xl p-2.5 text-[14px] ${ok ? "bg-emerald-500/10 text-emerald-200" : "bg-white/5 text-stone-300"}`}>
+                    <b className="text-stone-100">{cellLabel(r.cell)}:</b> {msg ?? (r.base ? "wird gespeichert …" : r.reasons[0])}
+                    {r.base && r.cand && <span className="block text-[12px] text-stone-500">{r.cand.trades} Signale · PF {num(r.base.profitFactor)} → {num(r.cand.profitFactor)} · Rückgang {num(r.base.maxDrawdown, 1)} → {num(r.cand.maxDrawdown, 1)} %</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function weightsOf(v: { params: Record<string, Record<string, unknown>>; cell?: string }): string {
+  const w = (v.cell ? v.params[v.cell]?.weights : undefined) as { elliott: number; fundamental: number; volume: number } | undefined;
+  return w ? `${w.elliott} / ${w.fundamental} / ${w.volume}` : "60 / 20 / 20";
+}
 
 function MetricLine({ m }: { m: M }) {
   return (
@@ -105,7 +204,7 @@ export default function TrainerPage() {
     }
   }, [load]);
 
-  const post = async (path: string, label: string, confirmText?: string) => {
+  const post = async (path: string, label: string, confirmText?: string, body?: unknown) => {
     if (confirmText && !window.confirm(confirmText)) return;
     setBusy(label);
     setMsg(null);
@@ -115,7 +214,7 @@ export default function TrainerPage() {
       } catch {
         /* egal */
       }
-      const r = await fetch(path, { method: "POST", headers: token ? { "x-trainer-token": token } : {} });
+      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { "x-trainer-token": token } : {}) }, body: body ? JSON.stringify(body) : undefined });
       const j = await r.json().catch(() => ({}));
       setMsg(j.note ?? (r.ok ? "Erledigt" : "Fehler"));
       await load();
@@ -158,9 +257,11 @@ export default function TrainerPage() {
           Der Trainer lernt nachts nur die <b className="text-stone-100">Feineinstellung</b> (z. B. wie empfindlich Wellen erkannt werden, RSI- und Volumen-Schwellen, Mindest-Signalstärke) – getrennt für Aktien, Krypto und Rohstoffe und je Zeitraum.
         </p>
         <p className="text-stone-400">
-          Fest und nie verändert: Gewichtung 60 / 20 / 20, Elliott-Regeln, Stop, Ziele, Chance-Risiko, Positionsgröße. Neue Werte werden nur übernommen, wenn sie auf <b>unbekannten</b> Daten besser sind.
+          Fest und nie verändert: Elliott-Regeln, Stop, Ziele, Chance-Risiko, Positionsgröße. Gewichtung nur in festen Grenzen (Elliott mindestens 60 %). Mindest-Signalstärke und Filter werden nur strenger. Neue Werte werden nur übernommen, wenn sie auf <b>unbekannten</b> Daten besser sind.
         </p>
       </section>
+
+      <TrainingPanel onDone={() => void load()} />
 
       {err && <p className="card p-4 text-[15px] text-down">Trainer nicht erreichbar: {err}</p>}
       {s?.storage === "memory" && (
@@ -269,7 +370,17 @@ export default function TrainerPage() {
                   <span className="text-[13px] text-stone-400">{date(v.createdAt)}</span>
                 </div>
                 <p className="text-[14px] text-stone-300">{v.reason}</p>
-                {v.id === s.current && <p className="text-[13px] text-gold">Aktiv für alle Nutzer</p>}
+                <p className="text-[13px] text-stone-400">
+                  {v.hitRate != null ? <>Trefferquote {pct(v.hitRate)} · </> : null}
+                  Gewichtung {weightsOf(v)}
+                </p>
+                {v.id === s.current ? (
+                  <p className="text-[13px] text-gold">Aktiv für alle Nutzer</p>
+                ) : (
+                  <button className="btn mt-1 text-xs" disabled={!!busy} onClick={() => post("/api/trainer/rollback", "rollback", `Auf Version ${v.id} zurücksetzen? Gilt sofort für alle Nutzer.`, { to: v.id })}>
+                    Zurücksetzen auf diese Version
+                  </button>
+                )}
               </li>
             ))}
           </ul>

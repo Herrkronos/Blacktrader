@@ -3,7 +3,7 @@ import type { Candle } from "../types";
 import type { BacktestResult, BacktestTrade } from "./backtest";
 import { LOCKED } from "./locked-config";
 import { MIN_RISK_REWARD } from "./score";
-import { atr } from "./indicators";
+import { atr, exhaustionAt, rsi } from "./indicators";
 import { performance, tradeReturnPct } from "./stats";
 import { DEFAULT_ZONE_OPTIONS, findZoneSetup, type ZoneOptions, type ZoneSetup } from "./zones";
 
@@ -35,6 +35,8 @@ export interface ZoneBacktestOptions {
   trailAtSignal?: boolean;
   /** Einstieg erst, wenn eine Kerze in der Zone in Trade-Richtung über das Hoch der Vorkerze schließt */
   confirmEntry?: boolean;
+  /** Nach Ziel 1: Gewinn sichern, sobald ein Wellen-5-Ende mit RSI-Divergenz erkannt wird (Standard: aus bzw. aus dem Signal) */
+  wave5Exit?: boolean;
 }
 
 function* steps(candles: Candle[], opts: ZoneBacktestOptions): Generator<number, BacktestResult> {
@@ -48,6 +50,7 @@ function* steps(candles: Candle[], opts: ZoneBacktestOptions): Generator<number,
   const exitMode = opts.exitMode ?? LOCKED.trade.exitMode; // gemessen: Prüfdaten Gewinnfaktor 1,59 (fixed: 1,18)
   const trailAtr = opts.trailAtr ?? LOCKED.trade.trailAtr;
   const atrs = atr(candles);
+  const rsis = rsi(candles.map((c) => c.close));
   const trades: BacktestTrade[] = [];
   let evaluated = 0;
   let i = warmup;
@@ -137,6 +140,13 @@ function* steps(candles: Candle[], opts: ZoneBacktestOptions): Generator<number,
         reachedT1 = true;
         if (exitMode === "partial") partialExit = target;
         stop = fill; // Stop auf Einstieg
+      }
+      // Wellen-5-Ende erkannt (nur mit Kerzen bis j): Gewinn zum Schlusskurs sichern
+      if (reachedT1 && (opts.wave5Exit ?? setup.wave5Exit) && exhaustionAt(candles, rsis, j, dir as 1 | -1)) {
+        exitIdx = j;
+        exit = c.close;
+        reason = "target";
+        break;
       }
       if (reachedT1) {
         const a = opts.trailAtSignal ?? true ? setup.atr : atrs[j] ?? 0; // Standard wie in der App: fester Abstand

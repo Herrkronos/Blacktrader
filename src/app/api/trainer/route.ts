@@ -7,15 +7,21 @@ import { loadSignals, loadState } from "@/lib/trainer/server";
 import { liveMetrics } from "@/lib/trainer/signals";
 import { storageKind } from "@/lib/trainer/storage";
 import { CELL_KEYS } from "@/lib/trainer/universe";
+import type { WFState } from "@/lib/trainer/walkforward";
 
 export const dynamic = "force-dynamic";
+
+function poolProgress(wf: WFState) {
+  const runs = Object.values(wf.pool).flatMap((p) => p.runs.map((r, i) => r != null || wf.info[i] === "failed"));
+  return { done: runs.filter(Boolean).length, total: runs.length };
+}
 
 export async function GET(req: Request) {
   return handle(req, async () => {
     const [s, signals] = await Promise.all([loadState(), loadSignals()]);
     const job = s.job
       ? s.job.type === "train"
-        ? { type: "train", cell: s.job.cell, phase: s.job.phase, done: s.job.results.flat().filter(Boolean).length, total: s.job.results.flat().length, startedAt: s.job.startedAt }
+        ? { type: "train", cell: s.job.cell, phase: s.job.wf.stage, ...poolProgress(s.job.wf), startedAt: s.job.startedAt }
         : { type: "final", version: s.job.version, done: Object.values(s.job.results).flat().filter(Boolean).length, total: Object.values(s.job.results).flat().length, startedAt: s.job.startedAt }
       : null;
     return {
@@ -23,9 +29,9 @@ export async function GET(req: Request) {
       adminRequired: adminRequired(),
       target: TARGET_HIT_RATE,
       minSignals: MIN_SIGNALS_VALID,
-      locked: { weights: LOCKED.weights, minRiskReward: LOCKED.minRiskReward },
+      locked: { weights: LOCKED.weights, weightBounds: LOCKED.weightBounds, minRiskReward: LOCKED.minRiskReward },
       current: s.current,
-      versions: s.versions.map((v) => ({ id: v.id, createdAt: v.createdAt, reason: v.reason, parent: v.parent, params: v.params })),
+      versions: s.versions.map((v) => ({ id: v.id, createdAt: v.createdAt, reason: v.reason, parent: v.parent, params: v.params, cell: v.cell, hitRate: v.hitRate })),
       cells: CELL_KEYS.map((c) => ({ cell: c, status: s.cells[c] ?? null })),
       live: liveMetrics(signals),
       signals: { total: signals.length, recent: signals.slice(-30).reverse() },

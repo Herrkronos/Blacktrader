@@ -55,6 +55,8 @@ export interface ZoneSetup {
   inZone: boolean;
   /** ATR zum Zeitpunkt des Setups (für das Nachziehen des Stops) */
   atr: number;
+  /** Nach Ziel 1 bei Wellen-5-Ende aussteigen (gelernt) */
+  wave5Exit?: boolean;
 }
 
 /**

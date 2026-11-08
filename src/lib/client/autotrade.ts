@@ -26,6 +26,7 @@ export function openPaperTrade(asset: Asset, res: AnalysisResult): boolean {
     orderType: plan.orderType,
     cancelAbove: plan.cancelAbove,
     trailDistance: plan.trailDistance,
+    wave5Exit: plan.wave5Exit || undefined,
     initialStop: plan.stop,
     // Wartende Order verfällt nach 60 Kerzen (wie im EchoChart gemessen)
     expiresAt: limit ? Date.now() + 60 * INTERVAL_MS[res.interval] : undefined,

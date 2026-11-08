@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { LOCKED } from "../src/lib/analysis/locked-config";
 import { DEFAULT_PARAMS, validateParams } from "../src/lib/analysis/params";
 import { runZoneBacktest } from "../src/lib/analysis/zoneBacktest";
-import { backtestSeries, decide, metrics, splitHoldout, trainStep, walkForwardFolds, type Series } from "../src/lib/trainer/engine";
+import { backtestSeries, decide, metrics, splitHoldout, walkForwardFolds, type Series } from "../src/lib/trainer/engine";
+import { advanceWF, initWF } from "../src/lib/trainer/walkforward";
 import { randomWalk } from "./golden/fixtures";
 
 const series = (seed: number, n = 520): Series => ({ name: `s${seed}`, kind: "stock", horizon: "medium", interval: "1d", candles: randomWalk(seed, n) });
@@ -90,11 +91,15 @@ describe("Trainer: Regeln gegen Selbstbetrug", () => {
 });
 
 describe("Trainer rührt feste Werte nicht an", () => {
-  it("nach einem Lernschritt sind feste Werte unverändert und Parameter gültig", () => {
+  it("nach einem Lernlauf sind feste Werte unverändert und Parameter gültig", async () => {
     const before = JSON.stringify(LOCKED);
-    const r = trainStep([series(41, 430), series(43, 430)], DEFAULT_PARAMS, { maxCandidates: 3, folds: 2, step: 6, keys: ["minStrength", "rsiOverbought"] });
+    const data = [series(41, 700).candles, series(43, 700).candles];
+    const specs = data.map((_, i) => ({ symbol: `S${i}`, kind: "stock" as const, horizon: "medium" as const, interval: "1d" as const, days: 0, step: 6 }));
+    const st = initWF("stock:medium", specs, DEFAULT_PARAMS, { folds: 2, maxSteps: 1, candidatesPerStep: 3 });
+    await advanceWF(st, { load: async (sp) => data[Number(sp.symbol.slice(1))], deadline: Date.now() + 100_000 });
     expect(JSON.stringify(LOCKED)).toBe(before);
-    expect(validateParams(r.params)).toEqual([]);
-    expect(Object.keys(r.params).sort()).toEqual(Object.keys(DEFAULT_PARAMS).sort());
+    expect(st.result).toBeTruthy();
+    expect(validateParams(st.result!.deployed)).toEqual([]);
+    expect(Object.keys(st.result!.deployed).sort()).toEqual(Object.keys(DEFAULT_PARAMS).sort());
   }, 120000);
 });

@@ -210,3 +210,21 @@ export function rsiDivergences(candles: Candle[], rsiValues: (number | null)[], 
   check(localExtrema(highs, width, "max"), highs, "max");
   return out.sort((x, y) => x.toIndex - y.toIndex);
 }
+
+/**
+ * Erschöpfung am Ende einer Welle 5 an Kerze `j` (nur Daten bis `j`): neues Extrem gegenüber dem letzten
+ * Hoch (Long) bzw. Tief (Short) der vorigen `look` Kerzen, aber schwächerer RSI (Divergenz).
+ * `dir` = Richtung des laufenden Trades.
+ */
+export function exhaustionAt(candles: Candle[], rsiValues: (number | null)[], j: number, dir: 1 | -1, look = 40, gap = 5): boolean {
+  if (j < look) return false;
+  let pi = -1;
+  for (let k = j - look; k <= j - gap; k++) {
+    if (pi < 0 || (dir === 1 ? candles[k].high > candles[pi].high : candles[k].low < candles[pi].low)) pi = k;
+  }
+  const rNow = rsiValues[j];
+  const rPrev = rsiValues[pi];
+  if (pi < 0 || rNow == null || rPrev == null) return false;
+  if (dir === 1) return candles[j].high >= candles[pi].high && rPrev >= 60 && rNow < rPrev - 3;
+  return candles[j].low <= candles[pi].low && rPrev <= 40 && rNow > rPrev + 3;
+}

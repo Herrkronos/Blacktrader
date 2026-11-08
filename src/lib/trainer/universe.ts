@@ -39,3 +39,24 @@ export function universe(cell: CellKey): SeriesSpec[] {
   const s = HORIZON_SETUP[horizon];
   return symbols.map((symbol) => ({ symbol, kind, horizon, interval: s.interval, days: s.days, step: s.step }));
 }
+
+/** Große Indizes (als Aktien-Klasse gelernt) */
+export const INDICES = ["^GSPC", "^NDX", "^DJI", "^RUT", "^GDAXI", "^STOXX50E", "^FTSE", "^FCHI", "^N225", "^HSI"];
+
+/**
+ * Lernwerte für das Browser-Training: alles aus `universe` + Indizes + zusätzliche Werte
+ * (Chancen und Watchlist). Krypto über Yahoo (XXX-USD), damit eine Abfrage mehrere Jahre liefert.
+ */
+export function sessionUniverse(cell: CellKey, extra: { symbol: string; kind: AssetKind; yahooSymbol?: string }[] = []): SeriesSpec[] {
+  const [kind, horizon] = cell.split(":") as [AssetKind, Horizon];
+  const base = universe(cell);
+  const s = HORIZON_SETUP[horizon];
+  const syms = new Set(base.map((b) => b.symbol));
+  const add: string[] = [];
+  if (kind === "stock") add.push(...INDICES);
+  if (kind === "stock" && horizon === "short") add.push(...STOCKS.slice(25));
+  for (const e of extra) if (e.kind === kind) add.push(e.yahooSymbol ?? (kind === "crypto" ? `${e.symbol}-USD` : e.symbol));
+  const out = [...base];
+  for (const symbol of add) if (!syms.has(symbol)) (syms.add(symbol), out.push({ symbol, kind, horizon, interval: s.interval, days: s.days, step: s.step }));
+  return out;
+}

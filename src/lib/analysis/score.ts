@@ -54,6 +54,8 @@ export interface TradePlan {
   cancelAbove?: number;
   /** Ab Ziel 1: Stop auf Einstieg, danach mit diesem Abstand nachziehen */
   trailDistance?: number;
+  /** Nach Ziel 1 Gewinn sichern, wenn ein Wellen-5-Ende mit Divergenz erkannt wird */
+  wave5Exit?: boolean;
 }
 
 export const MIN_RISK_REWARD = LOCKED.minRiskReward;

@@ -1,5 +1,6 @@
 "use client";
 // Lokaler Speicher (localStorage) für Watchlist, Trades und Einstellungen – kein Server, kein Login.
+import { clampWeights, validateWeights } from "../analysis/params";
 import { useRef, useSyncExternalStore } from "react";
 import { DEFAULT_WEIGHTS, type SignalLevel, type Weights } from "../analysis/score";
 import { HORIZON_DEFAULT_INTERVAL, type Horizon, type Interval, type ResolvedAsset } from "../types";
@@ -37,6 +38,8 @@ export interface Trade {
   expiresAt?: number;
   /** Nachzieh-Abstand ab Ziel 1 */
   trailDistance?: number;
+  /** Nach Ziel 1 bei erkanntem Wellen-5-Ende Gewinn sichern (vom Trainer gelernt) */
+  wave5Exit?: boolean;
   /** true, sobald Ziel 1 erreicht ist (Stop läuft mit) */
   trailing?: boolean;
   /** ursprünglicher Stop (für Anzeige) */
@@ -56,6 +59,8 @@ export interface Trade {
 
 export interface Settings {
   weights: Weights;
+  /** "trainer" = gelernte Gewichtung verwenden, "manual" = eigene Regler (gleiche Grenzen) */
+  weightsMode: "trainer" | "manual";
   globalHorizon: Horizon;
   intervals: Record<Horizon, Interval>;
   pollSeconds: number;
@@ -94,6 +99,7 @@ export interface AppData {
 
 export const DEFAULT_SETTINGS: Settings = {
   weights: DEFAULT_WEIGHTS,
+  weightsMode: "trainer",
   globalHorizon: "medium",
   intervals: { ...HORIZON_DEFAULT_INTERVAL },
   pollSeconds: 30,
@@ -127,7 +133,7 @@ function sanitize(raw: unknown): AppData {
     settings: {
       ...DEFAULT_SETTINGS,
       ...s,
-      weights: { ...DEFAULT_SETTINGS.weights, ...(s.weights ?? {}) },
+      ...normalizeWeightSettings(s),
       intervals: { ...DEFAULT_SETTINGS.intervals, ...(s.intervals ?? {}) },
       keys: { ...DEFAULT_SETTINGS.keys, ...(s.keys ?? {}) },
       pollSeconds: Math.min(60, Math.max(15, Number(s.pollSeconds) || DEFAULT_SETTINGS.pollSeconds)),
@@ -315,3 +321,13 @@ export const actions = {
     update(() => DEFAULT_DATA);
   },
 };
+
+/** Gewichtung immer in den festen Grenzen (Elliott ≥ 60 %, andere ≥ 10 %, Summe 100 %). Alte eigene Werte bleiben als "manuell". */
+function normalizeWeightSettings(s: Partial<Settings>): Pick<Settings, "weights" | "weightsMode"> {
+  const w = { ...DEFAULT_SETTINGS.weights, ...(s.weights ?? {}) };
+  const custom = w.elliott !== DEFAULT_WEIGHTS.elliott || w.fundamental !== DEFAULT_WEIGHTS.fundamental || w.volume !== DEFAULT_WEIGHTS.volume;
+  const mode = s.weightsMode ?? (custom ? "manual" : "trainer");
+  const sum = w.elliott + w.fundamental + w.volume || 100;
+  const scaled = { elliott: (w.elliott / sum) * 100, fundamental: (w.fundamental / sum) * 100, volume: (w.volume / sum) * 100 };
+  return { weightsMode: mode, weights: validateWeights(w).length ? clampWeights(scaled, "elliott") : w };
+}

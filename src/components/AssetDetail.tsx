@@ -1,7 +1,7 @@
 "use client";
 // Detailansicht eines Werts (als Bottom-Sheet oder eigene Seite): großer Chart mit Wellenzählung und
 // Fibo-Zonen, Signal mit Teil-Scores, Kernposition, Begründung, Fundamentalzahlen, News.
-import { learnedParams, useTrainerVersion } from "@/lib/client/trainerParams";
+import { effectiveWeights, learnedParams, useTrainerVersion } from "@/lib/client/trainerParams";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { analyze } from "@/lib/analysis/analyze";
@@ -108,10 +108,10 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
   const analysis = useMemo(
     () =>
       chartCandles.length >= 30
-        ? analyze({ symbol: asset.symbol, name: asset.name, candles: chartCandles, horizon, interval, fundamentals, news, weights: settings.weights, kind: asset.kind, currency, params: learnedParams(asset.kind, horizon) })
+        ? analyze({ symbol: asset.symbol, name: asset.name, candles: chartCandles, horizon, interval, fundamentals, news, weights: effectiveWeights(settings, asset.kind, horizon), kind: asset.kind, currency, params: learnedParams(asset.kind, horizon) })
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [asset.symbol, asset.name, asset.kind, chartCandles, horizon, interval, fundamentals, news, settings.weights, currency, trainerV],
+    [asset.symbol, asset.name, asset.kind, chartCandles, horizon, interval, fundamentals, news, settings.weights, settings.weightsMode, currency, trainerV],
   );
 
   const changeHorizon = (h: Horizon) => {

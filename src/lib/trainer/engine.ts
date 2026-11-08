@@ -68,6 +68,7 @@ export function signalFromAnalysis(hist: Candle[], s: Pick<Series, "kind" | "hor
     riskReward: p.riskReward,
     cancelAbove: p.cancelAbove ?? p.entry,
     inZone: p.orderType === "market",
+    wave5Exit: !!p.wave5Exit,
     atr: (p.trailDistance ?? 0) / LOCKED.trade.trailAtr,
   };
 }
@@ -154,7 +155,7 @@ export function holdoutSeries(s: Series, params: LearnableParams, months = 12, s
   return { trades: r.trades.filter((t) => t.entryTime >= holdout[0].time), months: monthsOf(holdout) };
 }
 
-export const MIN_SIGNALS_VALID = 200;
+export const MIN_SIGNALS_VALID = LOCKED.acceptance.minSignals;
 export const TARGET_HIT_RATE = 0.65;
 
 export interface Decision {
@@ -171,96 +172,13 @@ export function decide(base: Metrics, cand: Metrics): Decision {
   if (cand.trades < MIN_SIGNALS_VALID) reasons.push(`zu wenige Signale (${cand.trades} < ${MIN_SIGNALS_VALID})`);
   if (cand.hitRate <= base.hitRate) reasons.push(`Trefferquote nicht besser (${(cand.hitRate * 100).toFixed(1)} % ≤ ${(base.hitRate * 100).toFixed(1)} %)`);
   if (cand.profitFactor < base.profitFactor) reasons.push(`Profit-Faktor gesunken (${cand.profitFactor.toFixed(2)} < ${base.profitFactor.toFixed(2)})`);
-  if (base.perMonth > 0 && cand.perMonth < base.perMonth * 0.6) reasons.push(`zu wenige Signale pro Monat (−${Math.round((1 - cand.perMonth / base.perMonth) * 100)} %)`);
+  if (cand.maxDrawdown < base.maxDrawdown - 1e-9) reasons.push(`max. Rückgang schlechter (${cand.maxDrawdown.toFixed(1)} % < ${base.maxDrawdown.toFixed(1)} %)`);
+  if (base.perMonth > 0 && cand.perMonth < base.perMonth * (1 - LOCKED.acceptance.maxSignalDrop)) reasons.push(`zu wenige Signale pro Monat (−${Math.round((1 - cand.perMonth / base.perMonth) * 100)} %)`);
   return { accept: reasons.length === 0, reasons };
 }
 
-const NUMERIC_KEYS = Object.keys(PARAM_BOUNDS) as (keyof typeof PARAM_BOUNDS)[];
-const STEP: Record<string, number> = { zoneAtrMult: 0.5, fibToleranceScale: 0.15, rankFibWeight: 0.05, rankContextStrength: 0.25, rsiOverbought: 3, rsiOversold: 3, divergenceRecentBars: 5, relVolHigh: 0.15, relVolBreakout: 0.15, relVolLow: 0.1, newsShare: 0.1, newsHalfLifeHours: 12, minStrength: 5 };
-
-/** Kleine Schritte um die aktuellen Werte (vorsichtiges Nachjustieren). */
-export function neighbours(p: LearnableParams, keys: (keyof typeof PARAM_BOUNDS)[] = NUMERIC_KEYS, withDegrees = true): { params: LearnableParams; change: string }[] {
-  const out: { params: LearnableParams; change: string }[] = [];
-  for (const k of keys) {
-    const [lo, hi] = PARAM_BOUNDS[k];
-    for (const dir of [-1, 1]) {
-      const v = Math.round((p[k] + dir * STEP[k]) * 1000) / 1000;
-      if (v < lo || v > hi) continue;
-      const params = { ...p, [k]: v };
-      if (validateParams(params).length) continue;
-      out.push({ params, change: `${k} ${p[k]} → ${v}` });
-    }
-  }
-  // Wellengrade gemeinsam verschieben
-  for (const f of withDegrees ? [0.85, 1.15] : []) {
-    const d = p.elliottDegrees.map((x) => Math.round(x * f * 100) / 100) as [number, number, number];
-    const params = { ...p, elliottDegrees: d };
-    if (!validateParams(params).length) out.push({ params, change: `elliottDegrees ${p.elliottDegrees.join("/")} → ${d.join("/")}` });
-  }
-  return out;
-}
-
-/** Trades einer Reihe NUR aus dem Lernbereich (alles vor dem Prüfbereich des letzten Folds). */
-export function inSampleSeries(s: Series, params: LearnableParams, folds = 4, step?: number): SeriesTrades {
-  const fs = walkForwardFolds(s.candles.length, folds);
-  if (!fs.length) return { trades: [], months: 0 };
-  const slice = s.candles.slice(0, fs[fs.length - 1].train[1]);
-  return { trades: backtestSeries({ ...s, candles: slice }, params, { step }).trades, months: monthsOf(slice.slice(150)) };
-}
-
-/** Bewertung NUR auf den Lernbereichen (Zeitraum A jedes Folds, ohne Prüfbereiche). */
-export function evaluateInSample(series: Series[], params: LearnableParams, folds = 4, step?: number): Metrics {
-  const trades: BacktestTrade[] = [];
-  let months = 0;
-  for (const s of series) {
-    const r = inSampleSeries(s, params, folds, step);
-    trades.push(...r.trades);
-    months += r.months;
-  }
-  return metrics(trades, months);
-}
-
-/** Vorauswahl auf Lerndaten: Trefferquote höher, Profit-Faktor nicht schlechter, Signalmenge ≥ 60 %. */
+/** Vorauswahl auf Lerndaten: Trefferquote höher, Profit-Faktor und Rückgang nicht schlechter, Signalmenge ≥ 60 %. */
 export function preselect(baseIn: Metrics, cand: Metrics): boolean {
-  return cand.hitRate > baseIn.hitRate && cand.profitFactor >= baseIn.profitFactor && cand.perMonth >= baseIn.perMonth * 0.6;
+  return cand.hitRate > baseIn.hitRate && cand.profitFactor >= baseIn.profitFactor && cand.maxDrawdown >= baseIn.maxDrawdown && cand.perMonth >= baseIn.perMonth * (1 - LOCKED.acceptance.maxSignalDrop);
 }
 
-/** Wirksame Stellschrauben: RSI/Volumen/Fibo/Ranking wirken nur über die Mindest-Signalstärke. */
-export function effectiveKeys(p: LearnableParams): (keyof typeof PARAM_BOUNDS)[] {
-  const base: (keyof typeof PARAM_BOUNDS)[] = ["zoneAtrMult", "minStrength"];
-  if (p.minStrength <= 0) return base;
-  return [...base, "fibToleranceScale", "rankFibWeight", "rankContextStrength", "rsiOverbought", "rsiOversold", "divergenceRecentBars", "relVolHigh", "relVolBreakout", "relVolLow"];
-}
-
-export interface TrainStepResult {
-  accepted: boolean;
-  params: LearnableParams;
-  /** Prüfdaten (unbekannt): aktueller Stand */
-  base: Metrics;
-  /** Ausgewählter Kandidat (Auswahl nur auf Lerndaten) und sein Ergebnis auf den Prüfdaten */
-  best?: { change: string; inSample: Metrics; oos: Metrics; decision: Decision };
-  tried: number;
-}
-
-/**
- * Ein Lernschritt (Walk-Forward):
- * 1. Kandidaten (kleine Schritte) NUR auf den Lerndaten bewerten und den besten auswählen.
- * 2. Diesen einen Kandidaten auf den unbekannten Prüfdaten gegen den aktuellen Stand testen.
- * 3. Übernehmen nur, wenn er dort die Regeln gegen Selbstbetrug erfüllt.
- */
-export function trainStep(series: Series[], current: LearnableParams = DEFAULT_PARAMS, opts: { maxCandidates?: number; folds?: number; step?: number; keys?: (keyof typeof PARAM_BOUNDS)[] } = {}): TrainStepResult {
-  const cands = neighbours(current, opts.keys).slice(0, opts.maxCandidates ?? 40);
-  const baseIn = evaluateInSample(series, current, opts.folds, opts.step);
-  let chosen: { change: string; params: LearnableParams; inSample: Metrics } | null = null;
-  for (const c of cands) {
-    const m = evaluateInSample(series, c.params, opts.folds, opts.step);
-    // Vorauswahl auf Lerndaten: Trefferquote höher, Profit-Faktor nicht schlechter, Signalmenge ≥ 60 %
-    if (!preselect(baseIn, m)) continue;
-    if (!chosen || m.hitRate > chosen.inSample.hitRate) chosen = { change: c.change, params: c.params, inSample: m };
-  }
-  const base = evaluateOOS(series, current, opts.folds, opts.step).oos;
-  if (!chosen) return { accepted: false, params: current, base, tried: cands.length };
-  const oos = evaluateOOS(series, chosen.params, opts.folds, opts.step).oos;
-  const decision = decide(base, oos);
-  return { accepted: decision.accept, params: decision.accept ? chosen.params : current, base, best: { change: chosen.change, inSample: chosen.inSample, oos, decision }, tried: cands.length };
-}
