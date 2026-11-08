@@ -12,6 +12,7 @@ import { actions, getData, useAppData } from "@/lib/store/store";
 import { HORIZON_LABEL, type Candle, type Horizon, type ResolvedAsset } from "@/lib/types";
 import { MiniChart } from "./MiniChart";
 import { waveCaption } from "./waveText";
+import { bullishCount } from "@/lib/client/bullish";
 import { ConfirmSheet } from "./Sheet";
 import { StatusPill } from "./StatusPill";
 
@@ -85,14 +86,16 @@ export function AssetCard({
   const strength = coreFocus ? null : signalStrength(res);
   const cur = asset.currency;
   const myCore = trades.find((t) => t.status === "open" && t.strategy === "core" && t.symbol === asset.symbol);
-  const coreActive = !!myCore || core?.state === "hold";
+  // Kernposition (blau) nur mit bullischer Wellenzählung – die wird dann auch eingezeichnet
+  const coreCount = bullishCount(views.medium?.res) ?? bullishCount(views.long?.res) ?? bullishCount(res);
+  const coreActive = !!myCore || (core?.state === "hold" && !!coreCount);
   const isNachkauf = !!plan && plan.direction === "long" && coreActive;
   const riskPct = plan ? (Math.abs(plan.entry - plan.stop) / plan.entry) * 100 : 0;
   const lastPrice = price ?? res?.price;
   const conflict = useMemo(() => conflictText(views), [views]);
   const tradeOpen = res ? hasOpenTrade(asset.symbol, res.horizon) : false;
 
-  const edge = coreFocus ? "edge-core" : plan ? (plan.direction === "long" ? "edge-trade" : "edge-short") : coreActive ? "edge-core" : "";
+  const edge = coreFocus && coreActive ? "edge-core" : plan ? (plan.direction === "long" ? "edge-trade" : "edge-short") : coreActive ? "edge-core" : "";
   const badge = plan ? (
     plan.direction === "long" ? (
       <span className="badge-trade">{isNachkauf ? "Nachkauf" : "Trade"}</span>
@@ -119,7 +122,10 @@ export function AssetCard({
     }
     if (!core) return null;
     const d = core.last ? new Date(core.last.time * 1000).toLocaleDateString("de-DE") : null;
-    if (core.state === "hold") return `Kernpositions-Signal${d ? ` seit ${d}` : ""} (historisch) – Aufwärtstrend intakt`;
+    if (core.state === "hold")
+      return coreCount
+        ? `Kernpositions-Signal${d ? ` seit ${d}` : ""} (historisch) – Aufwärtstrend intakt`
+        : "Großer Trend aufwärts, aber keine bullische Wellenzählung – daher keine Kernposition.";
     if (core.state === "wait-bottom") return `Gewinnmitnahme-Signal${d ? ` am ${d}` : ""} (historisch) – warten auf Boden`;
     return null;
   })();
@@ -166,11 +172,18 @@ export function AssetCard({
       )}
 
       {/* Zeile 2 */}
-      {view && <MiniChart candles={view.candles} plan={plan} best={res?.elliott.best} showWaves={!coreFocus} />}
-      {!coreFocus && waveCaption(res?.elliott.best) && <p className="-mt-1 text-[13px] text-stone-400">{waveCaption(res?.elliott.best)}</p>}
-      {coreFocus && res?.elliott.best && res.elliott.best.bias === -1 && (
-        <p className="-mt-1 text-[13px] text-amber-300">Hinweis: Die kurzfristige Wellenzählung erwartet gerade eher fallende Kurse – der große Trend (Kernposition) ist aber noch intakt.</p>
-      )}
+      {(() => {
+        // Im Kernpositions-Filter (und bei blauer Karte ohne Trade) die bullische Zählung zeigen
+        const showCore = coreFocus || (!plan && coreActive && !!coreCount);
+        const wave = showCore ? coreCount : res?.elliott.best;
+        const candlesForWave = showCore && coreCount && views.medium?.res && bullishCount(views.medium.res) === coreCount ? views.medium.candles : view?.candles ?? [];
+        return (
+          <>
+            {view && <MiniChart candles={candlesForWave} plan={plan} best={wave} />}
+            {waveCaption(wave) && <p className={`-mt-1 text-[13px] ${showCore ? "text-sky-200" : "text-stone-400"}`}>{waveCaption(wave)}</p>}
+          </>
+        );
+      })()}
 
       {/* Zeile 3 */}
       {plan ? (
@@ -264,7 +277,7 @@ export function AssetCard({
           <button className="btn-primary flex-1" onClick={() => setConfirm("trade")}>
             {isNachkauf ? "Nachkauf übernehmen" : "Als Papier-Trade übernehmen"}
           </button>
-        ) : !plan && core?.state === "hold" && !myCore && view?.res ? (
+        ) : !plan && core?.state === "hold" && coreCount && !myCore && view?.res ? (
           <button className="btn-primary flex-1" onClick={() => setConfirm("core")}>
             Kernposition übernehmen
           </button>

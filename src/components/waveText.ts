@@ -11,7 +11,9 @@ export function nextWave(c: WaveCount): { label: string; dir: 1 | -1 } {
     return { label: String(n), dir: (n % 2 === 1 ? c.direction : -c.direction) as 1 | -1 };
   }
   if (c.pattern === "zigzag" && !c.complete) return { label: "C", dir: c.direction };
-  return { label: c.bias === c.direction ? "Fortsetzung" : "Korrektur", dir: c.bias };
+  // Abgeschlossener Impuls/Diagonale → Korrektur; abgeschlossene Korrektur → neuer Anstieg bzw. Rückgang
+  if (c.pattern === "impulse" || c.pattern.endsWith("diagonal")) return { label: "Korrektur", dir: c.bias };
+  return { label: c.bias === 1 ? "neuer Anstieg" : "neuer Rückgang", dir: c.bias };
 }
 
 /** Ein Satz: "Analyst zählt: Welle 1 abwärts, Welle 2 aufwärts – als Nächstes Welle 3 abwärts erwartet." */
@@ -22,7 +24,7 @@ export function waveCaption(c: WaveCount | undefined): string | null {
     return `${/^[0-9]$/.test(l) ? "Welle " : ""}${l} ${dirWord(d)}`;
   });
   const nx = nextWave(c);
-  const next = /^[0-9A-Z]$/.test(nx.label) ? `Welle ${nx.label} ${dirWord(nx.dir)}` : `${nx.label} ${dirWord(nx.dir)}`;
+  const next = /^[0-9A-Z]$/.test(nx.label) ? `Welle ${nx.label} ${dirWord(nx.dir)}` : nx.label.startsWith("neuer") ? nx.label : `${nx.label} ${dirWord(nx.dir)}`;
   return `Analyst zählt: ${parts.join(", ")} – als Nächstes ${next} erwartet.`;
 }
 

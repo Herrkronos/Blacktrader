@@ -20,3 +20,10 @@ describe("Wellen verständlich beschreiben", () => {
     expect(nextWave(c({ pattern: "impulse", complete: true, labels: ["1", "2", "3", "4", "5"], direction: 1, bias: -1 }))).toEqual({ label: "Korrektur", dir: -1 });
   });
 });
+
+describe("abgeschlossene Korrektur", () => {
+  it("A-B-C abwärts beendet: als Nächstes neuer Anstieg", () => {
+    const w = { pattern: "zigzag", complete: true, labels: ["A", "B", "C"], direction: -1, bias: 1 } as unknown as WaveCount;
+    expect(waveCaption(w)).toBe("Analyst zählt: A abwärts, B aufwärts, C abwärts – als Nächstes neuer Anstieg erwartet.");
+  });
+});

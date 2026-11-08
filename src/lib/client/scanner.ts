@@ -6,6 +6,7 @@ import { coreStatus, type CoreStatus } from "../analysis/core";
 import { getData } from "../store/store";
 import type { Candle, Horizon, ResolvedAsset } from "../types";
 import { api } from "./api";
+import { bullishCount } from "./bullish";
 import { SCAN_PRESETS } from "./presets";
 
 export interface HorizonResult {
@@ -115,6 +116,11 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
 
 export type SignalKind = "trade" | "short" | "core";
 
+/** Bullische Zählung für die Kernposition (mittlerer Zeitraum, sonst langfristig). */
+export function coreWaveCount(e: ScanEntry) {
+  return bullishCount(e.horizons.medium?.res) ?? bullishCount(e.horizons.long?.res);
+}
+
 /** Abstand vom aktuellen Kurs bis zum Einstieg in % (0 = jetzt in der Zone) */
 export function entryDistance(res: AnalysisResult): number {
   const p = res.plan;
@@ -128,6 +134,6 @@ export function entryKinds(e: ScanEntry): SignalKind[] {
   const active = Object.values(e.horizons).filter((h) => h && h.res.decision.level !== "neutral" && h.res.plan) as HorizonResult[];
   if (active.some((h) => h.res.plan!.direction === "long")) out.push("trade");
   if (active.some((h) => h.res.plan!.direction === "short")) out.push("short");
-  if (e.core?.state === "hold") out.push("core");
+  if (e.core?.state === "hold" && coreWaveCount(e)) out.push("core");
   return out;
 }
