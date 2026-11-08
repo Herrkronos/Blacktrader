@@ -49,9 +49,13 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
       ) : (
         <p className="text-sm text-stone-400">Aktuell kein Einstieg geplant.</p>
       )}
-      <button className="btn-primary w-full" onClick={onTrade}>
-        Als Papier-Trade übernehmen
-      </button>
+      {a.plan && a.decision.level !== "neutral" ? (
+        <button className="btn-primary w-full" onClick={onTrade}>
+          Als Papier-Trade übernehmen
+        </button>
+      ) : (
+        <p className="rounded-lg border border-stone-700 p-2 text-center text-xs text-stone-400">Kein Einstieg – kein Trade möglich.</p>
+      )}
     </div>
   );
 }
