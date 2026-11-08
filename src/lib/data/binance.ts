@@ -27,6 +27,19 @@ export async function binanceCandles(symbol: string, iv: Interval): Promise<Cand
   });
 }
 
+/** Eine Seite (bis 1000 Kerzen) ab `startMs` – für lange Historien seitenweise abrufen. */
+export async function binanceCandlesFrom(symbol: string, iv: Interval, startMs: number): Promise<Candle[]> {
+  const closedPage = startMs + 1000 * intervalMs(iv) < Date.now();
+  return cached(`bp:${symbol}:${iv}:${startMs}`, closedPage ? 24 * 3600e3 : 60e3, async () => {
+    const rows = await get<Kline[]>(`/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${iv}&startTime=${startMs}&limit=1000`);
+    return rows.map((k) => ({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] }));
+  });
+}
+
+export function intervalMs(iv: Interval): number {
+  return { "5m": 300e3, "15m": 900e3, "1h": 3600e3, "4h": 4 * 3600e3, "1d": 86400e3, "1w": 7 * 86400e3, "1M": 30 * 86400e3 }[iv];
+}
+
 export async function binanceQuote(symbol: string): Promise<Quote> {
   return cached(`bq:${symbol}`, 5e3, async () => {
     const t = await get<{ lastPrice: string; priceChangePercent: string; closeTime: number }>(`/api/v3/ticker/24hr?symbol=${encodeURIComponent(symbol)}`);

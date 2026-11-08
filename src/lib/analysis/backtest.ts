@@ -40,16 +40,19 @@ export interface BacktestOptions {
 /**
  * Fundamentaldaten/News sind historisch nicht verfügbar und fließen neutral (50) ein.
  * Treffen Stop und Ziel in derselben Kerze, wird konservativ der Stop angenommen.
+ * Generator: liefert zwischendurch den Fortschritt (0 … 1) und am Ende das Ergebnis.
  */
-export function runBacktest(candles: Candle[], opts: BacktestOptions): BacktestResult {
+function* backtestSteps(candles: Candle[], opts: BacktestOptions): Generator<number, BacktestResult> {
   const warmup = opts.warmup ?? 120;
-  const step = opts.step ?? Math.max(1, Math.floor((candles.length - warmup) / 200));
+  // Höchstens ~5000 Analysen, damit auch 100.000 Kerzen (1 Jahr 5-Minuten-Chart) zügig durchlaufen
+  const step = opts.step ?? Math.max(1, Math.ceil((candles.length - warmup) / 5000));
   const maxHold = opts.maxHoldBars ?? 120;
   const window = opts.window ?? 400;
   const trades: BacktestTrade[] = [];
   let evaluated = 0;
   let i = warmup;
   while (i < candles.length - 1) {
+    if (evaluated % 50 === 0) yield (i - warmup) / Math.max(1, candles.length - 1 - warmup);
     const hist = candles.slice(Math.max(0, i + 1 - window), i + 1);
     const res = analyze({ symbol: "BT", name: "Backtest", candles: hist, horizon: opts.horizon, interval: opts.interval, weights: opts.weights, news: [], fundamentals: null });
     evaluated++;
@@ -104,4 +107,28 @@ export function runBacktest(candles: Candle[], opts: BacktestOptions): BacktestR
   const first = candles[Math.min(warmup, candles.length - 1)]?.close ?? 0;
   const lastC = candles[candles.length - 1]?.close ?? 0;
   return { trades, stats, buyAndHold: first ? ((lastC - first) / first) * 100 : 0, evaluatedBars: evaluated };
+}
+
+export function runBacktest(candles: Candle[], opts: BacktestOptions): BacktestResult {
+  const gen = backtestSteps(candles, opts);
+  let r = gen.next();
+  while (!r.done) r = gen.next();
+  return r.value;
+}
+
+/** Wie runBacktest, gibt aber zwischendurch die Oberfläche frei und meldet den Fortschritt. */
+export async function runBacktestAsync(candles: Candle[], opts: BacktestOptions, onProgress?: (p: number) => void): Promise<BacktestResult> {
+  const gen = backtestSteps(candles, opts);
+  let r = gen.next();
+  let last = Date.now();
+  while (!r.done) {
+    if (Date.now() - last > 40) {
+      onProgress?.(r.value);
+      await new Promise((res) => setTimeout(res, 0));
+      last = Date.now();
+    }
+    r = gen.next();
+  }
+  onProgress?.(1);
+  return r.value;
 }

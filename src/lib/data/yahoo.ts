@@ -73,6 +73,44 @@ export async function yahooCandles(symbol: string, iv: Interval): Promise<Candle
   });
 }
 
+/** Maximale Historie, die Yahoo je Kerzengröße liefert (Tage). */
+export const YAHOO_MAX_DAYS: Record<Interval, number> = { "5m": 59, "15m": 59, "1h": 729, "4h": 729, "1d": 36500, "1w": 36500, "1M": 36500 };
+
+/** Kerzen für einen Zeitraum der letzten `days` Tage (begrenzt auf YAHOO_MAX_DAYS). */
+export async function yahooHistory(symbol: string, iv: Interval, days: number): Promise<{ candles: Candle[]; days: number }> {
+  const m = INTERVAL_MAP[iv];
+  const d = Math.min(days, YAHOO_MAX_DAYS[iv]);
+  const now = Math.floor(Date.now() / 1000);
+  return cached(`yh:${symbol}:${iv}:${d}`, 10 * 60e3, async () => {
+    let data: ChartResponse | null = null;
+    let lastErr: unknown;
+    for (const base of BASES) {
+      try {
+        data = await fetchJson<ChartResponse>(
+          `${base}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${m.interval}&period1=${now - d * 86400}&period2=${now}&includePrePost=false`,
+          { timeoutMs: 15000 },
+        );
+        if (data.chart.error) throw new UpstreamError(`Yahoo: ${data.chart.error.description ?? "Fehler"}`, 404);
+        break;
+      } catch (e) {
+        lastErr = e;
+        data = null;
+      }
+    }
+    if (!data) throw lastErr;
+    const r = data.chart.result?.[0];
+    if (!r?.timestamp) throw new UpstreamError("Yahoo: keine Kursdaten", 404);
+    const q = r.indicators.quote[0];
+    const out: Candle[] = [];
+    r.timestamp.forEach((t, i) => {
+      const o = q.open[i], h = q.high[i], l = q.low[i], c = q.close[i];
+      if (o == null || h == null || l == null || c == null) return;
+      out.push({ time: t, open: o, high: h, low: l, close: c, volume: q.volume[i] ?? 0 });
+    });
+    return { candles: m.aggregate ? aggregateCandles(out, m.aggregate) : out, days: d };
+  });
+}
+
 export interface YahooMeta {
   symbol: string;
   name: string;
