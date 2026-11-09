@@ -14,7 +14,7 @@ import { assetKey, closeEntry, doneFor, getHistory, recordEntry, type EntryHisto
 import { getData } from "../store/store";
 import type { Candle, Horizon, ResolvedAsset } from "../types";
 import { api } from "./api";
-import { inUniverse, UNIVERSE_ASSETS } from "./presets";
+import { inMarket, MARKET_ASSETS } from "./marketList";
 
 export interface HorizonResult {
   res: AnalysisResult;
@@ -78,8 +78,8 @@ export function scanAssets(): ResolvedAsset[] {
   const d = getData();
   // Offene Trades mitrechnen (für Hochstufung und nachgezogenen Stop)
   const fromTrades: ResolvedAsset[] = d.trades.filter((t) => t.status !== "closed").map((t) => ({ kind: t.kind, symbol: t.symbol, name: t.name, binanceSymbol: t.binanceSymbol, yahooSymbol: t.yahooSymbol }));
-  // Alle Trainings-Werte (für die Chancen) + Watchlist (nur für die Watchlist) + offene Trades
-  for (const a of [...d.watchlist, ...UNIVERSE_ASSETS, ...fromTrades]) if (!map.has(`${a.kind}:${a.symbol}`)) map.set(`${a.kind}:${a.symbol}`, a);
+  // Markt für die Chancen (rund 190 Werte) + Watchlist (nur für die Watchlist) + offene Trades
+  for (const a of [...d.watchlist, ...MARKET_ASSETS, ...fromTrades]) if (!map.has(`${a.kind}:${a.symbol}`)) map.set(`${a.kind}:${a.symbol}`, a);
   return [...map.values()];
 }
 
@@ -96,6 +96,27 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   // Nur die Zeiträume, die ein Signal liefern dürfen oder für den blauen Bereich gebraucht werden
   const horizonsFor = (kind: ResolvedAsset["kind"]): Horizon[] => (["short", "medium", "long"] as Horizon[]).filter((h) => h !== "short" || (kind === "commodity" && ctx.spBull === true && HORIZON_RANK.commodity.includes("short")));
   const jobs = assets.flatMap((asset) => horizonsFor(asset.kind).map((horizon) => ({ asset, horizon })));
+  // Watchlist und offene Trades bekommen immer die volle Analyse (mit Firmenzahlen und Nachrichten);
+  // Markt-Werte erst, wenn sie zu den aussichtsreichsten gehören (2. Schritt) – so bleibt die Suche schnell.
+  const d0 = getData();
+  const personal = new Set([...d0.watchlist, ...d0.trades.filter((t) => t.status !== "closed")].map((a) => assetKey(a)));
+  const fullAnalysis = async (asset: ResolvedAsset, horizon: Horizon, candles: Candle[]) => {
+    const interval = settings.intervals[horizon];
+    const [f, n] = await Promise.allSettled([api.fundamentals(asset), api.news(asset)]);
+    return analyze({
+      symbol: asset.symbol,
+      name: asset.name,
+      candles,
+      horizon,
+      interval,
+      weights: effectiveWeights(settings, asset.kind, horizon),
+      kind: asset.kind,
+      currency: asset.currency,
+      params: learnedParams(asset.kind, horizon),
+      fundamentals: f.status === "fulfilled" ? f.value.fundamentals : null,
+      news: n.status === "fulfilled" ? n.value.news : [],
+    });
+  };
   const byAsset = new Map<string, Omit<ScanEntry, "best" | "history"> & { full: Partial<Record<Horizon, Candle[]>> }>();
   let done = 0;
   let failed = 0;
@@ -108,23 +129,8 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
       const { candles } = await api.candles(asset, interval, 60e3);
       const params = learnedParams(asset.kind, horizon);
       let res = analyze({ symbol: asset.symbol, name: asset.name, candles, horizon, interval, weights: effectiveWeights(settings, asset.kind, horizon), kind: asset.kind, currency: asset.currency, params });
-      if (res && res.decision.level !== "neutral") {
-        // Kandidat: mit Firmenzahlen und Nachrichten vollständig bewerten (gleiche Analyse wie bisher)
-        const [f, n] = await Promise.allSettled([api.fundamentals(asset), api.news(asset)]);
-        res = analyze({
-          symbol: asset.symbol,
-          name: asset.name,
-          candles,
-          horizon,
-          interval,
-          weights: effectiveWeights(settings, asset.kind, horizon),
-          kind: asset.kind,
-          currency: asset.currency,
-          params,
-          fundamentals: f.status === "fulfilled" ? f.value.fundamentals : null,
-          news: n.status === "fulfilled" ? n.value.news : [],
-        });
-      }
+      // Kandidat aus Watchlist/Depot: gleich vollständig bewerten (Firmenzahlen und Nachrichten)
+      if (res && res.decision.level !== "neutral" && personal.has(key)) res = (await fullAnalysis(asset, horizon, candles)) ?? res;
       if (res) entry.horizons[horizon] = { res, candles: candles.slice(-150) };
       entry.full[horizon] = candles;
       // Langfristiger Einstieg: auf dem langfristigen Zeitraum, sonst auf dem mittelfristigen
@@ -140,8 +146,36 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
       failed++;
     }
     done++;
-    emit({ progress: done / jobs.length });
+    emit({ progress: (0.85 * done) / jobs.length });
   });
+
+  // 2. Schritt: die 40 aussichtsreichsten Markt-Werte mit Firmenzahlen und Nachrichten vollständig bewerten
+  const viewsOf = (e: { horizons: ScanEntry["horizons"] }) => Object.fromEntries(Object.entries(e.horizons).map(([h, v]) => [h, v?.res ?? null]));
+  const prelim = [...byAsset.values()]
+    .filter((e) => inMarket(e.asset) && !personal.has(assetKey(e.asset)))
+    .map((e) => {
+      const best = pickBestEntry({ symbol: e.asset.symbol, kind: e.asset.kind, views: viewsOf(e), lt: e.longterm, ctx, done: doneFor(assetKey(e.asset)) });
+      return { e, p: potential({ ...e, best, history: { past: [] } } as ScanEntry) };
+    })
+    .filter((x) => x.p != null)
+    .sort((a, b) => b.p!.score - a.p!.score)
+    .slice(0, 40);
+  const enrich = prelim.flatMap(({ e }) => (Object.entries(e.horizons) as [Horizon, HorizonResult][]).filter(([, v]) => v && v.res.decision.level !== "neutral").map(([h]) => ({ e, h })));
+  let done2 = 0;
+  await pool(enrich, 6, async ({ e, h }) => {
+    try {
+      const c = e.full[h];
+      if (c) {
+        const res = await fullAnalysis(e.asset, h, c);
+        if (res) e.horizons[h] = { res, candles: c.slice(-150) };
+      }
+    } catch {
+      /* bleibt bei der technischen Bewertung */
+    }
+    done2++;
+    emit({ progress: 0.85 + (0.15 * done2) / Math.max(1, enrich.length) });
+  });
+
   const entries: ScanEntry[] = [...byAsset.values()].map(({ full, ...e }) => {
     const key = assetKey(e.asset);
     const cur = e.asset.currency;
@@ -206,8 +240,8 @@ export function bestDistance(e: ScanEntry): number {
   return price <= b.zoneTop ? 0 : ((price - b.zoneTop) / price) * 100;
 }
 
-/** Gehört der Eintrag in die Chancen? (nur Trainings-Werte, nicht reine Watchlist-Werte) */
-export const isChance = (e: ScanEntry) => inUniverse(e.asset);
+/** Gehört der Eintrag in die Chancen? (Markt-Werte, nicht reine Watchlist-Werte) */
+export const isChance = (e: ScanEntry) => inMarket(e.asset);
 
 /**
  * Gemessene Stärke je Signalart im Turnier (Ø Rendite pro Jahr, relativ zu Grün = 1):

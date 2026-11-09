@@ -1,5 +1,5 @@
 "use client";
-// Chancen: aus allen Trainings-Werten (40 Aktien, 15 Krypto, 10 Rohstoffe) die 10 Einstiege mit dem größten Potenzial –
+// Chancen: aus dem Markt (S&P 100, DAX 40, ATX, 20 Krypto, 10 Rohstoffe) die 20 Einstiege mit dem größten Potenzial –
 // Blau (langfristig), Grün (Trade auf steigende Kurse) oder Rot (Short). Werte nur aus der Watchlist kommen nicht hierher.
 // Gelb (kein Einstieg) erscheint nur in der Watchlist.
 import { useEffect, useMemo, useState } from "react";
@@ -11,7 +11,7 @@ import { ConfirmSheet } from "@/components/Sheet";
 import { haptic } from "@/lib/client/alerts";
 import { openPaperTrade } from "@/lib/client/autotrade";
 import { isChance, potential, runScan, useScan, type SignalKind } from "@/lib/client/scanner";
-import { UNIVERSE_GROUPS } from "@/lib/client/presets";
+import { MARKET_GROUPS } from "@/lib/client/marketList";
 import { getData } from "@/lib/store/store";
 import type { AssetKind } from "@/lib/types";
 
@@ -24,7 +24,7 @@ const KIND_FILTERS: { k: KindFilter; label: string; cls: string }[] = [
 ];
 
 /** Es werden nur die Einstiege mit dem größten Potenzial gezeigt */
-const TOP = 10;
+const TOP = 20;
 
 export default function ChancenPage() {
   const scan = useScan();
@@ -66,7 +66,6 @@ export default function ChancenPage() {
       <div className="flex items-start justify-between gap-2">
         <div>
           <h1 className="text-[22px] text-gold">Chancen</h1>
-          <p className="text-[15px] text-stone-400">Die {TOP} Einstiege mit dem größten Potenzial aus allen Werten, mit denen Blacktrader trainiert (40 Aktien, 15 Krypto, 10 Rohstoffe).</p>
         </div>
         <Legend />
       </div>
@@ -79,7 +78,7 @@ export default function ChancenPage() {
         ))}
       </div>
       <div className="seg w-full">
-        {[{ k: "all" as const, t: "Alle" }, ...UNIVERSE_GROUPS.map((g) => ({ k: g.kind, t: g.title }))].map((g) => (
+        {[{ k: "all" as const, t: "Alle" }, ...MARKET_GROUPS.map((g) => ({ k: g.kind, t: g.title }))].map((g) => (
           <button key={g.k} aria-pressed={group === g.k} onClick={() => setGroup(g.k)} className="flex-1">
             {g.t}
           </button>

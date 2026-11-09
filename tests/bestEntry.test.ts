@@ -147,3 +147,14 @@ describe("Chancen: nur Trainings-Werte, nach Potenzial", () => {
     for (const g of UNIVERSE_GROUPS) expect(g.assets.map(yahoo).sort()).toEqual(universe(`${g.kind}:medium` as never).map((s) => s.symbol).sort());
   });
 });
+
+describe("Chancen: der Markt (rund 190 Werte), ohne reine Watchlist-Werte", () => {
+  it("S&P 100, DAX, ATX, 20 Krypto, 10 Rohstoffe – Watchlist-Werte außerhalb nicht", async () => {
+    const { MARKET_ASSETS, MARKET_GROUPS, inMarket } = await import("../src/lib/client/marketList");
+    expect(MARKET_ASSETS.length).toBeGreaterThan(180);
+    expect(MARKET_GROUPS.find((g) => g.kind === "crypto")!.assets).toHaveLength(20);
+    expect(inMarket({ kind: "stock", symbol: "EBS.VI" })).toBe(true); // Erste Group (ATX)
+    expect(inMarket({ kind: "stock", symbol: "CE" })).toBe(false);
+    expect(new Set(MARKET_ASSETS.map((a) => `${a.kind}:${a.symbol}`)).size).toBe(MARKET_ASSETS.length); // keine Doppelten
+  });
+});

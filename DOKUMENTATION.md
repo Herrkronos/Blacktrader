@@ -21,8 +21,9 @@ Shorts (rot) gibt es nur bei bärischem Gesamtmarkt (S&P 500 unter der 200-Tage-
 ```
 src/app/                Seiten (Next.js App Router) und API-Routen
   page.tsx              Übersicht: Performance, Top 3 Einstiege, offene Trades, News
-  chancen/              Chancen: die 10 Einstiege mit dem größten Potenzial aus allen 65 Trainings-Werten
-                        (Filter Alle · Blau · Grün · Rot, Aktien/Krypto/Rohstoffe); reine Watchlist-Werte nicht
+  chancen/              Chancen: die 20 Einstiege mit dem größten Potenzial aus dem Markt (rund 190 Werte:
+                        S&P 100, DAX, ATX, 20 Krypto, 10 Rohstoffe – src/lib/client/marketList.ts);
+                        Filter Alle · Blau · Grün · Rot, Aktien/Krypto/Rohstoffe; reine Watchlist-Werte nicht
   watchlist/            Watchlist: kompakte Kacheln mit Mini-Chart (auch Gelb); Antippen = Details + übernehmen
   depot/                Depot (früher Journal): Papier-Trades, Filter Alle · Blau · Grün; /journal leitet weiter
   trainer/              Trainer: Training + Turnier gegen 9 Bots, Rangliste und Auswertung
@@ -58,7 +59,7 @@ tests/                  Vitest (über 170 Tests)
 4. `recordEntry` aktualisiert den Verlauf: der alte Einstieg wird grau (mit Datum und Grund).
 5. `applyPromotions` prüft offene grüne Trades auf Hochstufung zu Blau.
 
-**Chancen – Potenzial:** Chance bis zum Ziel in % (höchstens 60 % angerechnet) × Chance/Risiko (höchstens 4) × Signalstärke × Nähe zur Zone × gemessene Stärke der Signalart im Turnier (Grün 1, Rot 0,6, Blau 0,35). So stehen nicht automatisch die Werte mit dem höchsten Ziel oben, sondern die mit dem besten Verhältnis aus Chance, Risiko und Verlässlichkeit. Die Übersicht zeigt davon die Top 3.
+**Chancen – Potenzial:** Chance bis zum Ziel in % (höchstens 60 % angerechnet) × Chance/Risiko (höchstens 4) × Signalstärke × Nähe zur Zone × gemessene Stärke der Signalart im Turnier (Grün 1, Rot 0,6, Blau 0,35). So stehen nicht automatisch die Werte mit dem höchsten Ziel oben, sondern die mit dem besten Verhältnis aus Chance, Risiko und Verlässlichkeit. Die Übersicht zeigt davon die Top 3. Suche in zwei Schritten: zuerst Chart, Wellen und Volumen für alle Werte, dann Firmenzahlen und Nachrichten nur für die 40 aussichtsreichsten (Watchlist und offene Trades immer vollständig). Gelernt wird weiter mit den 65 Trainings-Werten; die gelernten Einstellungen gelten je Anlageklasse für alle Werte.
 
 ## 2. Design
 
