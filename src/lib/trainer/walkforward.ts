@@ -296,3 +296,56 @@ export function compactWF(st: WFState): WFState {
   for (const k of keep) pool[k] = { ...st.pool[k], runs: st.specs.map(() => null) };
   return { ...st, pool, info: st.specs.map(() => null), stage: st.stage === "done" ? "done" : "eval" };
 }
+
+/** Zuletzt gespeicherter Stand während einer Sitzung (Vergleichsbasis für die nächste Verbesserung). */
+export interface SavedPoint {
+  key: string;
+  oos: Metrics;
+  params: LearnableParams;
+}
+
+/**
+ * Zwischenprüfung (für sofortiges Speichern): Ist der aktuelle Stand auf den unbekannten Prüfdaten besser als der
+ * zuletzt gespeicherte (bzw. der Ausgangsstand)? Nutzt nur bereits gerechnete Backtests – keine neuen Daten.
+ */
+export function improvementCheck(st: WFState, last?: SavedPoint): WFResult | null {
+  const finalKey = st.climbers[st.folds];
+  if (!complete(st, finalKey) || !complete(st, st.baseKey)) return null;
+  if (finalKey === (last?.key ?? st.baseKey)) return null;
+  const cand = oosMetrics(st, st.climbers.slice(0, st.folds).map((k) => (complete(st, k) ? k : st.baseKey)));
+  const base = last?.oos ?? oosMetrics(st, Array.from({ length: st.folds }, () => st.baseKey));
+  if (!cand || !base) return null;
+  const prev = last?.params ?? st.pool[st.baseKey].params;
+  const deployed = st.pool[finalKey].params;
+  const d = decide(base, cand);
+  d.reasons.push(...strictnessErrors(prev, deployed));
+  d.accept = d.reasons.length === 0;
+  return { base, cand, decision: d, deployed, changes: describeChanges(prev, deployed), improved: d.accept };
+}
+
+/** Woran an den Elliott-Wellen gerade gearbeitet wird (für die Anzeige). */
+export function focusLabel(change: string): string {
+  const k = change.split(" ")[0];
+  const map: Record<string, string> = {
+    zoneAtrMult: "Einstiegszonen in Korrekturwellen",
+    Wellengrade: "Wellen-Erkennung (Wellengrade)",
+    elliottDegrees: "Wellen-Erkennung (Wellengrade)",
+    fibToleranceScale: "Fibonacci-Zonen der Wellen 2 und 4",
+    rankFibWeight: "Haupt- und Alternativzählung",
+    rankContextStrength: "Haupt- und Alternativzählung",
+    elliottAgreement: "Bestätigung durch das Wellenbild",
+    wave5Filter: "Ende von Welle 5 erkennen",
+    htfConfirm: "Übergeordnete Welle",
+    wave5Exit: "Ausstieg am Ende von Welle 5",
+    divergenceRecentBars: "Divergenzen am Wellenende",
+    rsiOverbought: "Momentum der Wellen (RSI)",
+    rsiOversold: "Momentum der Wellen (RSI)",
+    relVolHigh: "Volumen der Wellen",
+    relVolBreakout: "Volumen der Wellen",
+    relVolLow: "Volumen der Wellen",
+    minStrength: "Signalqualität",
+    Gewichtung: "Gewichtung",
+    bisheriger: "Ausgangsstand messen",
+  };
+  return map[k] ?? "Wellenzählung";
+}

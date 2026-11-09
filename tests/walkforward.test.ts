@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import { LOCKED } from "../src/lib/analysis/locked-config";
 import { clampWeights, DEFAULT_PARAMS, strictnessErrors, validateParams, validateWeights } from "../src/lib/analysis/params";
 import { decide, type Metrics } from "../src/lib/trainer/engine";
-import { applyResult } from "../src/lib/trainer/job";
 import { candidateMoves, ONLY_UP } from "../src/lib/trainer/moves";
-import { initialState } from "../src/lib/trainer/state";
-import { advanceWF, initWF, seriesInfo, type WFResult } from "../src/lib/trainer/walkforward";
+import { advanceWF, initWF, seriesInfo } from "../src/lib/trainer/walkforward";
 import type { Candle } from "../src/lib/types";
 import { randomWalk } from "./golden/fixtures";
 
@@ -76,28 +74,3 @@ describe("Gewichtungsgrenzen", () => {
   });
 });
 
-describe("Speichern nur, wenn besser", () => {
-  const res = (accept: boolean): WFResult => ({
-    base: m({ hitRate: 0.612 }),
-    cand: m({ hitRate: accept ? 0.638 : 0.609 }),
-    decision: { accept, reasons: accept ? [] : ["Trefferquote nicht besser"] },
-    deployed: { ...DEFAULT_PARAMS, zoneAtrMult: 4.5 },
-    changes: "zoneAtrMult 4 → 4.5",
-    improved: accept,
-  });
-  it("besser → neue Version und Meldung", () => {
-    const s = initialState();
-    const msg = applyResult(s, "stock:medium", res(true), "Test", 2);
-    expect(msg).toBe("Verbessert: 61,2 % → 63,8 % – gespeichert (Version 2)");
-    expect(s.versions).toHaveLength(2);
-    expect(s.current).toBe(2);
-    expect(s.versions[1].params["stock:medium"]).toEqual({ zoneAtrMult: 4.5 });
-  });
-  it("gleich oder schlechter → alter Stand bleibt", () => {
-    const s = initialState();
-    const msg = applyResult(s, "stock:medium", res(false), "Test", 2);
-    expect(msg).toBe("Keine Verbesserung (60,9 %) – alter Stand bleibt");
-    expect(s.versions).toHaveLength(1);
-    expect(s.current).toBe(1);
-  });
-});

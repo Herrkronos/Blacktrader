@@ -5,7 +5,7 @@ import { resolveParams, type LearnableParams, type ParamSet } from "../analysis/
 import type { AssetKind, Candle, Horizon } from "../types";
 import type { Metrics } from "./engine";
 import { sessionUniverse, type CellKey, type SeriesSpec } from "./universe";
-import { advanceWF, compactWF, finalizeWF, initWF, oosMetrics, type WFPhase, type WFState } from "./walkforward";
+import { advanceWF, compactWF, finalizeWF, focusLabel, improvementCheck, initWF, keyOf, oosMetrics, type SavedPoint, type WFPhase, type WFResult, type WFState } from "./walkforward";
 
 export const DURATIONS = [
   { label: "15 Min", ms: 15 * 60e3 },
@@ -50,19 +50,30 @@ export interface SessionState {
   results: CellOutcome[];
   phase: WFPhase;
   detail: string;
+  /** Woran an den Elliott-Wellen gerade gearbeitet wird */
+  focus: string;
+  /** Zuletzt gespeicherter Stand je Bereich in dieser Sitzung */
+  saved: Partial<Record<CellKey, SavedPoint>>;
   /** Aktuell beste Trefferquote auf unbekannten Daten (nur Anzeige) und alter Stand */
   live?: { cell: CellKey; best: number | null; old: number | null };
   status: "running" | "done" | "stopped";
 }
 
 export function newSession(cfg: SessionConfig): SessionState {
-  return { cfg, elapsedMs: 0, cellIdx: 0, cellBudgetMs: 0, cellElapsedMs: 0, wf: null, results: [], phase: "load", detail: "", status: "running" };
+  return { cfg, elapsedMs: 0, cellIdx: 0, cellBudgetMs: 0, cellElapsedMs: 0, wf: null, results: [], phase: "load", detail: "", focus: "", saved: {}, status: "running" };
 }
 
 export interface SessionIO {
   load: (spec: SeriesSpec) => Promise<Candle[] | null>;
   onProgress: (st: SessionState) => void;
   onCellDone: (o: CellOutcome, st: SessionState) => Promise<void> | void;
+  /**
+   * Besserer Stand gefunden (unbekannte Daten, alle Strenge-Regeln): SOFORT speichern.
+   * Rückgabe true = gespeichert → wird zur neuen Vergleichsbasis.
+   */
+  onImprovement?: (cell: CellKey, r: WFResult, baseParams: LearnableParams, st: SessionState) => Promise<boolean>;
+  /** Kein besserer Stand: gemessenen Ausgangsstand melden (wird nur gespeichert, wenn noch keiner vorliegt) */
+  onMeasured?: (cell: CellKey, base: Metrics, baseParams: LearnableParams) => void;
   shouldStop: () => boolean;
   now?: () => number;
   /** Länge eines Arbeitsblocks zwischen zwei Fortschrittsmeldungen */
@@ -97,8 +108,12 @@ export async function runSession(st: SessionState, io: SessionIO): Promise<Sessi
       onPhase: (p, d) => {
         st.phase = p;
         st.detail = d;
+        st.focus = p === "load" ? "Kursdaten laden" : focusLabel(d.split(" · ")[1] ?? d);
       },
     });
+    st.saved ??= {};
+    // Sofort speichern, sobald ein besserer Stand auf unbekannten Daten feststeht
+    await trySave(st, cell, io);
     const spent = now() - t0;
     st.elapsedMs += spent;
     st.cellElapsedMs += spent;
@@ -110,12 +125,15 @@ export async function runSession(st: SessionState, io: SessionIO): Promise<Sessi
       st.phase = "verify";
       st.detail = "Vergleich alt gegen neu auf unbekannten Daten";
       io.onProgress(st);
-      const r = st.wf.result ?? finalizeWF(st.wf);
+      if (!st.wf.result) finalizeWF(st.wf);
+      await trySave(st, cell, io);
+      const r = st.wf.result;
       const series = st.wf.info.filter((x) => x && x !== "failed").length;
       const o: CellOutcome = r && series > 0
-        ? { cell, base: r.base, cand: r.cand, accept: r.decision.accept, reasons: r.decision.reasons, deployed: r.decision.accept ? r.deployed : null, changes: r.changes, series }
+        ? { cell, base: r.base, cand: st.saved[cell]?.oos ?? r.cand, accept: !!st.saved[cell], reasons: st.saved[cell] ? [] : r.decision.reasons, deployed: st.saved[cell]?.params ?? null, changes: r.changes, series }
         : { cell, base: null, cand: null, accept: false, reasons: [series ? "Zu wenig Zeit für einen Vergleich" : "Keine Kursdaten erreichbar"], deployed: null, changes: "keine", series };
       st.results.push(o);
+      if (r && series > 0 && !st.saved[cell] && st.wf) io.onMeasured?.(cell, r.base, st.wf.pool[st.wf.baseKey].params);
       st.wf = null;
       st.cellIdx++;
       await io.onCellDone(o, st);
@@ -129,6 +147,16 @@ export async function runSession(st: SessionState, io: SessionIO): Promise<Sessi
 }
 
 /** Zum Speichern im Browser: ohne Backtest-Daten (werden beim Fortsetzen neu gerechnet). */
+async function trySave(st: SessionState, cell: CellKey, io: SessionIO) {
+  if (!st.wf || !io.onImprovement) return;
+  const last = st.saved[cell];
+  const r = improvementCheck(st.wf, last);
+  if (!r || !r.decision.accept) return;
+  const baseParams = last?.params ?? st.wf.pool[st.wf.baseKey].params;
+  const ok = await io.onImprovement(cell, r, baseParams, st);
+  if (ok) st.saved[cell] = { key: keyOf(r.deployed), oos: r.cand, params: r.deployed };
+}
+
 export function checkpoint(st: SessionState): SessionState {
   return { ...st, wf: st.wf ? compactWF(st.wf) : null };
 }

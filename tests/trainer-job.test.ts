@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { LOCKED } from "../src/lib/analysis/locked-config";
-import { runJob, startFinalJob, startTrainJob, type Universe } from "../src/lib/trainer/job";
+import { memoryCells, runJob, startFinalJob, startTrainJob, type Universe } from "../src/lib/trainer/job";
 import { evaluateSignal, recordFromAnalysis, type SignalRecord } from "../src/lib/trainer/signals";
-import { addVersion, initialState, rollback } from "../src/lib/trainer/state";
+import { initialState } from "../src/lib/trainer/state";
 import type { SeriesSpec } from "../src/lib/trainer/universe";
 import type { Candle } from "../src/lib/types";
 import { randomWalk } from "./golden/fixtures";
@@ -20,31 +20,34 @@ function withOtherHoldout(c: Candle[]): Candle[] {
 
 async function runToEnd(load: (s: SeriesSpec) => Promise<Candle[]>) {
   const s = initialState(new Date(0));
-  startTrainJob(s, "stock:medium", uni);
+  const cells = memoryCells();
+  await startTrainJob(s, cells, "stock:medium", uni);
   let n = 0;
-  while (s.job && n++ < 20) await runJob(s, load, Date.now() + 60_000, { universe: uni, maxJobs: 0 });
-  return s;
+  while (s.job && n++ < 20) await runJob(s, load, Date.now() + 60_000, { cells, universe: uni, maxJobs: 0 });
+  return { s, cells };
 }
+const strip = (r: { s: ReturnType<typeof initialState>; cells: ReturnType<typeof memoryCells> }) =>
+  JSON.stringify({ log: r.s.log.map((l) => ({ ...l, date: 0 })), rec: { ...r.cells.records.get("stock:medium"), updatedAt: 0, log: 0 } });
 
 describe("Trainer-Job", () => {
   it("benutzt die gesperrten letzten 12 Monate nie zum Lernen", async () => {
     const a = await runToEnd(async (x) => BASE[x.symbol]);
     const b = await runToEnd(async (x) => withOtherHoldout(BASE[x.symbol]));
-    expect(a.cells["stock:medium"]?.oos.trades).toBeGreaterThan(0); // es wurde wirklich gehandelt
-    const strip = (s: typeof a) => JSON.stringify({ cells: { ...s.cells["stock:medium"], updated: 0 }, log: s.log.map((l) => ({ ...l, date: 0 })) });
+    expect(a.cells.records.get("stock:medium")?.current?.trades).toBeGreaterThan(0); // es wurde wirklich gehandelt
     expect(strip(a)).toBe(strip(b));
   }, 120_000);
 
   it("setzt die Arbeit nach Zeitablauf fort und kommt zum selben Ergebnis", async () => {
     const full = await runToEnd(async (x) => BASE[x.symbol]);
     const s = initialState(new Date(0));
-    startTrainJob(s, "stock:medium", uni);
+    const cells = memoryCells();
+    await startTrainJob(s, cells, "stock:medium", uni);
     let t = 0;
     const now = () => (t += 1); // jede Prüfung „kostet“ eine Zeiteinheit → viele kurze Läufe
     let runs = 0;
-    while (s.job && runs++ < 500) await runJob(s, async (x) => BASE[x.symbol], t + 4, { now, universe: uni, maxJobs: 0 });
+    while (s.job && runs++ < 500) await runJob(s, async (x) => BASE[x.symbol], t + 4, { cells, now, universe: uni, maxJobs: 0 });
     expect(runs).toBeGreaterThan(2);
-    expect(s.cells["stock:medium"]?.oos).toEqual(full.cells["stock:medium"]?.oos);
+    expect(cells.records.get("stock:medium")?.current).toEqual(full.cells.records.get("stock:medium")?.current);
   }, 120_000);
 
   it("verändert die gesperrten Werte nie", async () => {
@@ -52,27 +55,13 @@ describe("Trainer-Job", () => {
     expect(JSON.stringify(LOCKED)).toBe(lockedBefore);
   }, 120_000);
 
-  it("Abschlusstest: nur Kerzen der letzten 12 Monate zählen", async () => {
+  it("Abschlusstest: läuft einmal durch", async () => {
     const s = initialState(new Date(0));
-    startFinalJob(s, (c) => (c === "stock:medium" ? uni(c) : []));
-    while (s.job) await runJob(s, async (x) => BASE[x.symbol], Date.now() + 60_000, { universe: uni, maxJobs: 0 });
+    startFinalJob(s, 7, (c) => (c === "stock:medium" ? uni(c) : []));
+    while (s.job) await runJob(s, async (x) => BASE[x.symbol], Date.now() + 60_000, { cells: memoryCells(), universe: uni, maxJobs: 0 });
     expect(s.finalTests).toHaveLength(1);
-    expect(s.finalTests[0].version).toBe(1);
+    expect(s.finalTests[0].version).toBe(7);
   }, 120_000);
-});
-
-describe("Versionen", () => {
-  it("neue Version und Zurücksetzen", () => {
-    const s = initialState();
-    const v = addVersion(s, "crypto:short", { zoneAtrMult: 4.5 }, "Test");
-    expect(s.current).toBe(v.id);
-    expect(s.versions).toHaveLength(2);
-    expect(s.versions[1].params["crypto:short"]).toEqual({ zoneAtrMult: 4.5 });
-    expect(rollback(s)?.id).toBe(1);
-    expect(s.current).toBe(1);
-    expect(s.versions).toHaveLength(2); // nichts wird gelöscht
-    expect(s.log[0].kind).toBe("zurückgesetzt");
-  });
 });
 
 describe("Signal-Protokoll", () => {
@@ -105,9 +94,10 @@ describe("Signal-Protokoll", () => {
 describe("Ohne Kursdaten", () => {
   it("überschreibt nichts und schreibt kein 0-%-Ergebnis", async () => {
     const s = initialState();
-    startTrainJob(s, "stock:medium", uni);
-    while (s.job) await runJob(s, async () => { throw new Error("offline"); }, Date.now() + 10_000, { universe: uni, maxJobs: 0 });
-    expect(s.cells["stock:medium"]).toBeUndefined();
+    const cells = memoryCells();
+    await startTrainJob(s, cells, "stock:medium", uni);
+    while (s.job) await runJob(s, async () => { throw new Error("offline"); }, Date.now() + 10_000, { cells, universe: uni, maxJobs: 0 });
+    expect(cells.records.size).toBe(0);
     expect(s.history).toHaveLength(0);
     expect(s.log).toHaveLength(1);
   });

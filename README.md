@@ -112,5 +112,7 @@ Der Trainer verbessert nur die **Anwendung** der Methode – die Strenge wird ni
 - **Nachtlauf:** Vercel Cron (`vercel.json`, täglich 02:17 UTC) → `/api/trainer/cron`, je Lauf ~48 s, setzt die Arbeit fort. Zusätzlich wird das Signal-Protokoll ausgewertet.
 - **Gewichtung in den Einstellungen:** „Automatisch (Trainer)“ oder „Manuell“ – drei Regler, dieselben festen Grenzen, Anzeige der zuletzt gelernten Gewichtung.
 - **Wissensbasis:** `knowledge/elliott.md` (Regeln, Richtlinien, Muster → prüfbare Regeln im Code), `knowledge/analyst-principles.md` (Wie/Warum/Wann).
+- **Getrennte Speicherung:** Jede Anlageklasse × Horizont hat einen eigenen Schlüssel (`trainer:aktien:kurz` … `trainer:rohstoffe:lang`) mit gelernten Werten, aktuellem/vorherigem Stand und Versionen (`src/lib/trainer/cells.ts`, `cellStore.ts`). Schreiben nur unter einer Sperre je Zelle (lesen → prüfen → ein SET). Zusätzlich lokale Kopie je Zelle im Browser; je Zelle gilt der jüngere Stand.
+- **Sofort speichern:** Sobald im Training ein Stand auf unbekannten Daten besser ist (alle Strenge-Regeln), wird er sofort gespeichert (Server + lokal), nicht erst am Ende der Sitzung.
 - **Speicher:** In Vercel unter Storage „Upstash for Redis“ verbinden (`KV_REST_API_URL`/`KV_REST_API_TOKEN`). Optional `CRON_SECRET`, `TRAINER_ADMIN_TOKEN`.
 - Offline-Messung: `DATA_DIR=<ordner> BUDGET_S=120 npx tsx scripts/train.ts`.

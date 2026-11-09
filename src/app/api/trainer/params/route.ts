@@ -1,17 +1,9 @@
-// Aktuell gültige gelernte Werte (für alle Nutzer gleich). Klein und vom CDN zwischengespeichert.
+// Aktuell gültige gelernte Werte (aus den getrennt gespeicherten Zellen zusammengesetzt).
 import { handle } from "@/lib/data/route-helpers";
-import { loadState } from "@/lib/trainer/server";
-import { currentVersion } from "@/lib/trainer/state";
+import { currentParamSet } from "@/lib/trainer/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  return handle(
-    req,
-    async () => {
-      const v = currentVersion(await loadState());
-      return { version: v.id, params: v.params };
-    },
-    300,
-  );
+  return handle(req, () => currentParamSet(), 60);
 }

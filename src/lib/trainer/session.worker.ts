@@ -5,6 +5,7 @@ import type { SeriesSpec } from "./universe";
 
 let stop = false;
 const pending = new Map<string, (ok: boolean) => void>();
+let seq = 0;
 
 async function load(spec: SeriesSpec): Promise<Candle[] | null> {
   const url = `/api/history?yahoo=${encodeURIComponent(spec.symbol)}&interval=${spec.interval}&days=${spec.days}`;
@@ -27,9 +28,9 @@ async function load(spec: SeriesSpec): Promise<Candle[] | null> {
 
 let lastPost = 0;
 self.onmessage = async (e: MessageEvent) => {
-  const m = e.data as { type: "start"; state: SessionState } | { type: "stop" } | { type: "saved"; id: string };
+  const m = e.data as { type: "start"; state: SessionState } | { type: "stop" } | { type: "saved"; id: string; ok?: boolean };
   if (m.type === "stop") stop = true;
-  else if (m.type === "saved") pending.get(m.id)?.(true), pending.delete(m.id);
+  else if (m.type === "saved") pending.get(m.id)?.(m.ok ?? true), pending.delete(m.id);
   else if (m.type === "start") {
     stop = false;
     const st = await runSession(m.state, {
@@ -40,7 +41,16 @@ self.onmessage = async (e: MessageEvent) => {
         lastPost = Date.now();
         postMessage({ type: "progress", state: checkpoint(s) });
       },
-      // Ergebnis an die App geben (sie speichert beim Server) und auf Bestätigung warten
+      // Besserer Stand: sofort an die App geben (sie speichert beim Server und lokal) und auf Bestätigung warten
+      onImprovement: (cell, r, baseParams, s) =>
+        new Promise<boolean>((res) => {
+          const id = `imp:${++seq}`;
+          pending.set(id, (ok) => res(ok));
+          postMessage({ type: "improve", id, cell, result: r, baseParams, state: checkpoint(s) });
+          setTimeout(() => pending.has(id) && (pending.delete(id), res(false)), 60_000);
+        }),
+      onMeasured: (cell, base, baseParams) => postMessage({ type: "measured", cell, base, baseParams }),
+      // Abschluss eines Bereichs (nur Anzeige)
       onCellDone: (o: CellOutcome, s) =>
         new Promise<void>((res) => {
           const id = `${o.cell}:${s.cellIdx}`;

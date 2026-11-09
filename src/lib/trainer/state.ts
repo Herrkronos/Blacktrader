@@ -1,20 +1,9 @@
 // Zustand des Trainers: Parameter-Versionen, Änderungsprotokoll, Verlauf, laufender Lern-Job.
 // Reine Datenlogik ohne Speicherzugriff (testbar).
-import type { LearnableParams, ParamSet } from "../analysis/params";
+import type { ParamSet } from "../analysis/params";
 import { metrics, type Metrics } from "./engine";
 import type { WFState } from "./walkforward";
 import type { CellKey, SeriesSpec } from "./universe";
-
-export interface ParamVersion {
-  id: number;
-  createdAt: string;
-  params: ParamSet;
-  reason: string;
-  parent?: number;
-  /** Bereich und Trefferquote auf unbekannten Daten, mit der diese Version entstand */
-  cell?: CellKey;
-  hitRate?: number;
-}
 
 export type LogKind = "angenommen" | "abgelehnt" | "zurückgesetzt" | "abschlusstest" | "info";
 
@@ -67,7 +56,6 @@ export interface UnitResult {
 export interface TrainJob {
   type: "train";
   cell: CellKey;
-  baseVersion: number;
   startedAt: string;
   wf: WFState;
 }
@@ -82,13 +70,18 @@ export interface FinalJob {
   failed: string[];
 }
 
+/**
+ * Gemeinsamer Zustand des Nachtlaufs (Protokoll, Verlauf, laufender Job, Abschlusstests).
+ * Gelernte Werte und Stände liegen NICHT hier, sondern je Zelle getrennt (cells.ts).
+ */
 export interface TrainerState {
-  schema: 1;
-  versions: ParamVersion[];
-  current: number;
+  schema: 2;
   log: LogEntry[];
   history: HistoryPoint[];
-  cells: Partial<Record<CellKey, CellStatus>>;
+  /** Alte Felder (Schema 1) – nur zum einmaligen Übernehmen in die getrennten Zellen */
+  versions?: { id: number; params: ParamSet }[];
+  current?: number;
+  cells?: Partial<Record<CellKey, CellStatus>>;
   job: TrainJob | FinalJob | null;
   /** Nächste Zelle in der Reihenfolge */
   rotation: number;
@@ -103,21 +96,8 @@ export const MAX_LOG = 400;
 export const MAX_HISTORY = 3000;
 
 export function initialState(now = new Date()): TrainerState {
-  return {
-    schema: 1,
-    versions: [{ id: 1, createdAt: now.toISOString(), params: {}, reason: "Ausgangsstand: feste Methode mit Standardwerten" }],
-    current: 1,
-    log: [{ date: now.toISOString(), kind: "info", version: 1, reason: "Trainer gestartet (Version 1 = Standardwerte)" }],
-    history: [],
-    cells: {},
-    job: null,
-    rotation: 0,
-    round: 0,
-    finalTests: [],
-  };
+  return { schema: 2, log: [{ date: now.toISOString(), kind: "info", reason: "Trainer gestartet" }], history: [], job: null, rotation: 0, round: 0, finalTests: [] };
 }
-
-export const currentVersion = (s: TrainerState): ParamVersion => s.versions.find((v) => v.id === s.current) ?? s.versions[0];
 
 export function addLog(s: TrainerState, e: Omit<LogEntry, "date"> & { date?: string }): void {
   s.log.unshift({ date: new Date().toISOString(), ...e });
@@ -127,55 +107,6 @@ export function addLog(s: TrainerState, e: Omit<LogEntry, "date"> & { date?: str
 export function addHistory(s: TrainerState, p: HistoryPoint): void {
   s.history.push(p);
   if (s.history.length > MAX_HISTORY) s.history.splice(0, s.history.length - MAX_HISTORY);
-}
-
-/** Neue Version mit geänderten Werten für eine Zelle (alle anderen Zellen bleiben). */
-export function addVersion(s: TrainerState, cell: CellKey, params: Partial<LearnableParams>, reason: string, hitRate?: number): ParamVersion {
-  const cur = currentVersion(s);
-  const v: ParamVersion = {
-    id: Math.max(...s.versions.map((x) => x.id)) + 1,
-    createdAt: new Date().toISOString(),
-    params: { ...cur.params, [cell]: params },
-    reason,
-    parent: cur.id,
-    cell,
-    hitRate,
-  };
-  s.versions.push(v);
-  s.current = v.id;
-  return v;
-}
-
-/** Zurück auf die vorherige Version (Vorgänger der aktuellen). */
-export function rollback(s: TrainerState): ParamVersion | null {
-  const cur = currentVersion(s);
-  const prevId = cur.parent ?? s.versions.filter((v) => v.id < cur.id).map((v) => v.id).sort((a, b) => b - a)[0];
-  const prev = s.versions.find((v) => v.id === prevId);
-  if (!prev) return null;
-  s.current = prev.id;
-  if (s.job?.type === "train") s.job = null; // laufender Lernschritt bezog sich auf die alte Version
-  addLog(s, { kind: "zurückgesetzt", version: prev.id, reason: `Zurückgesetzt von Version ${cur.id} auf Version ${prev.id}` });
-  return prev;
-}
-
-/** Auf eine bestimmte Version wechseln (nichts wird gelöscht). */
-export function rollbackTo(s: TrainerState, id: number): ParamVersion | null {
-  const v = s.versions.find((x) => x.id === id);
-  if (!v || v.id === s.current) return null;
-  const from = s.current;
-  s.current = v.id;
-  if (s.job?.type === "train") s.job = null;
-  addLog(s, { kind: "zurückgesetzt", version: v.id, reason: `Zurückgesetzt von Version ${from} auf Version ${v.id}` });
-  return v;
-}
-
-/** Nur geänderte Werte speichern (Unterschied zu den Standardwerten). */
-export function diffParams(p: LearnableParams, defaults: LearnableParams): Partial<LearnableParams> {
-  const out: Partial<LearnableParams> = {};
-  for (const k of Object.keys(p) as (keyof LearnableParams)[]) {
-    if (JSON.stringify(p[k]) !== JSON.stringify(defaults[k])) (out as Record<string, unknown>)[k] = p[k];
-  }
-  return out;
 }
 
 export function toUnit(trades: { returnPct: number; exitTime: number }[], months: number): UnitResult {

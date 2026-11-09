@@ -3,7 +3,7 @@ import { handle } from "@/lib/data/route-helpers";
 import { LOCKED } from "@/lib/analysis/locked-config";
 import { adminRequired } from "@/lib/trainer/auth";
 import { MIN_SIGNALS_VALID, TARGET_HIT_RATE } from "@/lib/trainer/engine";
-import { loadSignals, loadState } from "@/lib/trainer/server";
+import { loadAllCells, loadSignals, loadState } from "@/lib/trainer/server";
 import { liveMetrics } from "@/lib/trainer/signals";
 import { storageKind } from "@/lib/trainer/storage";
 import { CELL_KEYS } from "@/lib/trainer/universe";
@@ -18,7 +18,7 @@ function poolProgress(wf: WFState) {
 
 export async function GET(req: Request) {
   return handle(req, async () => {
-    const [s, signals] = await Promise.all([loadState(), loadSignals()]);
+    const [s, signals, cells] = await Promise.all([loadState(), loadSignals(), loadAllCells()]);
     const job = s.job
       ? s.job.type === "train"
         ? { type: "train", cell: s.job.cell, phase: s.job.wf.stage, ...poolProgress(s.job.wf), startedAt: s.job.startedAt }
@@ -30,9 +30,8 @@ export async function GET(req: Request) {
       target: TARGET_HIT_RATE,
       minSignals: MIN_SIGNALS_VALID,
       locked: { weights: LOCKED.weights, weightBounds: LOCKED.weightBounds, minRiskReward: LOCKED.minRiskReward },
-      current: s.current,
-      versions: s.versions.map((v) => ({ id: v.id, createdAt: v.createdAt, reason: v.reason, parent: v.parent, params: v.params, cell: v.cell, hitRate: v.hitRate })),
-      cells: CELL_KEYS.map((c) => ({ cell: c, status: s.cells[c] ?? null })),
+      // Je Zelle getrennt gespeichert: aktueller und vorheriger Stand, gelernte Werte, Versionen
+      cells: cells.map((r) => ({ cell: r.cell, current: r.current, previous: r.previous, updatedAt: r.updatedAt, params: r.params, version: r.version, versions: r.versions, log: r.log.slice(0, 10) })),
       live: liveMetrics(signals),
       signals: { total: signals.length, recent: signals.slice(-30).reverse() },
       log: s.log.slice(0, 150),
