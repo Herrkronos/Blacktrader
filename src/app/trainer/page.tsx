@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { IconInfo } from "@/components/Icons";
 import { refreshTrainerParams, useTrainerCells } from "@/lib/client/trainerParams";
 import { startTraining, stopTraining, TOKEN_KEY, useTraining } from "@/lib/client/trainingSession";
-import { TARGET_HIT_RATE } from "@/lib/trainer/engine";
+import { primaryRate, TARGET_HIT_RATE } from "@/lib/trainer/engine";
 import { classStanding, goalProgress, goalReached } from "@/lib/trainer/goal";
 import { DURATIONS } from "@/lib/trainer/session";
 import { CELL_KEYS, type CellKey } from "@/lib/trainer/universe";
@@ -59,6 +59,7 @@ export default function TrainerPage() {
     () => classStanding(rows.map((r) => ({ cell: `${kind}:${r.h}`, status: r.rec?.previous ?? r.rec?.current ? { oos: (r.rec?.previous ?? r.rec?.current)! } : null })), kind),
     [rows, kind],
   );
+  const tradeTotal = useMemo(() => classStanding(rows.map((r) => ({ cell: `${kind}:${r.h}`, status: r.rec?.current ? { oos: r.rec.current } : null })), kind, { trade: true }), [rows, kind]);
   const reached = total.hitRate != null && goalReached(total.hitRate, target);
 
   const st = t.session;
@@ -93,7 +94,7 @@ export default function TrainerPage() {
 
       <section className="card space-y-3 p-4">
         <div className="text-center">
-          <div className="text-[14px] text-stone-400">Ziel · {KIND_LABEL[kind]}</div>
+          <div className="text-[14px] text-stone-400">Ziel Zonen-Quote · {KIND_LABEL[kind]}</div>
           <div className="num text-[40px] font-semibold leading-tight text-gold">{Math.round(target * 100)} %</div>
           <div className={`num text-[19px] ${reached ? "text-up" : "text-stone-100"}`}>Aktuell {total.hitRate != null ? pct(total.hitRate) : "–"}</div>
         </div>
@@ -120,17 +121,25 @@ export default function TrainerPage() {
               <Delta now={total.hitRate} prev={prevTotal.hitRate} />
             </span>
           </div>
-          {info && <p className="pb-1 text-[13px] text-stone-400">Gesamt = Durchschnitt aller Horizonte, gewichtet nach Anzahl der Signale.</p>}
+          {info && (
+            <p className="pb-1 text-[13px] text-stone-400">
+              Zonen-Quote wie HKCM: Kurs taucht in die Zone ein, dreht vor der Unterkante und läuft oben heraus. Gesamt = Durchschnitt aller Horizonte, gewichtet nach Anzahl der Zonen.
+            </p>
+          )}
           {rows.map(({ h, rec }) => (
             <div key={h} className="grid grid-cols-[1fr_auto_4.5rem] items-center gap-x-3 border-t border-white/5 py-1.5">
               <span className="text-stone-300">{HORIZON_LABEL[h]}</span>
-              <span className="num text-right text-stone-200">{rec?.current ? pct(rec.current.hitRate) : "–"}</span>
+              <span className="num text-right text-stone-200">{rec?.current ? pct(primaryRate(rec.current)) : "–"}</span>
               <span className="num text-right text-[14px]">
-                <Delta now={rec?.current?.hitRate} prev={rec?.previous?.hitRate} />
+                <Delta now={rec?.current ? primaryRate(rec.current) : null} prev={rec?.previous ? primaryRate(rec.previous) : null} />
               </span>
             </div>
           ))}
         </div>
+
+        <p className="text-center text-[13px] text-stone-400">
+          Trade-Quote (Ziel 1 erreicht): <span className="num text-stone-300">{tradeTotal.hitRate != null ? pct(tradeTotal.hitRate) : "–"}</span>
+        </p>
 
         <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/5 p-1">
           {KINDS.map((k) => (
@@ -192,6 +201,27 @@ export default function TrainerPage() {
           <p className="text-[15px] text-stone-300">{st.results.every((r) => !r.base) ? "Keine Kursdaten erreichbar – alter Stand bleibt" : "Keine Verbesserung – alter Stand bleibt"}</p>
         )}
       </section>
+
+      <button className="w-full py-2 text-center text-[14px] text-stone-400 underline-offset-4 active:underline" onClick={() => void exportResults(cells)}>
+        Ergebnisse exportieren (JSON)
+      </button>
     </div>
   );
+}
+
+/** Server-Export plus die Stände auf diesem Gerät als eine Datei herunterladen. */
+async function exportResults(local: unknown) {
+  let server: unknown = null;
+  try {
+    const r = await fetch("/api/trainer/export", { cache: "no-store" });
+    if (r.ok) server = await r.json();
+  } catch {
+    /* nur lokal */
+  }
+  const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), server, thisDevice: local }, null, 1)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `black-ship-trainer-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }

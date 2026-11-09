@@ -7,7 +7,7 @@
 // Vergleich alt/neu ausschließlich auf den Prüfbereichen (unbekannte Daten).
 import { strictnessErrors, type LearnableParams } from "../analysis/params";
 import type { Candle } from "../types";
-import { backtestSeries, decide, metrics, preselect, splitHoldout, walkForwardFolds, type Decision, type Metrics } from "./engine";
+import { backtestSeries, decide, metrics, preselect, primaryRate, splitHoldout, walkForwardFolds, withZones, type Decision, type Metrics } from "./engine";
 import { candidateMoves } from "./moves";
 import type { CellKey, SeriesSpec } from "./universe";
 
@@ -15,6 +15,13 @@ export interface RunData {
   r: number[];
   en: number[];
   ex: number[];
+  /** Zonen wie HKCM: Signalzeit, Zeitpunkt des Ergebnisses, 1 = Erfolg / 0 = gescheitert, Richtung, Ober-/Unterkante */
+  zt?: number[];
+  za?: number[];
+  zo?: number[];
+  zd?: number[];
+  zp?: number[];
+  zb?: number[];
 }
 export interface SeriesInfo {
   /** Erste handelbare Zeit (nach Vorlauf) */
@@ -89,6 +96,7 @@ export function regionMetrics(st: WFState, key: string, reg: Region): Metrics | 
   const e = st.pool[key];
   if (!e) return null;
   const trades: { returnPct: number; exitTime: number }[] = [];
+  const zones: number[] = [];
   let months = 0;
   for (let s = 0; s < st.specs.length; s++) {
     const inf = st.info[s];
@@ -100,19 +108,23 @@ export function regionMetrics(st: WFState, key: string, reg: Region): Metrics | 
       a = inf.start;
       b = reg.k >= st.folds ? inf.bounds[st.folds] : inf.bounds[reg.k];
       run.ex.forEach((x, i) => x < b && run.en[i] >= a && trades.push({ returnPct: run.r[i], exitTime: x }));
+      // Lerndaten: nur Zonen, deren Ergebnis vor dem Prüfbeginn feststand
+      run.za?.forEach((x, i) => x < b && run.zt![i] >= a && zones.push(run.zo![i]));
     } else {
       a = inf.bounds[reg.k];
       b = inf.bounds[reg.k + 1];
       run.en.forEach((x, i) => x >= a && x < b && trades.push({ returnPct: run.r[i], exitTime: run.ex[i] }));
+      run.zt?.forEach((x, i) => x >= a && x < b && zones.push(run.zo![i]));
     }
     months += Math.max(0, b - a) / MONTH;
   }
-  return metrics(trades, months);
+  return withZones(metrics(trades, months), zones);
 }
 
 /** Prüfdaten-Kennzahlen: je Fold der dort gewählte Stand, zusammengefasst. */
 export function oosMetrics(st: WFState, keys: string[]): Metrics | null {
   const trades: { returnPct: number; exitTime: number }[] = [];
+  const zones: number[] = [];
   let months = 0;
   for (let k = 0; k < st.folds; k++) {
     const e = st.pool[keys[k]];
@@ -124,10 +136,11 @@ export function oosMetrics(st: WFState, keys: string[]): Metrics | null {
       const a = inf.bounds[k];
       const b = inf.bounds[k + 1];
       run.en.forEach((x, i) => x >= a && x < b && trades.push({ returnPct: run.r[i], exitTime: run.ex[i] }));
+      run.zt?.forEach((x, i) => x >= a && x < b && zones.push(run.zo![i]));
       months += (b - a) / MONTH;
     }
   }
-  return metrics(trades, months);
+  return withZones(metrics(trades, months), zones);
 }
 
 const complete = (st: WFState, key: string) => st.pool[key]?.runs.every((r, s) => r != null || st.info[s] === "failed");
@@ -230,7 +243,18 @@ async function evaluatePending(st: WFState, ctx: WFContext, now: () => number): 
       ctx.onPhase?.("backtest", `${st.specs[s].symbol} · ${st.pool[k].change}`);
       const spec = st.specs[s];
       const r = backtestSeries({ name: spec.symbol, kind: spec.kind, horizon: spec.horizon, interval: spec.interval, candles: pre }, st.pool[k].params, { step: spec.step, warmup: WARMUP });
-      st.pool[k].runs[s] = { r: r.trades.map((t) => Math.round(t.returnPct * 100) / 100), en: r.trades.map((t) => t.entryTime), ex: r.trades.map((t) => t.exitTime) };
+      const rd = (x: number) => Math.round(x * 1e6) / 1e6;
+      st.pool[k].runs[s] = {
+        r: r.trades.map((t) => Math.round(t.returnPct * 100) / 100),
+        en: r.trades.map((t) => t.entryTime),
+        ex: r.trades.map((t) => t.exitTime),
+        zt: r.zones.map((z) => z.t),
+        za: r.zones.map((z) => z.at),
+        zo: r.zones.map((z) => z.ok),
+        zd: r.zones.map((z) => z.dir),
+        zp: r.zones.map((z) => rd(z.top)),
+        zb: r.zones.map((z) => rd(z.bottom)),
+      };
     }
   }
   return true;
@@ -248,8 +272,8 @@ function select(st: WFState): boolean {
     for (const n of neighbourKeys(st, cur)) {
       if (!st.pool[n.key] || !complete(st, n.key)) continue;
       const m = regionMetrics(st, n.key, { kind: "train", k });
-      if (!m || m.trades < Math.max(10, curM.trades * 0.5) || !preselect(curM, m)) continue;
-      if (!best || m.hitRate > best.m.hitRate || (m.hitRate === best.m.hitRate && m.profitFactor > best.m.profitFactor)) best = { key: n.key, m };
+      if (!m || m.trades < Math.max(10, curM.trades * 0.5) || (m.zones ?? 0) < Math.max(10, (curM.zones ?? 0) * 0.5) || !preselect(curM, m)) continue;
+      if (!best || primaryRate(m) > primaryRate(best.m) || (primaryRate(m) === primaryRate(best.m) && m.profitFactor > best.m.profitFactor)) best = { key: n.key, m };
     }
     if (best) {
       st.climbers[k] = best.key;
@@ -348,4 +372,32 @@ export function focusLabel(change: string): string {
     bisheriger: "Ausgangsstand messen",
   };
   return map[k] ?? "Wellenzählung";
+}
+
+/** Messprotokoll: jede bewertete Zone der Prüfbereiche für einen Stand (Fold-Wahl `keys`). */
+export interface ProtocolEntry {
+  symbol: string;
+  tf: string;
+  t: number;
+  dir: 1 | -1;
+  top: number;
+  bottom: number;
+  ok: 0 | 1;
+}
+export function protocolOf(st: WFState, keys: string[]): ProtocolEntry[] {
+  const out: ProtocolEntry[] = [];
+  for (let k = 0; k < st.folds; k++) {
+    const e = st.pool[keys[k]];
+    for (let s = 0; s < st.specs.length; s++) {
+      const inf = st.info[s];
+      const run = e?.runs[s];
+      if (!inf || inf === "failed" || !run?.zt) continue;
+      const a = inf.bounds[k];
+      const b = inf.bounds[k + 1];
+      run.zt.forEach((x, i) => {
+        if (x >= a && x < b) out.push({ symbol: st.specs[s].symbol, tf: st.specs[s].interval, t: x, dir: run.zd![i] as 1 | -1, top: run.zp![i], bottom: run.zb![i], ok: run.zo![i] as 0 | 1 });
+      });
+    }
+  }
+  return out.sort((x, y) => x.t - y.t);
 }

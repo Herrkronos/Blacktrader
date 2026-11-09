@@ -4,6 +4,7 @@ import { analyze } from "../analysis/analyze";
 import type { BacktestTrade } from "../analysis/backtest";
 import { DEFAULT_PARAMS, PARAM_BOUNDS, validateParams, type LearnableParams } from "../analysis/params";
 import { runZoneBacktest } from "../analysis/zoneBacktest";
+import { zoneOutcome } from "../analysis/zoneOutcome";
 import { LOCKED } from "../analysis/locked-config";
 import type { ZoneSetup } from "../analysis/zones";
 import type { AssetKind, Candle, Horizon, Interval } from "../types";
@@ -17,6 +18,18 @@ export interface Metrics {
   maxDrawdown: number;
   /** Signale pro Monat */
   perMonth: number;
+  /** Zonen mit Ergebnis und Zonen-Quote wie HKCM (eingetaucht, vor der Unterkante gedreht, oben heraus) */
+  zones?: number;
+  zoneRate?: number;
+}
+
+/** Hauptmaß für das 70-%-Ziel: Zonen-Quote (wie HKCM), sonst Trade-Quote (ältere Messungen). */
+export const primaryRate = (m: Metrics) => (m.zones != null ? (m.zoneRate ?? 0) : m.hitRate);
+export const primaryCount = (m: Metrics) => (m.zones != null ? m.zones : m.trades);
+
+/** Zonen-Ergebnisse an Kennzahlen anhängen. */
+export function withZones(m: Metrics, ok: number[]): Metrics {
+  return { ...m, zones: ok.length, zoneRate: ok.length ? ok.filter((x) => x === 1).length / ok.length : 0 };
 }
 
 export function metrics(trades: Pick<BacktestTrade, "returnPct" | "exitTime">[], months: number): Metrics {
@@ -74,8 +87,35 @@ export function signalFromAnalysis(hist: Candle[], s: Pick<Series, "kind" | "hor
 }
 
 /** Backtest einer Kursreihe mit Parametern (Trade-Regeln fest). */
+export interface ZoneRecord {
+  /** Zeitpunkt des Signals, Zeitpunkt des Ergebnisses */
+  t: number;
+  at: number;
+  /** 1 = Erfolg, 0 = gescheitert */
+  ok: number;
+  dir: 1 | -1;
+  top: number;
+  bottom: number;
+}
+
 export function backtestSeries(s: Series, params: LearnableParams, opts: { warmup?: number; step?: number } = {}) {
-  return runZoneBacktest(s.candles, { warmup: opts.warmup ?? 150, step: opts.step, signalAt: (h) => signalFromAnalysis(h, s, params) });
+  const zones: ZoneRecord[] = [];
+  const seen = new Set<string>();
+  const r = runZoneBacktest(s.candles, {
+    warmup: opts.warmup ?? 150,
+    step: opts.step,
+    signalAt: (h) => signalFromAnalysis(h, s, params),
+    // Jede neue Zone einmal nach HKCM-Art bewerten (nur Kerzen nach dem Signal)
+    onSignal: ({ index, time, setup }) => {
+      const key = `${setup.zoneStart}:${setup.zoneEnd}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const dir = setup.direction === "long" ? 1 : -1;
+      const o = zoneOutcome(s.candles, index, { top: setup.zoneStart, bottom: setup.zoneEnd, dir, cancel: setup.cancelAbove, maxWait: LOCKED.trade.maxWaitBars });
+      if (o) zones.push({ t: time, at: o.at, ok: o.result === "erfolg" ? 1 : 0, dir, top: setup.zoneStart, bottom: setup.zoneEnd });
+    },
+  });
+  return { ...r, zones };
 }
 
 const monthsOf = (c: Candle[]) => (c.length > 1 ? (c[c.length - 1].time - c[0].time) / (30.44 * 86400) : 0);
@@ -169,8 +209,12 @@ export interface Decision {
  */
 export function decide(base: Metrics, cand: Metrics): Decision {
   const reasons: string[] = [];
-  if (cand.trades < MIN_SIGNALS_VALID) reasons.push(`zu wenige Signale (${cand.trades} < ${MIN_SIGNALS_VALID})`);
-  if (cand.hitRate <= base.hitRate) reasons.push(`Trefferquote nicht besser (${(cand.hitRate * 100).toFixed(1)} % ≤ ${(base.hitRate * 100).toFixed(1)} %)`);
+  const zonal = base.zones != null && cand.zones != null;
+  const n = zonal ? cand.zones! : cand.trades;
+  const a = zonal ? cand.zoneRate! : cand.hitRate;
+  const b = zonal ? base.zoneRate! : base.hitRate;
+  if (n < MIN_SIGNALS_VALID) reasons.push(`zu wenige ${zonal ? "Zonen" : "Signale"} (${n} < ${MIN_SIGNALS_VALID})`);
+  if (a <= b) reasons.push(`${zonal ? "Zonen-Quote" : "Trefferquote"} nicht besser (${(a * 100).toFixed(1)} % ≤ ${(b * 100).toFixed(1)} %)`);
   if (cand.profitFactor < base.profitFactor) reasons.push(`Profit-Faktor gesunken (${cand.profitFactor.toFixed(2)} < ${base.profitFactor.toFixed(2)})`);
   if (cand.maxDrawdown < base.maxDrawdown - 1e-9) reasons.push(`max. Rückgang schlechter (${cand.maxDrawdown.toFixed(1)} % < ${base.maxDrawdown.toFixed(1)} %)`);
   if (base.perMonth > 0 && cand.perMonth < base.perMonth * (1 - LOCKED.acceptance.maxSignalDrop)) reasons.push(`zu wenige Signale pro Monat (−${Math.round((1 - cand.perMonth / base.perMonth) * 100)} %)`);
@@ -179,6 +223,7 @@ export function decide(base: Metrics, cand: Metrics): Decision {
 
 /** Vorauswahl auf Lerndaten: Trefferquote höher, Profit-Faktor und Rückgang nicht schlechter, Signalmenge ≥ 60 %. */
 export function preselect(baseIn: Metrics, cand: Metrics): boolean {
-  return cand.hitRate > baseIn.hitRate && cand.profitFactor >= baseIn.profitFactor && cand.maxDrawdown >= baseIn.maxDrawdown && cand.perMonth >= baseIn.perMonth * (1 - LOCKED.acceptance.maxSignalDrop);
+  const zonal = baseIn.zones != null && cand.zones != null;
+  return (zonal ? cand.zoneRate! > baseIn.zoneRate! : cand.hitRate > baseIn.hitRate) && cand.profitFactor >= baseIn.profitFactor && cand.maxDrawdown >= baseIn.maxDrawdown && cand.perMonth >= baseIn.perMonth * (1 - LOCKED.acceptance.maxSignalDrop);
 }
 

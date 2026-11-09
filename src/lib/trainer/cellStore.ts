@@ -2,6 +2,7 @@
 // Lesen → prüfen → schreiben unter einer Sperre NUR für diese Zelle. Ein einziger SET je Änderung (kein halber Zustand).
 import { applyProposal, cellStorageKey, emptyRecord, rollbackRecord, type CellRecord, type Proposal } from "./cells";
 import type { CellAccess } from "./job";
+import type { ProtocolEntry } from "./walkforward";
 import { acquireLock, getJson, releaseLock, setJson } from "./storage";
 import { CELL_KEYS, type CellKey } from "./universe";
 
@@ -31,7 +32,24 @@ export async function withCellLock<T>(cell: CellKey, fn: (rec: CellRecord) => { 
   }
 }
 
+export interface StoredProtocol {
+  cell: CellKey;
+  updatedAt: string;
+  source: string;
+  entries: ProtocolEntry[];
+}
+const MAX_PROTOCOL = 3000;
+export const protocolKey = (cell: CellKey) => `${cellStorageKey(cell)}:protokoll`;
+
+export async function saveProtocol(cell: CellKey, entries: ProtocolEntry[], source: string): Promise<void> {
+  await setJson(protocolKey(cell), { cell, updatedAt: new Date().toISOString(), source, entries: entries.slice(-MAX_PROTOCOL) } satisfies StoredProtocol);
+}
+export async function loadProtocol(cell: CellKey): Promise<StoredProtocol | null> {
+  return getJson<StoredProtocol>(protocolKey(cell));
+}
+
 export const serverCells: CellAccess = {
+  saveProtocol,
   get: loadCell,
   propose: (cell: CellKey, p: Proposal) =>
     withCellLock(cell, (rec) => {

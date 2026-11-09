@@ -5,7 +5,7 @@ import { resolveParams, type LearnableParams, type ParamSet } from "../analysis/
 import type { AssetKind, Candle, Horizon } from "../types";
 import type { Metrics } from "./engine";
 import { sessionUniverse, type CellKey, type SeriesSpec } from "./universe";
-import { advanceWF, compactWF, finalizeWF, focusLabel, improvementCheck, initWF, keyOf, oosMetrics, type SavedPoint, type WFPhase, type WFResult, type WFState } from "./walkforward";
+import { advanceWF, compactWF, finalizeWF, focusLabel, improvementCheck, initWF, keyOf, oosMetrics, protocolOf, type ProtocolEntry, type SavedPoint, type WFPhase, type WFResult, type WFState } from "./walkforward";
 
 export const DURATIONS = [
   { label: "15 Min", ms: 15 * 60e3 },
@@ -74,6 +74,8 @@ export interface SessionIO {
   onImprovement?: (cell: CellKey, r: WFResult, baseParams: LearnableParams, st: SessionState) => Promise<boolean>;
   /** Kein besserer Stand: gemessenen Ausgangsstand melden (wird nur gespeichert, wenn noch keiner vorliegt) */
   onMeasured?: (cell: CellKey, base: Metrics, baseParams: LearnableParams) => void;
+  /** Messprotokoll des aktiven Stands (jede bewertete Zone der Prüfdaten) */
+  onProtocol?: (cell: CellKey, entries: ProtocolEntry[]) => void;
   shouldStop: () => boolean;
   now?: () => number;
   /** Länge eines Arbeitsblocks zwischen zwei Fortschrittsmeldungen */
@@ -134,6 +136,11 @@ export async function runSession(st: SessionState, io: SessionIO): Promise<Sessi
         : { cell, base: null, cand: null, accept: false, reasons: [series ? "Zu wenig Zeit für einen Vergleich" : "Keine Kursdaten erreichbar"], deployed: null, changes: "keine", series };
       st.results.push(o);
       if (r && series > 0 && !st.saved[cell] && st.wf) io.onMeasured?.(cell, r.base, st.wf.pool[st.wf.baseKey].params);
+      if (r && series > 0 && st.wf) {
+        const wf = st.wf;
+        const keys = st.saved[cell] ? wf.climbers.slice(0, wf.folds) : Array.from({ length: wf.folds }, () => wf.baseKey);
+        io.onProtocol?.(cell, protocolOf(wf, keys));
+      }
       st.wf = null;
       st.cellIdx++;
       await io.onCellDone(o, st);

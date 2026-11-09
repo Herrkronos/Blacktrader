@@ -3,7 +3,7 @@
 // alle Versionen und ein kurzes Protokoll. Ein Lauf für eine Zelle verändert NIE eine andere Zelle.
 import { DEFAULT_PARAMS, resolveParams, strictnessErrors, validateParams, type LearnableParams, type ParamSet } from "../analysis/params";
 import { KIND_LABEL, type AssetKind, type Horizon } from "../types";
-import { decide, type Decision, type Metrics } from "./engine";
+import { decide, primaryRate, type Decision, type Metrics } from "./engine";
 import { CELL_KEYS, type CellKey } from "./universe";
 import { describeChanges } from "./walkforward";
 
@@ -102,12 +102,12 @@ export function applyProposal(rec: CellRecord, p: Proposal, now = new Date()): A
     r.version = Math.max(...rec.versions.map((v) => v.id)) + 1;
     r.versions.push({ id: r.version, savedAt: date, params: r.params, standing: p.cand, reason: `${p.source}: ${describeChanges(active, p.deployed)}` });
     if (r.versions.length > MAX_VERSIONS) r.versions.splice(1, r.versions.length - MAX_VERSIONS);
-    message = `Gespeichert: ${cellName(rec.cell)} ${pct(prevStand.hitRate)} → ${pct(p.cand.hitRate)}`;
+    message = `Gespeichert: ${cellName(rec.cell)} ${pct(primaryRate(prevStand))} → ${pct(primaryRate(p.cand))}`;
     r.log.unshift({ date, kind: "gespeichert", reason: message });
   } else {
     // Erste Messung merken (ohne Werte zu ändern), damit der Stand angezeigt werden kann
     if (!rec.current && d.reasons[0] !== "Ausgangsstand hat sich inzwischen geändert") r.current = p.base;
-    message = `Keine Verbesserung (${pct(p.cand.hitRate)}) – alter Stand bleibt`;
+    message = `Keine Verbesserung (${pct(primaryRate(p.cand))}) – alter Stand bleibt`;
     r.log.unshift({ date, kind: "verworfen", reason: `${message}: ${d.reasons.join("; ")}` });
   }
   if (r.log.length > MAX_LOG) r.log.length = MAX_LOG;

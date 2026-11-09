@@ -50,6 +50,7 @@ self.onmessage = async (e: MessageEvent) => {
           setTimeout(() => pending.has(id) && (pending.delete(id), res(false)), 60_000);
         }),
       onMeasured: (cell, base, baseParams) => postMessage({ type: "measured", cell, base, baseParams }),
+      onProtocol: (cell, entries) => postMessage({ type: "protocol", cell, entries }),
       // Abschluss eines Bereichs (nur Anzeige)
       onCellDone: (o: CellOutcome, s) =>
         new Promise<void>((res) => {

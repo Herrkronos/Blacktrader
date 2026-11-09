@@ -150,9 +150,15 @@ function spawn(state: SessionState) {
       | { type: "progress"; state: SessionState }
       | { type: "cell"; id: string; outcome: CellOutcome; state: SessionState }
       | { type: "improve"; id: string; cell: CellKey; result: WFResult; baseParams: LearnableParams; state: SessionState }
-      | { type: "measured"; cell: CellKey; base: Metrics; baseParams: LearnableParams; state?: undefined };
+      | { type: "measured"; cell: CellKey; base: Metrics; baseParams: LearnableParams; state?: undefined }
+      | { type: "protocol"; cell: CellKey; entries: unknown[]; state?: undefined };
     if (m.type === "measured") {
       void saveMeasurement(m.cell, m.base, m.baseParams);
+      return;
+    }
+    if (m.type === "protocol") {
+      // Messprotokoll beim Server ablegen (zum Auslesen/Export); Fehler sind hier nicht kritisch
+      void fetch("/api/trainer/protocol", { method: "POST", headers: { "Content-Type": "application/json", ...tokenHeader() }, body: JSON.stringify({ cell: m.cell, entries: m.entries }) }).catch(() => {});
       return;
     }
     write(KEY, m.state);

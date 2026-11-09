@@ -3,10 +3,10 @@
 // nach den Strenge-Regeln. Die letzten 12 Monate bleiben gesperrt (einmaliger Abschlusstest je Version).
 import type { AssetKind, Candle, Horizon } from "../types";
 import { applyProposal, emptyRecord, recordParams, type ApplyOutcome, type CellRecord, type Proposal } from "./cells";
-import { holdoutSeries } from "./engine";
+import { holdoutSeries, primaryRate } from "./engine";
 import { addHistory, addLog, toUnit, unitMetrics, type FinalJob, type TrainerState, type TrainJob, type UnitResult } from "./state";
 import { CELL_KEYS, universe, type CellKey, type SeriesSpec } from "./universe";
-import { advanceWF, initWF, type WFResult, type WFState } from "./walkforward";
+import { advanceWF, initWF, protocolOf, type ProtocolEntry, type WFResult, type WFState } from "./walkforward";
 
 export type Loader = (spec: SeriesSpec) => Promise<Candle[]>;
 export type Universe = (cell: CellKey) => SeriesSpec[];
@@ -16,6 +16,8 @@ export interface CellAccess {
   get(cell: CellKey): Promise<CellRecord>;
   /** Atomar: prüfen und nur speichern, wenn besser */
   propose(cell: CellKey, p: Proposal): Promise<ApplyOutcome>;
+  /** Messprotokoll (jede bewertete Zone der Prüfdaten) speichern */
+  saveProtocol?(cell: CellKey, entries: ProtocolEntry[], source: string): Promise<void>;
 }
 
 export function memoryCells(): CellAccess & { records: Map<CellKey, CellRecord> } {
@@ -66,7 +68,7 @@ export async function submitResult(s: TrainerState, cells: CellAccess, cell: Cel
   const out = await cells.propose(cell, { baseParams: wf.pool[wf.baseKey].params, base: r.base, cand: r.cand, deployed: r.deployed, source });
   addLog(s, { kind: out.saved ? "angenommen" : "abgelehnt", cell, version: out.record.version, change: r.changes, reason: `${source}: ${out.message}${out.saved ? "" : `. ${out.decision.reasons.join("; ")}`}`, base: r.base, cand: r.cand });
   const shown = out.record.current ?? r.base;
-  addHistory(s, { date: new Date().toISOString(), cell, source: "backtest", hitRate: shown.hitRate, profitFactor: shown.profitFactor, trades: shown.trades, version: out.record.version });
+  addHistory(s, { date: new Date().toISOString(), cell, source: "backtest", hitRate: primaryRate(shown), profitFactor: shown.profitFactor, trades: shown.trades, version: out.record.version });
   return out.message;
 }
 
@@ -115,6 +117,9 @@ async function stepTrain(s: TrainerState, job: TrainJob, cells: CellAccess, cach
     notes.push(`${job.cell}: keine Kursdaten erreichbar – übersprungen`);
   } else {
     notes.push(`${job.cell}: ${await submitResult(s, cells, job.cell, job.wf, job.wf.result, "Nachtlauf")}`);
+    const wf = job.wf;
+    const keys = wf.result!.decision.accept ? wf.climbers.slice(0, wf.folds) : Array.from({ length: wf.folds }, () => wf.baseKey);
+    await cells.saveProtocol?.(job.cell, protocolOf(wf, keys), "Nachtlauf");
   }
   s.job = null;
   return true;
