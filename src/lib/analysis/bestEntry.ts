@@ -7,7 +7,6 @@
 //   - Sektor-Regel: ist der Tech-Markt schwach (NASDAQ 100 unter der 200-Tage-Linie), keine grünen Tech-Trades
 //   - Rangfolge der Zeiträume je Anlageklasse nach gemessener Zonen-Quote
 import type { AssetKind, Candle, Horizon } from "../types";
-import { HORIZON_LABEL } from "../types";
 import type { AnalysisResult } from "./analyze";
 import type { LongTermZone } from "./longterm";
 import type { TradePlan } from "./score";
@@ -120,7 +119,7 @@ export function pickBestEntry(inp: PickInput): BestEntry {
         stop: p.stop,
         targets: p.targets,
         invalidation: p.stop,
-        reason: `${HORIZON_LABEL[h]}: ${r.commentary.reason || r.commentary.summary}`,
+        reason: r.commentary.reason || r.commentary.summary,
       });
     }
 
