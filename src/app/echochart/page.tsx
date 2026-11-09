@@ -5,7 +5,7 @@ import { ZoneHistoryChart } from "@/components/ZoneHistoryChart";
 import { HorizonToggle } from "@/components/ui";
 import { runEcho, summarize, type EchoKind, type EchoZone } from "@/lib/analysis/echoZones";
 import { fmtPrice } from "@/lib/analysis/persona";
-import { LOOKBACKS, loadHistory, planHistory } from "@/lib/client/history";
+import { INTERVAL_SECONDS, LOOKBACKS, loadHistory, planHistory, YAHOO_MAX_DAYS } from "@/lib/client/history";
 import { SCAN_GROUPS } from "@/lib/client/presets";
 import { learnedParams } from "@/lib/client/trainerParams";
 import { useAppData } from "@/lib/store/store";
@@ -64,17 +64,28 @@ export default function EchoChartPage() {
     for (const [i, a] of targets.entries()) {
       const step = (p: number, what: string) => setProgress({ label: targets.length > 1 ? `${a.name} (${i + 1} von ${targets.length}) – ${what}` : what, p: (i + p) / targets.length });
       try {
-        const pl = planHistory(a, interval, days);
+        // Vorlauf automatisch dazuladen: der Analyst braucht ca. 200 Kerzen, um die Wellen zu zählen.
+        // Gezählt werden danach nur Zonen im gewählten Zeitraum.
+        const periodStart = Date.now() / 1000 - days * 86400;
+        let loadDays = days + Math.ceil((220 * INTERVAL_SECONDS[interval]) / 86400);
+        let pl = planHistory(a, interval, loadDays);
+        if (!pl.ok && YAHOO_MAX_DAYS[interval] < loadDays) {
+          loadDays = Math.max(days, YAHOO_MAX_DAYS[interval]);
+          pl = planHistory(a, interval, loadDays);
+        }
         if (!pl.ok) throw new Error(pl.reason);
         step(0, "Kurse laden");
-        const candles = await loadHistory(pl, interval, days, (p) => step(p * 0.3, "Kurse laden"));
-        if (candles.length < 200) throw new Error("zu wenig Kursdaten");
+        const candles = await loadHistory(pl, interval, loadDays, (p) => step(p * 0.3, "Kurse laden"));
+        if (candles.length < 200)
+          throw new Error(
+            `Zu kurze Kursgeschichte: ${a.name} hat für „${HORIZON_LABEL[horizon]}“ erst ${candles.length} Kerzen, der Analyst braucht etwa 200, um die Wellen zu zählen. Tipp: einen kürzeren Zeitraum wählen (z. B. Mittelfristig).`,
+          );
         const r = await runEcho(candles, { kind: a.kind, horizon, interval, params: learnedParams(a.kind, horizon) }, (p) => step(0.3 + p * 0.7, "Analyst spielt die Vergangenheit durch"));
-        const t = r.trades.trades;
+        const t = r.trades.trades.filter((x) => x.entryTime >= periodStart);
         out.push({
           asset: a,
-          zones: r.zones,
-          candles,
+          zones: r.zones.filter((z) => z.t >= periodStart),
+          candles: candles.filter((c) => c.time >= periodStart),
           trades: t.length,
           tradeHit: t.length ? t.filter((x) => x.returnPct > 0).length / t.length : null,
           tradeReturn: t.length ? (t.reduce((e, x) => e * (1 + x.returnPct / 100), 1) - 1) * 100 : null,
@@ -214,7 +225,7 @@ export default function EchoChartPage() {
                   return (
                     <li key={r.asset.symbol} className="flex items-center justify-between gap-2 py-2">
                       <span className="text-stone-200">{r.asset.name}</span>
-                      <span className="num text-stone-400">{r.error ? "keine Daten" : s.zones ? `${s.held}/${s.zones} · ${pct(s.rate!)}` : "keine Zone"}</span>
+                      <span className="num text-stone-400">{r.error ? (r.error.startsWith("Zu kurze") ? "zu kurze Kursgeschichte" : "keine Daten") : s.zones ? `${s.held}/${s.zones} · ${pct(s.rate!)}` : "keine Zone"}</span>
                     </li>
                   );
                 })}
