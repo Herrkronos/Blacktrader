@@ -165,7 +165,6 @@ export async function blacktraderPool(prep: Prepared, params: Params, io: Tourna
           // Ungültig-Grenze und Chance, gemessen ab der Oberkante des Bereichs
           const riskPct = t.invalidation != null && t.zoneTop ? ((t.zoneTop - t.invalidation) / t.zoneTop) * 100 : undefined;
           const chancePct = t.target != null && t.zoneTop ? ((t.target - t.zoneTop) / t.zoneTop) * 100 : undefined;
-          if (basePotential(chancePct, riskPct, "blau") < MIN_POTENTIAL) continue; // nur die obere Hälfte (wie in den Chancen)
           out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, color: "blau", riskPct, chancePct, ...(passesBlueRule(chancePct, riskPct) ? {} : { blueRuleOut: true }) });
         }
       }

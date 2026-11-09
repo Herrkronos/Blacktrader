@@ -271,7 +271,7 @@ export function potential(e: ScanEntry): { score: number; base: number; chancePc
  *    Im Turnier geprüft: „Chance ≥ 15 %“ +22,0 % statt +21,8 % pro Jahr. Ein Stop-Limit (≤ 25 %) schadete stark
  *    (+6,8 %) – die besten Trades sind große Wellen mit weitem Stop –, darum gibt es keins.
  *  Blau: Kurs schon im Bereich, Ungültig-Grenze höchstens 40 % entfernt, Chance mindestens 40 %.
- *  Alle: Potenzial-Grundwert mindestens MIN_POTENTIAL (obere Hälfte, siehe analysis/potential.ts) – wie im Turnier.
+ *  Grün/Rot: Potenzial-Grundwert mindestens MIN_POTENTIAL (obere Hälfte, siehe analysis/potential.ts) – wie im Turnier.
  */
 export const CHANCE_RULES = {
   trade: { maxDistancePct: 8 },
@@ -282,8 +282,10 @@ export const CHANCE_RULES = {
 /** Erfüllt der Einstieg die Mindestanforderungen für die Chancen? */
 export function isTopChance(e: ScanEntry): boolean {
   const p = potential(e);
-  if (!p || p.chancePct < CHANCE_RULES.minChancePct || p.base < MIN_POTENTIAL) return false;
+  if (!p || p.chancePct < CHANCE_RULES.minChancePct) return false;
   const b = e.best;
+  // Potenzial-Grenze nur für Grün/Rot – Blau hat dafür die Blau-Regel (sonst fiele jeder blaue Einstieg heraus)
+  if (b.color !== "blau" && p.base < MIN_POTENTIAL) return false;
   const d = bestDistance(e);
   if (b.color === "blau") return d === 0 && passesBlueRule(p.chancePct, p.riskPct);
   return d <= CHANCE_RULES.trade.maxDistancePct;

@@ -5,6 +5,10 @@
 // (Grundwert ≥ 26) zu nehmen bringt +5,6 % statt +4,9 % pro Jahr – mit weniger Trades und Gebühren. Die Grenze wurde
 // nur aus 1963–2005 bestimmt und hielt auf den ungesehenen Jahren ab 2006 (+10,2 % statt +8,1 %). Grund: Blacktrader
 // hat fast immer alle Plätze belegt (Ø 8,5 von 9, Haltedauer Ø 1 Jahr) – schwache Signale blockieren gute.
+//
+// NUR FÜR GRÜN/ROT. Blaue Einstiege erreichen den Grundwert nie (Gewicht 0,35, Ungültig-Grenze meist weit weg – im Test
+// 0 von 458), sie würden also komplett verschwinden. Für Blau gilt stattdessen die Blau-Regel. Getestet (gleiche Daten):
+// Filter Grün/Rot + Blau mit Blau-Regel +5,8 %, + alle Blauen +6,0 %, Filter auf alles (kein Blau) +5,6 %, ohne Filter +4,9 %.
 export type PotentialColor = "gruen" | "blau" | "rot";
 
 /** Im Turnier gemessene Stärke je Signalart (relativ zu Grün = 1) */

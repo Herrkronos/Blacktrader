@@ -179,10 +179,9 @@ describe("Chancen: nur die mit der höchsten Chance (höchstens 20, gern weniger
   it("Blau nur im Bereich und mit begrenzter Ungültig-Grenze", async () => {
     const { isTopChance } = await import("../src/lib/client/scanner");
     const blue = (inv: number, price: number) => entry({ color: "blau", zoneTop: 100, zoneBottom: 80, invalidation: inv, targets: [160] }, price);
-    expect(isTopChance(blue(80, 95))).toBe(true);
-    expect(isTopChance(blue(70, 95))).toBe(false); // Potenzial zu klein (Chance 60 %, Risiko 30 %)
+    expect(isTopChance(blue(70, 95))).toBe(true); // Blau braucht keine Potenzial-Grenze, nur die Blau-Regel
     expect(isTopChance(blue(20, 95))).toBe(false); // Ungültig 80 % entfernt
-    expect(isTopChance(blue(80, 110))).toBe(false); // noch nicht im Bereich
+    expect(isTopChance(blue(70, 110))).toBe(false); // noch nicht im Bereich
   });
 });
 
