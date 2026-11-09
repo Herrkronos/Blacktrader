@@ -108,3 +108,18 @@ describe("Turnier: kein Teilnehmer schaut in die Zukunft", () => {
     });
   }
 });
+
+describe("Vergleich: echter ETF", () => {
+  it("kauft am Anfang alles, verkauft am Ende, zahlt Gebühr und KESt nur auf Gewinn", async () => {
+    const { benchmarkRun, RULES } = await import("../src/lib/trainer/tournament");
+    const d = 86400;
+    const etf = [0, 1, 2, 3].map((i) => ({ time: i * 100 * d, open: 100 + i * 10, high: 100 + i * 10, low: 100 + i * 10, close: 100 + i * 10, volume: 0 }));
+    const up = benchmarkRun(etf, { from: 0, to: 300 * d, scenario: "bullisch" });
+    const g = RULES.start * 0.3 - RULES.start * RULES.fee * 2;
+    expect(up.end).toBeCloseTo(RULES.start + g * (1 - RULES.tax), 6);
+    expect(up.broke).toBe(false);
+    const down = benchmarkRun([...etf].reverse().map((c, i) => ({ ...c, time: i * 100 * d })), { from: 0, to: 300 * d, scenario: "baerisch" });
+    expect(down.tax).toBe(0);
+    expect(down.end).toBeCloseTo(RULES.start * (100 / 130) - RULES.start * RULES.fee * 2, 6);
+  });
+});

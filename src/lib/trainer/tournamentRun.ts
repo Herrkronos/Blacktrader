@@ -6,7 +6,7 @@ import { runLongTermEcho } from "../analysis/longterm";
 import type { LearnableParams } from "../analysis/params";
 import type { AssetKind, Candle, Horizon } from "../types";
 import { backtestSeries } from "./engine";
-import { makeWindows, OPPONENTS, regimeIndex, rank, RULES, runWindow, SCENARIOS, summarizeRuns, type ContestantResult, type PoolTrade, type RunResult, type Scenario, type Series, type TournamentReport, type Window } from "./tournament";
+import { benchmarkRun, makeWindows, OPPONENTS, regimeIndex, rank, RULES, runWindow, SCENARIOS, summarizeRuns, type ContestantResult, type PoolTrade, type RunResult, type Scenario, type Series, type TournamentReport, type Window } from "./tournament";
 import { universe, type CellKey, type SeriesSpec } from "./universe";
 
 export interface TournamentIO {
@@ -22,6 +22,9 @@ const KINDS: AssetKind[] = ["stock", "crypto", "commodity"];
 const DAYS = 15 * 365;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const DESC = "Elliott-Wellen + Fundamental/News + Volumen/RSI, ein Einstieg pro Wert (blau/grün/rot), Sektor-Regel";
+
+/** Vergleichsmaßstab: echter, bei flatex handelbarer ETF (Xetra, Euro, thesaurierend → Dividenden im Kurs) */
+export const BENCHMARK = { symbol: "SXR8.DE", name: "Vergleich: S&P-500-ETF (iShares Core, SXR8)", desc: "echter ETF in Euro, Dividenden wiederangelegt – alles kaufen, 5 Jahre liegen lassen" };
 
 interface Asset {
   symbol: string;
@@ -41,6 +44,8 @@ export interface Prepared {
   /** Marktlage des S&P 500 zum Zeitpunkt t */
   regimeAt: (t: number) => "bullisch" | "neutral" | "baerisch" | null;
   bots: ContestantResult[];
+  /** Vergleich: echter S&P-500-ETF (handelt nicht mit) */
+  benchmark?: ContestantResult | null;
   note: string;
 }
 
@@ -60,7 +65,7 @@ export async function prepareTournament(io: TournamentIO, span: [number, number]
   }
   const idx = (symbol: string): SeriesSpec => ({ symbol, kind: "stock", horizon: "medium", interval: "1d", days: DAYS, step: 1 });
   P(0, "Kursdaten laden: S&P 500, NASDAQ 100 und Euro/Dollar");
-  const [spx, ndx, eurusd] = await Promise.all([io.load(idx("^GSPC")), io.load(idx("^NDX")), io.load(idx("EURUSD=X"))]);
+  const [spx, ndx, eurusd, etf] = await Promise.all([io.load(idx("^GSPC")), io.load(idx("^NDX")), io.load(idx("EURUSD=X")), io.load(idx(BENCHMARK.symbol))]);
   if (!spx || spx.length < 1600) return null;
   const ndxCl = (ndx ?? []).map((c) => c.close);
   const techWeakAt = (t: number) => {
@@ -122,10 +127,12 @@ export async function prepareTournament(io: TournamentIO, span: [number, number]
     const pool = toEur(o.build(data).filter((t) => t.entry >= from));
     bots.push(summarizeRuns(o.id, o.name, o.desc, windows.map((w) => ({ w, r: runWindow(pool, w, priceAt) }))));
   }
+  // Vergleich nur, wenn der ETF den ganzen Zeitraum abdeckt (Kurs in Euro, Dividenden im Kurs enthalten)
+  const benchmark = etf && etf.length > 300 && etf[0].time <= from + 7 * 86400 ? summarizeRuns("etf", BENCHMARK.name, BENCHMARK.desc, windows.map((w) => ({ w, r: benchmarkRun(etf, w) }))) : null;
   const cnt: Partial<Record<Scenario, number>> = {};
   for (const w of windows) cnt[w.scenario] = (cnt[w.scenario] ?? 0) + 1;
   const note = `Alle Beträge in Euro (Wechselkurs am Kauf- und Verkaufstag${eurusd?.length ? "" : " – Euro/Dollar-Kurs nicht erreichbar, ohne Umrechnung"}). ${assets.length} Werte (Aktien, Krypto, Rohstoffe), Daten ab ${new Date(from * 1000).toLocaleDateString("de-DE")}, ${windows.length} Zeiträume à 5 Jahre (${SCENARIOS.filter((s) => cnt[s]).map((s) => `${cnt[s]}× ${s === "baerisch" ? "bärisch" : s}`).join(", ")}). Rohstoffe kurzfristig (Stundenkerzen) sind nicht enthalten.`;
-  return { assets, windows, from, priceAt, techWeakAt, toEur, regimeAt: regimeIndex(spx), bots, note };
+  return { assets, windows, from, priceAt, techWeakAt, toEur, regimeAt: regimeIndex(spx), bots, benchmark, note };
 }
 
 /** Alle Trades von Blacktrader mit einem Parameter-Stand (grün/rot: Tag + Woche; blau: Langfrist-Bereich). */
@@ -189,5 +196,5 @@ export function buildReport(prep: Prepared, btRuns: { w: Window; r: RunResult }[
   };
   const scenarioCount: Partial<Record<Scenario, number>> = {};
   for (const w of prep.windows) scenarioCount[w.scenario] = (scenarioCount[w.scenario] ?? 0) + 1;
-  return { v: 2, at: new Date().toISOString(), rules: { ...RULES }, ranking, scenarioCount, rounds, split: { blau: only("blau"), gruen: only("gruen"), rot: only("rot") }, improvedCells, note: prep.note };
+  return { v: 2, at: new Date().toISOString(), rules: { ...RULES }, ranking, scenarioCount, rounds, split: { blau: only("blau"), gruen: only("gruen"), rot: only("rot") }, benchmark: prep.benchmark ?? null, improvedCells, note: prep.note };
 }

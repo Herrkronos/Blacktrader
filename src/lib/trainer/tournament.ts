@@ -427,6 +427,30 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
   return { end: cash, profit: cash - RULES.start, tax, trades: taken, wins, low: Math.min(low, cash), broke };
 }
 
+/**
+ * Vergleichsmaßstab (handelt nicht mit): ein echter, kaufbarer ETF (iShares Core S&P 500, thesaurierend, in Euro).
+ * Am Anfang des Zeitraums alles hinein, am Ende verkaufen – gleiche Gebühr und KESt wie bei allen.
+ * Die laufende Besteuerung thesaurierender Fonds in Österreich (ausschüttungsgleiche Erträge) ist nicht abgebildet.
+ */
+export function benchmarkRun(etf: Candle[], w: Window): RunResult {
+  const at = (t: number) => {
+    let lo = 0;
+    let hi = etf.length - 1;
+    while (lo < hi) {
+      const m = (lo + hi + 1) >> 1;
+      if (etf[m].time <= t) lo = m;
+      else hi = m - 1;
+    }
+    return etf[lo].close;
+  };
+  const a = at(w.from);
+  const b = at(w.to);
+  const g = RULES.start * (b / a - 1) - RULES.start * RULES.fee * 2;
+  const tax = Math.max(0, g) * RULES.tax;
+  const end = RULES.start + g - tax;
+  return { end, profit: end - RULES.start, tax, trades: 1, wins: g > 0 ? 1 : 0, low: Math.min(RULES.start, end), broke: false };
+}
+
 /** 50 Zeiträume à 5 Jahre (gleichmäßig verteilte Startzeitpunkte) mit ihrer Marktlage. */
 export function makeWindows(spx: Candle[], from: number, reps: number = RULES.reps, years: number = RULES.years): Window[] {
   const last = spx[spx.length - 1].time;
@@ -534,6 +558,8 @@ export interface TournamentReport {
   rounds?: { round: number; avgPerYear: number; changed: boolean }[];
   /** Blacktrader getrennt: nur blaue, nur grüne bzw. nur rote Einstiege (mit dem Endstand) */
   split?: { blau: ContestantResult | null; gruen: ContestantResult | null; rot?: ContestantResult | null };
+  /** Vergleich (handelt nicht mit, nicht in der Rangliste): echter S&P-500-ETF, alles kaufen und liegen lassen */
+  benchmark?: ContestantResult | null;
   /** Bereiche, die das Lernen verbessert hat (Zonen-Quote alt → neu) */
   improvedCells?: { cell: string; old: number | null; neu: number | null }[];
   note?: string;
@@ -554,6 +580,10 @@ export function reportLines(rep: TournamentReport, previous?: TournamentReport |
   if (top.id !== "blacktrader") lines.push(`Bester: ${top.name} mit Ø ${pct1(top.avgPerYear)} pro Jahr.`);
   const best = SCENARIOS.filter((s) => bt.rankByScenario[s] === 1).map((s) => SCENARIO_LABEL[s]);
   if (best.length) lines.push(`Platz 1 in: ${best.join(", ")}.`);
+  if (rep.benchmark) {
+    const d = bt.avgPerYear - rep.benchmark.avgPerYear;
+    lines.push(`Vergleich ${rep.benchmark.name}: Ø ${pct1(rep.benchmark.avgPerYear)} pro Jahr – Blacktrader liegt ${Math.abs(d) < 0.0005 ? "gleichauf" : d > 0 ? `${pct1(d).replace("+", "")} pro Jahr vorne` : `${pct1(-d).replace("+", "")} pro Jahr dahinter`}.`);
+  }
   if (bt.broke) lines.push(`In ${bt.broke} von ${bt.runs} Versuchen ist Blacktrader ausgeschieden (kein Geld mehr).`);
   if (rep.rounds && rep.rounds.length > 1) {
     const a = rep.rounds[0];

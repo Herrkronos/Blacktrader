@@ -77,6 +77,16 @@ function Ranking({ rep }: { rep: TournamentReport }) {
           </div>
         );
       })}
+      {rep.benchmark && (
+        <div className="grid grid-cols-[2rem_1fr_auto] items-center gap-x-2 border-t border-dashed border-white/15 px-3 py-2">
+          <span className="text-[15px] text-stone-500">–</span>
+          <span className="min-w-0">
+            <span className="block truncate text-[15px] text-stone-300">{rep.benchmark.name}</span>
+            <span className="block text-[12px] text-stone-500">nur zum Vergleich – handelt nicht mit, alles kaufen und 5 Jahre liegen lassen</span>
+          </span>
+          <span className={`num text-right text-[16px] font-semibold ${rep.benchmark.avgPerYear >= 0 ? "text-up" : "text-down"}`}>{pct1(rep.benchmark.avgPerYear)}</span>
+        </div>
+      )}
     </div>
   );
 }
