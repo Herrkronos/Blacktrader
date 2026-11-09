@@ -1,5 +1,6 @@
 "use client";
-// Kerzenchart (TradingView lightweight-charts) mit Elliott-Labels, Fibo-/Zielzonen, Volumen und RSI-Pane.
+// Kerzenchart (TradingView lightweight-charts): Einstiegszonen wie bei HKCM als farbige Kästen (blau/grün, alte grau)
+// mit Stop und Ziel, Elliott-Wellen. Volumen, RSI, Fibonacci und Alternativzählung nur in der Expertenansicht.
 import { useEffect, useRef } from "react";
 import {
   CandlestickSeries,
@@ -19,6 +20,7 @@ import { rsi } from "@/lib/analysis/indicators";
 import type { WaveCount } from "@/lib/analysis/elliott";
 import type { TradePlan } from "@/lib/analysis/score";
 import type { Candle } from "@/lib/types";
+import { ZonesPrimitive, type ChartEntry } from "./chartZones";
 
 interface Props {
   candles: Candle[];
@@ -29,17 +31,22 @@ interface Props {
   height?: number;
   /** Einfache Ansicht: nur Einstieg, Stop und Ziele – keine Wellen-Nummern */
   simple?: boolean;
-  /** Langfristiger Einstiegsbereich (blau) mit Invalidierung (rot) */
-  longterm?: { zoneTop: number; zoneBottom: number; invalidation: number } | null;
+  /** Einstiege als Kästen: aktueller (blau/grün) und alte (grau) */
+  entries?: ChartEntry[];
+  fmt?: (n: number) => string;
 }
 
 const GOLD = "#C9A24A";
+/** Sichtbare Kerzen (die letzten Monate, wie bei HKCM) und freier Platz rechts für Zone, Stop, Ziel und Pfeil */
+const VISIBLE = 160;
+const futureBars = (n: number) => Math.max(18, Math.round(Math.min(n, VISIBLE) * 0.35));
 const WINE = "#a32234";
 
-export function PriceChart({ candles, best, alternative, plan, showAlternative = true, height = 460, simple = false, longterm }: Props) {
+export function PriceChart({ candles, best, alternative, plan, showAlternative = true, height = 460, simple = false, entries = [], fmt = (n) => n.toFixed(2) }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<{ candle: ISeriesApi<"Candlestick">; volume: ISeriesApi<"Histogram">; rsi: ISeriesApi<"Line">; wave: ISeriesApi<"Line">; alt: ISeriesApi<"Line"> } | null>(null);
+  const seriesRef = useRef<{ candle: ISeriesApi<"Candlestick">; volume: ISeriesApi<"Histogram"> | null; rsi: ISeriesApi<"Line"> | null; wave: ISeriesApi<"Line">; alt: ISeriesApi<"Line"> } | null>(null);
+  const zonesRef = useRef<ZonesPrimitive | null>(null);
   const markersRef = useRef<ReturnType<typeof createSeriesMarkers<Time>> | null>(null);
   const linesRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
   const fittedRef = useRef<string>("");
@@ -57,14 +64,24 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
       autoSize: true,
     });
     const candle = chart.addSeries(CandlestickSeries, { upColor: "#3fae6a", downColor: "#d1495b", borderVisible: false, wickUpColor: "#3fae6a", wickDownColor: "#d1495b" });
-    const volume = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "vol", lastValueVisible: false, priceLineVisible: false });
-    chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-    const wave = chart.addSeries(LineSeries, { color: GOLD, lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+    const zones = new ZonesPrimitive();
+    candle.attachPrimitive(zones);
+    zonesRef.current = zones;
+    // Volumen und RSI nur in der Expertenansicht (einfache Ansicht bleibt aufgeräumt)
+    let volume: ISeriesApi<"Histogram"> | null = null;
+    let rsiS: ISeriesApi<"Line"> | null = null;
+    if (!simple) {
+      volume = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "vol", lastValueVisible: false, priceLineVisible: false });
+      chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    }
+    const wave = chart.addSeries(LineSeries, { color: simple ? "rgba(201,162,74,0.7)" : GOLD, lineWidth: simple ? 1 : 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
     const alt = chart.addSeries(LineSeries, { color: "rgba(201,162,74,0.45)", lineWidth: 1, lineStyle: LineStyle.Dashed, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
-    const rsiS = chart.addSeries(LineSeries, { color: GOLD, lineWidth: 1, priceLineVisible: false }, 1);
-    rsiS.createPriceLine({ price: 70, color: WINE, lineStyle: LineStyle.Dotted, lineWidth: 1, axisLabelVisible: false, title: "" });
-    rsiS.createPriceLine({ price: 30, color: "#3fae6a", lineStyle: LineStyle.Dotted, lineWidth: 1, axisLabelVisible: false, title: "" });
-    chart.panes()[1]?.setHeight(Math.round(height * 0.2));
+    if (!simple) {
+      rsiS = chart.addSeries(LineSeries, { color: GOLD, lineWidth: 1, priceLineVisible: false }, 1);
+      rsiS.createPriceLine({ price: 70, color: WINE, lineStyle: LineStyle.Dotted, lineWidth: 1, axisLabelVisible: false, title: "" });
+      rsiS.createPriceLine({ price: 30, color: "#3fae6a", lineStyle: LineStyle.Dotted, lineWidth: 1, axisLabelVisible: false, title: "" });
+      chart.panes()[1]?.setHeight(Math.round(height * 0.2));
+    }
     chartRef.current = chart;
     seriesRef.current = { candle, volume, rsi: rsiS, wave, alt };
     markersRef.current = createSeriesMarkers(wave, []);
@@ -73,25 +90,44 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
       chartRef.current = null;
       seriesRef.current = null;
       markersRef.current = null;
+      zonesRef.current = null;
       linesRef.current = [];
+      fittedRef.current = "";
     };
-  }, [height]);
+  }, [height, simple]);
 
   // Daten
   useEffect(() => {
     const s = seriesRef.current;
     if (!s || candles.length === 0) return;
     const t = (x: number) => x as UTCTimestamp;
-    s.candle.setData(candles.map((c) => ({ time: t(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
-    s.volume.setData(candles.map((c) => ({ time: t(c.time), value: c.volume, color: c.close >= c.open ? "rgba(63,174,106,0.35)" : "rgba(209,73,91,0.35)" })));
-    const r = rsi(candles.map((c) => c.close));
-    s.rsi.setData(candles.map((c, i) => (r[i] == null ? { time: t(c.time) } : { time: t(c.time), value: r[i]! })));
+    // Rechts freier Platz (wie bei HKCM) für Zone, Stop, Ziel und den erwarteten Weg
+    const step = candles.length > 2 ? candles[candles.length - 1].time - candles[candles.length - 2].time || 86400 : 86400;
+    const extra = futureBars(candles.length);
+    const future = Array.from({ length: extra }, (_, i) => candles[candles.length - 1].time + step * (i + 1));
+    s.candle.setData([...candles.map((c) => ({ time: t(c.time), open: c.open, high: c.high, low: c.low, close: c.close })), ...future.map((x) => ({ time: t(x) }))]);
+    s.volume?.setData(candles.map((c) => ({ time: t(c.time), value: c.volume, color: c.close >= c.open ? "rgba(63,174,106,0.35)" : "rgba(209,73,91,0.35)" })));
+    if (s.rsi) {
+      const r = rsi(candles.map((c) => c.close));
+      s.rsi.setData(candles.map((c, i) => (r[i] == null ? { time: t(c.time) } : { time: t(c.time), value: r[i]! })));
+    }
     const key = `${candles[0].time}:${candles.length > 0}`;
     if (fittedRef.current !== key) {
       fittedRef.current = key;
-      chartRef.current?.timeScale().fitContent();
+      const n = candles.length;
+      chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - VISIBLE), to: n - 1 + extra });
     }
-  }, [candles]);
+  }, [candles, simple]);
+
+  // Einstiege (Kästen)
+  useEffect(() => {
+    const z = zonesRef.current;
+    if (!z || candles.length < 2) return;
+    const step = candles[candles.length - 1].time - candles[candles.length - 2].time || 86400;
+    const extra = futureBars(candles.length);
+    const times = [...candles.map((c) => c.time), ...Array.from({ length: extra }, (_, i) => candles[candles.length - 1].time + step * (i + 1))];
+    z.set(entries, times, candles.length - 1, candles[candles.length - 1].close, fmt);
+  }, [entries, candles, fmt, simple]);
 
   // Wellen, Labels, Fibo-Zonen, Plan
   useEffect(() => {
@@ -99,7 +135,7 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
     if (!s) return;
     const t = (x: number) => x as UTCTimestamp;
     const toLine = (c?: WaveCount) => (c ? c.pivots.map((p) => ({ time: t(p.time), value: p.price })).filter((p, i, arr) => i === 0 || (p.time as number) > (arr[i - 1].time as number)) : []);
-    s.wave.setData(simple ? [] : toLine(best));
+    s.wave.setData(toLine(best));
     s.alt.setData(showAlternative && !simple ? toLine(alternative) : []);
     const markers: SeriesMarker<Time>[] = [];
     const addLabels = (c: WaveCount | undefined, primary: boolean) => {
@@ -117,10 +153,8 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
         });
       });
     };
-    if (!simple) {
-      addLabels(best, true);
-      if (showAlternative) addLabels(alternative, false);
-    }
+    addLabels(best, true);
+    if (!simple && showAlternative) addLabels(alternative, false);
     markers.sort((a, b) => (a.time as number) - (b.time as number));
     markersRef.current?.setMarkers(markers);
 
@@ -140,7 +174,7 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
         );
       }
     }
-    if (plan) {
+    if (plan && !simple) {
       linesRef.current.push(s.candle.createPriceLine({ price: plan.entry, color: plan.direction === "short" ? "#f87171" : "#34d399", lineStyle: LineStyle.Solid, lineWidth: 2, axisLabelVisible: true, title: plan.direction === "short" ? "Verkauf" : "Kauf" }));
       {
         // Stop und Ziele des Trades immer zeigen (auch in der Expertenansicht neben den Wellen-Levels)
@@ -150,12 +184,7 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
         );
       }
     }
-    if (longterm) {
-      linesRef.current.push(s.candle.createPriceLine({ price: longterm.zoneTop, color: "#38bdf8", lineStyle: LineStyle.Solid, lineWidth: 2, axisLabelVisible: true, title: "Langfrist oben" }));
-      linesRef.current.push(s.candle.createPriceLine({ price: longterm.zoneBottom, color: "#38bdf8", lineStyle: LineStyle.Solid, lineWidth: 2, axisLabelVisible: true, title: "Langfrist unten" }));
-      linesRef.current.push(s.candle.createPriceLine({ price: longterm.invalidation, color: "#f87171", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: true, title: "Ungültig" }));
-    }
-  }, [best, alternative, plan, showAlternative, simple, longterm]);
+  }, [best, alternative, plan, showAlternative, simple]);
 
   return <div ref={ref} style={{ height }} className="w-full" />;
 }

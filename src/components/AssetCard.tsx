@@ -217,7 +217,7 @@ export function AssetCard({
                 <span className="num text-[15px] font-semibold text-stone-200">{strength != null ? strength.toFixed(0) : "–"}</span>
               </>
             ) : (
-              <span className="flex-1 text-[14px] text-stone-400">{lt ? (lt.status === "in-zone" ? "Kurs im Einstiegsbereich" : "Bereich zulaufend") : "Kein Einstieg"}</span>
+              <span className="flex-1 text-[14px] text-stone-400">{lt ? (lastPrice != null && lastPrice <= lt.zoneTop ? "Kurs im Einstiegsbereich" : "Bereich zulaufend") : "Kein Einstieg"}</span>
             )}
             <span className={BADGE[b.color]}>{isNachkauf ? "Nachkauf" : COLOR_LABEL[b.color]}</span>
             {plan && riskPct > RISK_LIMIT && <span className="badge-risk">Hohes Risiko</span>}

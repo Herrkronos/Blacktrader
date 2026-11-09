@@ -380,7 +380,7 @@ export function LongTermCard({ zone, currency, onTake, position }: { zone: LongT
         <span className="panel-title">
           Langfristiger Einstieg <span className="core-tag ml-1 align-middle">blau</span>
         </span>
-        <span className="chip border-sky-500/40 text-sky-300">{zone.status === "in-zone" ? "Im Bereich" : "Zulaufend"}</span>
+        <span className="chip border-sky-500/40 text-sky-300">{zone.status === "in-zone" ? "Bereich erreicht" : "Zulaufend"}</span>
       </div>
       <p className="text-[15px] text-stone-200">{longTermText(zone, fmt)}</p>
       <p className="num text-[14px] text-sky-200">Teile: {zone.tranches.map(fmt).join(" · ")}</p>

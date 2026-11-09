@@ -226,7 +226,7 @@ export default function TrainerPage() {
       <section className="card space-y-2 p-4">
         <h2 className="text-[17px] text-gold-light">Turnier: Blacktrader gegen 7 Gegner</h2>
         <p className="text-[14px] text-stone-400">
-          Nach jedem Training: {eur(RULES.start)} Startkapital, {RULES.trades} Trades, {RULES.reps} Durchgänge – bullisch, neutral, bärisch und gemischt. Nach Gebühren und 26,5 % KESt. Alle Werte, gleiche Daten, kein Blick in die Zukunft.
+          Nach jedem Training: {eur(RULES.start)} Startkapital, {RULES.trades} Trades, {RULES.reps} Durchgänge – bullisch, neutral, bärisch und gemischt. Nach Gebühren und 27,5 % KESt. Alle Werte, gleiche Daten, kein Blick in die Zukunft.
         </p>
         <ul className="space-y-1 text-[14px]">
           {OPPONENTS.map((o) => (

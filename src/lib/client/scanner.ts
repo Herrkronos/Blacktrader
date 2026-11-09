@@ -6,10 +6,10 @@ import { effectiveWeights, learnedParams, refreshTrainerParams } from "./trainer
 import { useSyncExternalStore } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
 import { findLongTermZone, type LongTermZone } from "../analysis/longterm";
-import { HORIZON_RANK, marketContext, pickBestEntry, type BestEntry, type HistEntry, type MarketContext } from "../analysis/bestEntry";
+import { HORIZON_RANK, longTermOutcome, marketContext, pickBestEntry, type BestEntry, type HistEntry, type MarketContext } from "../analysis/bestEntry";
 import { money } from "../analysis/persona";
 import { applyPromotions } from "./promote";
-import { assetKey, doneFor, getHistory, recordEntry, type EntryHistory } from "./entries";
+import { assetKey, closeEntry, doneFor, getHistory, recordEntry, type EntryHistory } from "./entries";
 import { getData } from "../store/store";
 import type { Candle, Horizon, ResolvedAsset } from "../types";
 import { api } from "./api";
@@ -142,6 +142,14 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   const entries: ScanEntry[] = [...byAsset.values()].map(({ full, ...e }) => {
     const key = assetKey(e.asset);
     const cur = e.asset.currency;
+    // Blauer Bereich schon erledigt (eingetaucht und oben heraus) oder ungültig? → grau, nicht mehr aktuell
+    // (Liegt der Schlusskurs gerade wieder IM Bereich, bleibt er aktiv.)
+    if (e.longterm) {
+      const lc = full[e.ltHorizon ?? "long"] ?? [];
+      const nowIn = (lc.at(-1)?.close ?? Infinity) <= e.longterm.zoneTop;
+      const o = nowIn ? null : longTermOutcome(e.longterm, lc);
+      if (o) closeEntry(key, o.entry, o.status, o.at);
+    }
     const candlesOf = (h?: HistEntry) => (!h ? [] : h.color === "blau" ? full[e.ltHorizon ?? "long"] ?? [] : h.horizon ? full[h.horizon] ?? [] : []);
     const pick = () =>
       pickBestEntry({

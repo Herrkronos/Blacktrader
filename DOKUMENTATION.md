@@ -72,6 +72,8 @@ tests/                  Vitest (über 170 Tests)
 
 Watchlist und „Top 3 Chancen“ nutzen dieselbe kompakte Kachel (Signalart, Abstand zur Zone, Einstieg/Stop/Ziel); in der Watchlist zusätzlich mit Mini-Chart (Elliott-Wellen, erwartete Richtung, Zone, alte Einstiege grau). Antippen öffnet den vollständigen Einstieg mit „übernehmen“ und darunter die Analyse.
 
+**Kerzenchart (Detailansicht)** wie bei HKCM: die letzten Monate, rechts freier Platz; Einstiege als Kästen (blau = Langfrist-Einstieg, grün = Zielzone, grau = alte mit Status und Datum); bei Grün Stop (rot) und Ziel (grün) als beschriftete Linien, dazu der erwartete Weg als Pfeil (rot in die Zone, grün zum Ziel). Volumen, RSI, Fibonacci-Linien und Alternativzählung nur in der Expertenansicht.
+
 Mobil zuerst: große Touch-Flächen (≥ 44 px), Bottom-Navigation, Bottom-Sheets. Als PWA installierbar (`manifest.webmanifest`, `sw.js`).
 
 ## 3. Methode von Blacktrader
@@ -106,6 +108,8 @@ Regeln:
 - **Sektor-Regel:** Liegt der NASDAQ 100 unter seiner 200-Tage-Linie, gibt es keine grünen Tech-Trades. Blaue Einstiege, Dividendenwerte und Rohstoffe bleiben.
 
 ### 3.7 Verlauf (grau)
+Ein blauer Bereich wird ab dem Hoch von Welle 1 geprüft – nicht erst ab dem Zeitpunkt, an dem die App ihn zum ersten Mal gezeigt hat. Ist der Kurs schon eingetaucht und oben wieder herausgelaufen, ist er sofort grau („erledigt“ mit Datum). Liegt der Schlusskurs gerade wieder im Bereich, bleibt er aktiv.
+
 - **erledigt:** Kurs ist in die Zone eingetaucht und oben wieder herausgelaufen → Zone hat gehalten, wird nicht erneut gezeigt.
 - **ungültig:** Schlusskurs unter Stop bzw. Invalidierung.
 - **abgelöst:** Blacktrader hat einen anderen Einstieg gewählt.
@@ -147,7 +151,7 @@ Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen sieben Anal
 
 **Fair, ohne Tricks:** gleiche Werte (alle Aktien, Krypto, Rohstoffe), gleiches Zeitfenster (15 Jahre Tageskerzen), nur Kauf-Einstiege, Ein- und Ausstieg zum Eröffnungskurs der nächsten Kerze, jedes Signal kennt nur die Vergangenheit (Tests prüfen: abgeschnittene Zukunft ändert keine früheren Trades).
 
-**Ablauf je Durchgang:** 5.000 € Startkapital, 500 Trades, 500 € je Trade (bzw. Restgeld), 0,2 % Gebühren je Trade, 26,5 % KESt auf Gewinne (je ca. 55 Trades ≈ 1 Jahr). **50 Durchgänge**, abwechselnd bullisch, neutral, bärisch und gemischt (Marktlage wechselt in Phasen von 30–80 Trades). Die Marktlage eines Trades ist die des S&P 500 beim Einstieg. Alle Teilnehmer bekommen in Durchgang k dieselbe Szenario-Folge. Hat jemand in einer Marktlage keinen Trade, bleibt sein Geld liegen.
+**Ablauf je Durchgang:** 5.000 € Startkapital, 500 Trades, 500 € je Trade (bzw. Restgeld), 0,2 % Gebühren je Trade, 27,5 % KESt (Österreich) auf Gewinne (je ca. 55 Trades ≈ 1 Jahr). **50 Durchgänge**, abwechselnd bullisch, neutral, bärisch und gemischt (Marktlage wechselt in Phasen von 30–80 Trades). Die Marktlage eines Trades ist die des S&P 500 beim Einstieg. Alle Teilnehmer bekommen in Durchgang k dieselbe Szenario-Folge. Hat jemand in einer Marktlage keinen Trade, bleibt sein Geld liegen.
 
 **Auswertung:** Rangliste nach Median-Endkapital (mit Spanne der schlechtesten/besten 10 %, Pleiten, Platz je Szenario). Blacktrader wird mit dem Stand **vor und nach** dem Training auf denselben Durchgängen gerechnet – daraus „wo hat er sich verbessert“ (je Szenario in €, Platz vorher → nachher), dazu die im Training verbesserten Bereiche und der Vergleich zur letzten Auswertung. Gespeichert auf dem Gerät und beim Server (`/api/trainer/report`, letzte 20), im JSON-Export enthalten.
 
@@ -220,5 +224,7 @@ const entry = pickBestEntry({ symbol: "AAPL", kind: "stock", views, lt: findLong
 | Rohstoffe | 69,1 % | 68,7 % | 1,18 | **1,31** (max. Rückgang −14 % → −8,2 %) |
 | Krypto (ohne Short) | 62,3 % | **76,9 %** | 0,93 | 0,42 |
 
-Chronologischer Test Sep 2022 – Nov 2026, 5.000 € Startkapital, nach 26,5 % KESt: Blacktrader mit Sektor-Regel 9.728 € (+94,6 %), ohne Sektor-Regel 9.252 € (+85 %), Zufall 8.837 € (+76,7 %), S&P 500 Kaufen-und-Halten 8.145 € (+62,9 %).
+Chronologischer Test Sep 2022 – Nov 2026, 5.000 € Startkapital, nach 27,5 % KESt (Österreich): Blacktrader mit Sektor-Regel 9.859 € (+97,2 %), ohne Sektor-Regel 9.155 € (+83,1 %), Zufall 8.483 € (+69,7 %), S&P 500 Kaufen-und-Halten 8.103 € (+62,1 %), KI 7.725 € (+54,5 %), RSI 7.359 € (+47,2 %), Trendfolger 6.631 € (+32,6 %).
+
+Turnier (15 Jahre, 50 Durchgänge × 500 Trades, 27,5 % KESt, Standard-Einstellung): 1. Kaufen & Halten 29.725 € · **2. Blacktrader 28.722 €** (Spanne 17.326–41.863 €) · 3. Trendfolger 28.115 € · 4. Ausbruchs-Bot 16.154 € · 5. Zufalls-Bot 8.510 € · 6. RSI-Bot 8.378 € · 7. MACD-Bot 7.625 € · 8. KI-Bot 7.249 €. Niemand war pleite.
 **Ehrlicher Hinweis:** überwiegend steigende Märkte; der Vorsprung vor Zufall ist im chronologischen Test klein. Bei Krypto ist der Gewinnfaktor trotz höherer Quote schwach.

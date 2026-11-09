@@ -181,6 +181,23 @@ export function entryStatus(e: HistEntry, candles: Candle[]): { status: PastStat
 }
 
 /**
+ * Blauer Langfrist-Bereich, gemessen ab dem Hoch von Welle 1 (nicht erst ab dem ersten Anzeigen):
+ * eingetaucht und oben wieder heraus → erledigt; Schlusskurs unter dem Wellenstart → ungültig.
+ */
+export function longTermOutcome(lt: LongTermZone, candles: Candle[]): { status: PastStatus; at: number; entry: HistEntry } | null {
+  const entry: HistEntry = { key: `blau:${lt.key}`, color: "blau", zoneTop: lt.zoneTop, zoneBottom: lt.zoneBottom, invalidation: lt.invalidation, target: lt.targets[0], from: lt.high.time };
+  const s = entryStatus(entry, candles);
+  return s.status ? { status: s.status, at: s.at ?? entry.from, entry: { ...entry, touched: s.touched } } : null;
+}
+
+/** Einen Einstieg als abgeschlossen (grau) eintragen – auch wenn er nie „aktuell“ angezeigt wurde. */
+export function closeInHistory(h: { current?: HistEntry; past: HistEntry[] }, e: HistEntry, status: PastStatus, at: number, max = 10): { current?: HistEntry; past: HistEntry[] } {
+  if (h.past.some((p) => p.key === e.key && (p.status === "erledigt" || p.status === "ungültig"))) return h;
+  const past = [{ ...e, status, to: at }, ...h.past.filter((p) => p.key !== e.key)].slice(0, max);
+  return { current: h.current?.key === e.key ? undefined : h.current, past };
+}
+
+/**
  * Aktualisiert den Verlauf eines Werts: alter Einstieg → grau (mit Datum und Grund), neuer → aktuell.
  * Gibt den neuen Verlauf zurück (höchstens `max` alte Einträge).
  */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowedHorizons, doneKeys, marketContext, pickBestEntry, updateHistory, type BestEntry } from "../src/lib/analysis/bestEntry";
+import { allowedHorizons, closeInHistory, doneKeys, longTermOutcome, marketContext, pickBestEntry, updateHistory, type BestEntry } from "../src/lib/analysis/bestEntry";
 import { checkPromotion, trailStop } from "../src/lib/analysis/promotion";
 import type { LongTermZone } from "../src/lib/analysis/longterm";
 import type { AnalysisResult } from "../src/lib/analysis/analyze";
@@ -91,5 +91,25 @@ describe("Hochstufung Grün → Blau", () => {
   it("keine Hochstufung ohne Bestätigung oder im Verlust", () => {
     expect(checkPromotion({ direction: "long", entry: 100, stop: 90, targets: [120] }, res(null, [0, 0], { elliott: { best: undefined, contested: false, counts: [] } } as never), daily, 135)).toBeNull();
     expect(checkPromotion({ direction: "long", entry: 100, stop: 90, targets: [120] }, weekly, daily, 95)).toBeNull();
+  });
+});
+
+describe("Blauer Bereich ab dem Hoch von Welle 1 geprüft", () => {
+  const z = { start: { time: 0, price: 50 }, high: { time: 10, price: 150 }, zoneTop: 88, zoneBottom: 61, invalidation: 50, targets: [150, 200], tranches: [88, 75, 61], status: "zulaufend", deepest: 80, context: "neuer Trend", key: "k9" } as LongTermZone;
+  const c = (time: number, low: number, close: number) => ({ time, open: close, high: close + 1, low, close, volume: 1 });
+  it("eingetaucht und oben wieder heraus → erledigt (grau), auch wenn vorher nie angezeigt", () => {
+    const o = longTermOutcome(z, [c(11, 120, 125), c(12, 85, 90), c(13, 88, 95), c(14, 96, 100)]);
+    expect(o?.status).toBe("erledigt");
+    expect(o?.at).toBe(13);
+    const h = closeInHistory({ past: [] }, o!.entry, o!.status, o!.at);
+    expect(doneKeys(h).has("blau:k9")).toBe(true);
+    // danach wird Blau nicht mehr als aktueller Einstieg gezeigt
+    expect(pickBestEntry({ symbol: "X", kind: "stock", views: {}, lt: z, ctx: bull, done: doneKeys(h) }).color).toBe("gelb");
+  });
+  it("noch nicht eingetaucht → bleibt aktuell", () => {
+    expect(longTermOutcome(z, [c(11, 120, 125), c(12, 95, 100)])).toBeNull();
+  });
+  it("Schlusskurs unter dem Wellenstart → ungültig", () => {
+    expect(longTermOutcome(z, [c(11, 70, 75), c(12, 45, 48)])?.status).toBe("ungültig");
   });
 });

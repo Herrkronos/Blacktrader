@@ -5,7 +5,7 @@
 // Jeder Trade bekommt die Marktlage beim Einstieg (S&P 500: bullisch / neutral / bärisch).
 //
 // Ein Durchgang: 5.000 € Startkapital, 500 Trades, 500 € je Trade (bzw. Restgeld), 0,2 % Gebühren je Trade,
-// 26,5 % KESt auf Gewinne (je ca. 55 Trades ≈ 1 Jahr, Verlustausgleich im selben Zeitraum).
+// 27,5 % KESt (Österreich, Kapitalerträge aus Aktien, Krypto, Derivaten) auf Gewinne (je ca. 55 Trades ≈ 1 Jahr, Verlustausgleich im selben Zeitraum).
 // 50 Durchgänge mit den Szenarien bullisch, neutral, bärisch und gemischt (Marktlage wechselt in Phasen).
 // Alle Teilnehmer bekommen in Durchgang k dieselbe Szenario-Folge (gleicher Zufalls-Startwert).
 // Hat ein Teilnehmer in einer Marktlage keinen Trade, bleibt das Geld liegen (nicht handeln ist erlaubt).
@@ -30,7 +30,7 @@ export interface Series {
   candles: Candle[];
 }
 
-export const RULES = { start: 5000, trades: 500, reps: 50, stake: 500, fee: 0.002, tax: 0.265, tradesPerYear: 55 } as const;
+export const RULES = { start: 5000, trades: 500, reps: 50, stake: 500, fee: 0.002, tax: 0.275, tradesPerYear: 55 } as const;
 
 // ---------------------------------------------------------------------------------------------
 // Marktlage aus dem S&P 500 (nur Vergangenheit)

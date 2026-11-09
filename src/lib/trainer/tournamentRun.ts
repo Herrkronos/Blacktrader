@@ -6,7 +6,7 @@ import { runLongTermEcho } from "../analysis/longterm";
 import type { LearnableParams } from "../analysis/params";
 import type { AssetKind, Candle, Horizon } from "../types";
 import { backtestSeries } from "./engine";
-import { evaluate, OPPONENTS, rank, rankAgainst, regimeIndex, type PoolTrade, type Series, type TournamentReport } from "./tournament";
+import { evaluate, OPPONENTS, rank, rankAgainst, regimeIndex, RULES, type PoolTrade, type Series, type TournamentReport } from "./tournament";
 import { universe, type CellKey, type SeriesSpec } from "./universe";
 
 export interface TournamentIO {
@@ -126,7 +126,7 @@ export async function runTournament(io: TournamentIO, before: Params, after: Par
   const before0 = rankAgainst(beforeRes, ranking);
   return {
     at: new Date().toISOString(),
-    rules: { start: 5000, trades: 500, reps: 50, stake: 500, fee: 0.002, tax: 0.265, tradesPerYear: 55 },
+    rules: { ...RULES },
     ranking,
     before: before0,
     improvedCells,
