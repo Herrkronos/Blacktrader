@@ -2,7 +2,8 @@
 // Übersicht: Gesamtperformance, Top-3-Chancen, offene Trades (live), News zur Watchlist.
 import Link from "next/link";
 import { useEffect, useMemo } from "react";
-import { COLOR_LABEL, signalStrength } from "@/components/AssetCard";
+import { signalStrength } from "@/components/AssetCard";
+import { EntryTile } from "@/components/EntryTile";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { EquityChart } from "@/components/EquityChart";
 import { IconChevron } from "@/components/Icons";
@@ -89,44 +90,12 @@ export default function Uebersicht() {
       <Section title="Top 3 Chancen heute" href="/chancen">
         {scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Blacktrader sucht Chancen … {Math.round(scan.progress * 100)} %</div>}
         {!scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Gerade keine sauberen Einstiege.</div>}
-        {top.map(({ e, d }) => {
-          const { asset, best: b } = e;
-          const blue = b.color === "blau";
-          return (
-            <button key={`${asset.kind}-${asset.symbol}`} onClick={() => open(asset, b.horizon ?? e.ltHorizon ?? "medium")} className={`card w-full p-3.5 text-left ${blue ? "edge-core" : "edge-trade"}`}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-[16px] font-semibold text-stone-50">{asset.name}</div>
-                  <div className="text-[13px] text-stone-400">{asset.symbol}</div>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className={blue ? "badge-core" : "badge-trade"}>
-                    {COLOR_LABEL[b.color]}
-                    {!blue && signalStrength(b.res) != null ? ` · Stärke ${signalStrength(b.res)!.toFixed(0)}` : ""}
-                  </span>
-                  <span className={d === 0 ? "text-[13px] text-emerald-300" : "text-[13px] text-amber-300"}>{d === 0 ? "jetzt in der Zone" : `noch ${d.toFixed(1).replace(".", ",")} %`}</span>
-                </div>
-              </div>
-              <div className="num mt-2 grid grid-cols-3 gap-2 text-[14px]">
-                <span>
-                  <span className="label block">Einstieg</span>
-                  {money(b.zoneTop!, asset.currency)}
-                </span>
-                <span className="text-red-300">
-                  <span className="label block">{blue ? "Ungültig unter" : "Stop"}</span>
-                  {money((blue ? b.invalidation : b.stop)!, asset.currency)}
-                </span>
-                <span className="text-emerald-300">
-                  <span className="label block">Ziel</span>
-                  {b.targets?.[0] != null ? money(b.targets[0], asset.currency) : "–"}
-                </span>
-              </div>
-            </button>
-          );
-        })}
+        {top.map(({ e }) => (
+          <EntryTile key={`${e.asset.kind}-${e.asset.symbol}`} asset={e.asset} entry={e} onOpen={() => open(e.asset, e.best.horizon ?? e.ltHorizon, { withEntry: true })} />
+        ))}
       </Section>
 
-      <Section title="Offene Trades" href="/journal">
+      <Section title="Offene Trades" href="/depot">
         {openTrades.length === 0 ? (
           <div className="card p-4 text-[15px] text-stone-400">Keine offenen Trades. Übernimm eine Chance mit „Als Papier-Trade übernehmen“.</div>
         ) : (

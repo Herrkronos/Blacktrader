@@ -1,8 +1,9 @@
 "use client";
-// Watchlist: je Wert der EINE aktuelle Einstieg von Blacktrader (blau / grün / gelb = abwarten).
+// Watchlist: je Wert eine kompakte Kachel mit dem EINEN aktuellen Einstieg von Blacktrader (blau / grün / gelb = abwarten)
+// und Mini-Chart. Antippen öffnet alle Details und „Trade übernehmen“.
 import { useEffect } from "react";
 import { AddAsset } from "@/components/AddAsset";
-import { AssetCard } from "@/components/AssetCard";
+import { EntryTile } from "@/components/EntryTile";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { Legend } from "@/components/Legend";
 import { instrumentKey, useMarket } from "@/lib/client/market";
@@ -38,7 +39,7 @@ export default function WatchlistPage() {
         const lv = live[instrumentKey(w)];
         const entry = scan.entries.find((e) => e.asset.kind === w.kind && e.asset.symbol === w.symbol);
         return (
-          <AssetCard
+          <EntryTile
             key={w.id}
             asset={w}
             entry={entry}
@@ -46,8 +47,8 @@ export default function WatchlistPage() {
             changePct={lv?.changePct}
             status={lv?.status}
             source={lv?.source}
-            onOpen={(x) => open(w, x)}
-            onRemove={() => actions.removeWatch(w.id)}
+            chart
+            onOpen={() => open(w, entry?.best.horizon ?? entry?.ltHorizon, { withEntry: true, onRemove: () => actions.removeWatch(w.id) })}
           />
         );
       })}

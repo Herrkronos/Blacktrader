@@ -1,72 +1,131 @@
 "use client";
-// Mehr → Trainer: Ziel, aktueller Stand je Anlageklasse (Quote je Signalart: Blau · Grün), Training starten.
-// Grün = gemessene Zonen-Quote der Zeiträume, die Blacktrader für grüne Trades nutzt (Aktien/Krypto ohne kurzfristig).
-// Blau = erledigte vs. ungültige langfristige Einstiege aus dem Verlauf (Gelb zählt nicht).
-// Stände kommen je Klasse × Horizont getrennt aus Server + lokaler Kopie (jüngerer gewinnt) – ein Lauf für eine
-// Klasse kann die anderen nie überschreiben.
+// Mehr → Trainer: Blacktrader lernt (Walk-Forward, Strenge-Regeln unverändert) und tritt danach in einem Turnier
+// gegen 7 andere Analysten/Bots an: je Durchgang 5.000 € Startkapital, 500 Trades, 50 Wiederholungen in bullischen,
+// neutralen, bärischen und gemischten Szenarien. Alle Werte (Aktien, Krypto, Rohstoffe) werden verwendet.
+// Danach: Rangliste und wo sich Blacktrader verbessert hat.
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { IconInfo } from "@/components/Icons";
-import { refreshTrainerParams, useTrainerCells } from "@/lib/client/trainerParams";
-import { startTraining, stopTraining, TOKEN_KEY, useTraining } from "@/lib/client/trainingSession";
-import { primaryRate, TARGET_HIT_RATE } from "@/lib/trainer/engine";
-import { classStanding, goalProgress, goalReached } from "@/lib/trainer/goal";
-import { DURATIONS } from "@/lib/trainer/session";
-import { CELL_KEYS, type CellKey } from "@/lib/trainer/universe";
-import { HORIZON_LABEL, KIND_LABEL, type AssetKind, type Horizon } from "@/lib/types";
 import { HORIZON_RANK } from "@/lib/analysis/bestEntry";
 import { allHistories } from "@/lib/client/entries";
+import { refreshTrainerParams, useTrainerCells } from "@/lib/client/trainerParams";
+import { loadReports, startTraining, stopTraining, TOKEN_KEY, useTraining } from "@/lib/client/trainingSession";
+import { primaryCount, primaryRate, TARGET_HIT_RATE } from "@/lib/trainer/engine";
+import { goalProgress, goalReached } from "@/lib/trainer/goal";
+import { DURATIONS } from "@/lib/trainer/session";
+import { OPPONENTS, reportLines, RULES, SCENARIO_LABEL, SCENARIOS, type TournamentReport } from "@/lib/trainer/tournament";
+import { ACTIVE_CELL_KEYS, type CellKey } from "@/lib/trainer/universe";
+import { HORIZON_LABEL, KIND_LABEL, type AssetKind, type Horizon } from "@/lib/types";
 
-const KINDS: AssetKind[] = ["stock", "crypto", "commodity"];
-/** Zeiträume, die Blacktrader im Hintergrund für eine Klasse rechnet (Aktien und Krypto ohne kurzfristig) */
-const horizonsOf = (k: AssetKind): Horizon[] => (["short", "medium", "long"] as Horizon[]).filter((h) => HORIZON_RANK[k].includes(h));
-/** Zellen, die trainiert werden */
-const trainCells = (k: AssetKind) => CELL_KEYS.filter((c) => c.startsWith(`${k}:`) && horizonsOf(k).includes(c.split(":")[1] as Horizon));
+const pct = (x: number) => `${(x * 100).toFixed(1).replace(".", ",")} %`;
+const eur = (x: number) => `${Math.round(x).toLocaleString("de-DE")} €`;
+const mins = (ms: number) => {
+  const m = Math.max(0, Math.ceil(ms / 60e3));
+  return m >= 90 ? `noch ${Math.floor(m / 60)} Std. ${m % 60} Min.` : `noch ${m} Min.`;
+};
+const cellLabel = (c: string) => {
+  const [k, h] = c.split(":") as [AssetKind, Horizon];
+  return `${KIND_LABEL[k]} · ${HORIZON_LABEL[h]}`;
+};
 
-/** Quote aus dem Einstiegs-Verlauf: erledigt / (erledigt + ungültig); abgelöste und gelbe zählen nicht */
-function historyRate(kind: AssetKind, color: "blau" | "gruen"): { rate: number | null; n: number } {
+/** Grüne Bereiche, die Blacktrader im Hintergrund nutzt (Aktien/Krypto ohne kurzfristig) */
+const GREEN_CELLS = ACTIVE_CELL_KEYS.filter((c) => {
+  const [k, h] = c.split(":") as [AssetKind, Horizon];
+  return HORIZON_RANK[k].includes(h);
+});
+
+/** Blau: erledigt / (erledigt + ungültig) aus dem Einstiegs-Verlauf aller Werte (Gelb zählt nicht) */
+function blueRate(): { rate: number | null; n: number } {
   let ok = 0;
   let n = 0;
   try {
-    for (const [key, h] of Object.entries(allHistories())) {
-      if (!key.startsWith(`${kind}:`)) continue;
+    for (const h of Object.values(allHistories()))
       for (const p of h.past) {
-        if (p.color !== color || (p.status !== "erledigt" && p.status !== "ungültig")) continue;
+        if (p.color !== "blau" || (p.status !== "erledigt" && p.status !== "ungültig")) continue;
         n++;
         if (p.status === "erledigt") ok++;
       }
-    }
   } catch {
     /* ohne Speicher */
   }
   return { rate: n ? ok / n : null, n };
 }
-const pct = (x: number) => `${(x * 100).toFixed(1).replace(".", ",")} %`;
-const mins = (ms: number) => {
-  const m = Math.max(0, Math.ceil(ms / 60e3));
-  return m >= 90 ? `noch ${Math.floor(m / 60)} Std. ${m % 60} Min.` : `noch ${m} Min.`;
-};
 
-function Delta({ now, prev }: { now?: number | null; prev?: number | null }) {
-  if (now == null || prev == null) return <span className="text-stone-500">–</span>;
-  const d = (now - prev) * 100;
-  if (Math.abs(d) < 0.05) return <span className="text-stone-500">–</span>;
-  const s = Math.abs(d).toFixed(1).replace(".", ",");
-  return d > 0 ? <span className="text-up">↑ +{s}</span> : <span className="text-down">↓ −{s}</span>;
+function Ranking({ rep }: { rep: TournamentReport }) {
+  return (
+    <div className="overflow-hidden rounded-xl bg-white/5">
+      <div className="grid grid-cols-[2rem_1fr_auto] gap-x-2 px-3 py-1.5 text-[12px] text-stone-500">
+        <span>Platz</span>
+        <span>Teilnehmer</span>
+        <span className="text-right">Median Endkapital</span>
+      </div>
+      {rep.ranking.map((c) => {
+        const me = c.id === "blacktrader";
+        return (
+          <div key={c.id} className={`grid grid-cols-[2rem_1fr_auto] items-center gap-x-2 border-t border-white/5 px-3 py-2 ${me ? "bg-gold/15" : ""}`}>
+            <span className={`num text-[17px] font-semibold ${c.rank === 1 ? "text-gold" : "text-stone-300"}`}>{c.rank}.</span>
+            <span className="min-w-0">
+              <span className={`block truncate text-[15px] ${me ? "font-semibold text-gold-light" : "text-stone-100"}`}>{c.name}</span>
+              <span className="block truncate text-[12px] text-stone-500">
+                {SCENARIOS.map((s) => `${SCENARIO_LABEL[s].slice(0, 4)}. ${c.rankByScenario[s]}`).join(" · ")}
+                {c.broke ? ` · ${c.broke}× pleite` : ""}
+              </span>
+            </span>
+            <span className="text-right">
+              <span className={`num block text-[15px] ${c.median >= RULES.start ? "text-up" : "text-down"}`}>{eur(c.median)}</span>
+              <span className="num block text-[12px] text-stone-500">
+                {eur(c.p10)} – {eur(c.p90)}
+              </span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ScenarioTable({ rep }: { rep: TournamentReport }) {
+  const bt = rep.ranking.find((c) => c.id === "blacktrader");
+  if (!bt) return null;
+  const b = rep.before;
+  return (
+    <div className="rounded-xl bg-white/5 px-3 py-1.5 text-[14px]">
+      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 py-1 text-[12px] text-stone-500">
+        <span>Szenario</span>
+        <span className="text-right">Median</span>
+        <span className="text-right">Platz</span>
+        <span className="text-right">vs. vorher</span>
+      </div>
+      {SCENARIOS.map((s) => {
+        const d = b ? bt.byScenario[s] - b.byScenario[s] : 0;
+        return (
+          <div key={s} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-3 border-t border-white/5 py-1.5">
+            <span className="text-stone-300">{SCENARIO_LABEL[s]}</span>
+            <span className="num text-right text-stone-100">{eur(bt.byScenario[s])}</span>
+            <span className="num text-right text-stone-300">{bt.rankByScenario[s]}.</span>
+            <span className={`num text-right ${!b || Math.abs(d) < 1 ? "text-stone-500" : d > 0 ? "text-up" : "text-down"}`}>{!b || Math.abs(d) < 1 ? "–" : `${d > 0 ? "+" : "−"}${eur(Math.abs(d))}`}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function TrainerPage() {
   const cells = useTrainerCells();
   const t = useTraining();
-  const [kind, setKind] = useState<AssetKind>("stock");
   const [dur, setDur] = useState(DURATIONS[0].ms);
   const [token, setToken] = useState("");
   const [hasToken, setHasToken] = useState(true);
   const [adminRequired, setAdminRequired] = useState(false);
   const [info, setInfo] = useState(false);
+  const [older, setOlder] = useState(false);
+  const [blue, setBlue] = useState<{ rate: number | null; n: number }>({ rate: null, n: 0 });
 
   useEffect(() => {
     void refreshTrainerParams(true);
+    void loadReports();
+    setBlue(blueRate());
     try {
       setHasToken(!!localStorage.getItem(TOKEN_KEY));
     } catch {
@@ -78,35 +137,36 @@ export default function TrainerPage() {
       .catch(() => {});
   }, []);
 
-  const target = TARGET_HIT_RATE;
-  const rows = useMemo(() => horizonsOf(kind).map((h) => ({ h, rec: cells[`${kind}:${h}` as CellKey] })), [cells, kind]);
-  const [blue, setBlue] = useState<{ rate: number | null; n: number }>({ rate: null, n: 0 });
-  const [greenLive, setGreenLive] = useState<{ rate: number | null; n: number }>({ rate: null, n: 0 });
-  useEffect(() => {
-    setBlue(historyRate(kind, "blau"));
-    setGreenLive(historyRate(kind, "gruen"));
-  }, [kind]);
-  const total = useMemo(() => classStanding(rows.map((r) => ({ cell: `${kind}:${r.h}`, status: r.rec?.current ? { oos: r.rec.current } : null })), kind), [rows, kind]);
-  const prevTotal = useMemo(
-    () => classStanding(rows.map((r) => ({ cell: `${kind}:${r.h}`, status: r.rec?.previous ?? r.rec?.current ? { oos: (r.rec?.previous ?? r.rec?.current)! } : null })), kind),
-    [rows, kind],
-  );
-  const tradeTotal = useMemo(() => classStanding(rows.map((r) => ({ cell: `${kind}:${r.h}`, status: r.rec?.current ? { oos: r.rec.current } : null })), kind, { trade: true }), [rows, kind]);
-  // Gesamt = Grün (Testdaten) + Blau (Verlauf), gewichtet nach Anzahl
+  // Grün: Zonen-Quote aller grünen Bereiche (gewichtet nach Anzahl Zonen), alle Anlageklassen zusammen
+  const green = useMemo(() => {
+    let w = 0;
+    let n = 0;
+    for (const c of GREEN_CELLS) {
+      const m = cells[c as CellKey]?.current;
+      if (!m) continue;
+      w += primaryRate(m) * primaryCount(m);
+      n += primaryCount(m);
+    }
+    return { rate: n ? w / n : null, n };
+  }, [cells]);
   const overall = useMemo(() => {
-    const n = (total.hitRate != null ? total.trades : 0) + blue.n;
-    if (!n) return null;
-    return ((total.hitRate ?? 0) * (total.hitRate != null ? total.trades : 0) + (blue.rate ?? 0) * blue.n) / n;
-  }, [total, blue]);
+    const n = green.n + blue.n;
+    return n ? ((green.rate ?? 0) * green.n + (blue.rate ?? 0) * blue.n) / n : null;
+  }, [green, blue]);
+  const target = TARGET_HIT_RATE;
   const reached = overall != null && goalReached(overall, target);
 
   const st = t.session;
   const running = t.running;
-  const progress = st ? Math.min(100, (st.elapsedMs / st.cfg.durationMs) * 100) : 0;
-  const curCell = st && running && st.cellIdx < st.cfg.cells.length ? st.cfg.cells[st.cellIdx] : null;
+  const inTournament = !!st?.tournament && !st.tournament.done;
+  const trainProgress = st ? (st.cfg.durationMs ? Math.min(100, (st.elapsedMs / st.cfg.durationMs) * 100) : 100) : 0;
+  const progress = inTournament ? Math.round((st!.tournament!.progress ?? 0) * 100) : trainProgress;
+  const curCell = st && running && !inTournament && st.cellIdx < st.cfg.cells.length ? st.cfg.cells[st.cellIdx] : null;
   const saves = st ? t.messages[st.cfg.id] ?? [] : [];
+  const latest = t.reports[0] ?? null;
+  const lines = latest ? reportLines(latest, t.reports[1] ?? null) : [];
 
-  const start = () => {
+  const start = (ms: number) => {
     if (token) {
       try {
         localStorage.setItem(TOKEN_KEY, token);
@@ -115,7 +175,7 @@ export default function TrainerPage() {
         /* egal */
       }
     }
-    void startTraining(dur, trainCells(kind));
+    void startTraining(ms, ms ? [...ACTIVE_CELL_KEYS] : []);
   };
 
   return (
@@ -129,73 +189,52 @@ export default function TrainerPage() {
 
       <section className="card space-y-3 p-4">
         <div className="text-center">
-          <div className="text-[14px] text-stone-400">Ziel Zonen-Quote · {KIND_LABEL[kind]}</div>
+          <div className="text-[14px] text-stone-400">Ziel Zonen-Quote · alle Werte</div>
           <div className="num text-[40px] font-semibold leading-tight text-gold">{Math.round(target * 100)} %</div>
           <div className={`num text-[19px] ${reached ? "text-up" : "text-stone-100"}`}>Aktuell {overall != null ? pct(overall) : "–"}</div>
         </div>
-        <div>
-          <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
-            <div className={`h-full rounded-full transition-all ${reached ? "bg-emerald-500" : "bg-gold"}`} style={{ width: `${goalProgress(overall, target)}%` }} />
-          </div>
-          <div className="mt-1 flex justify-between text-[12px] text-stone-500">
-            <span>0 %</span>
-            <span>{Math.round(target * 100)} %</span>
-          </div>
+        <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
+          <div className={`h-full rounded-full transition-all ${reached ? "bg-emerald-500" : "bg-gold"}`} style={{ width: `${goalProgress(overall, target)}%` }} />
         </div>
-
-        <div className="rounded-xl bg-white/5 px-3 py-2 text-[15px]">
-          <div className="grid grid-cols-[1fr_auto_4.5rem] items-center gap-x-3 py-1">
-            <span className="flex items-center gap-1.5 font-medium text-stone-100">
-              Gesamt
-              <button aria-label="Was bedeutet Gesamt?" className="flex h-7 w-7 items-center justify-center text-stone-400" onClick={() => setInfo((v) => !v)}>
-                <IconInfo className="h-4 w-4" />
-              </button>
-            </span>
-            <span className="num text-right font-medium text-stone-100">{overall != null ? pct(overall) : "–"}</span>
-            <span className="num text-right text-[14px]" />
-          </div>
-          {info && (
-            <p className="pb-1 text-[13px] text-stone-400">
-              Zonen-Quote wie HKCM: Kurs taucht in die Zone ein, dreht vor der Unterkante und läuft oben heraus. Grün = gemessen auf Testdaten (Zeiträume im Hintergrund, gewichtet nach Anzahl der Zonen). Blau = deine langfristigen Einstiege im Verlauf: erledigt (oben heraus) gegen ungültig. Gelb (abwarten) zählt nicht.
-            </p>
-          )}
-          <div className="grid grid-cols-[1fr_auto_4.5rem] items-center gap-x-3 border-t border-white/5 py-1.5">
+        <div className="rounded-xl bg-white/5 px-3 py-1 text-[15px]">
+          <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 py-1.5">
             <span className="flex items-center gap-2 text-stone-300">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
               Grün · Trade
+              <button aria-label="Was bedeuten die Quoten?" className="flex h-7 w-7 items-center justify-center text-stone-400" onClick={() => setInfo((v) => !v)}>
+                <IconInfo className="h-4 w-4" />
+              </button>
             </span>
-            <span className="num text-right text-stone-200">{total.hitRate != null ? pct(total.hitRate) : "–"}</span>
-            <span className="num text-right text-[14px]">
-              <Delta now={total.hitRate} prev={prevTotal.hitRate} />
-            </span>
+            <span className="num text-right text-stone-100">{green.rate != null ? pct(green.rate) : "–"}</span>
           </div>
-          <div className="grid grid-cols-[1fr_auto_4.5rem] items-center gap-x-3 border-t border-white/5 py-1.5">
+          <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 border-t border-white/5 py-1.5">
             <span className="flex items-center gap-2 text-stone-300">
               <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
               Blau · Langfristig
             </span>
-            <span className="num text-right text-stone-200">{blue.rate != null ? pct(blue.rate) : "–"}</span>
-            <span className="num text-right text-[13px] text-stone-500">{blue.n ? `${blue.n} Einst.` : "noch keine"}</span>
+            <span className="num text-right text-stone-100">{blue.rate != null ? `${pct(blue.rate)} (${blue.n})` : "noch keine"}</span>
           </div>
-          {greenLive.n > 0 && (
+          {info && (
             <p className="border-t border-white/5 py-1.5 text-[13px] text-stone-400">
-              Grün im Verlauf auf diesem Gerät: <span className="num text-stone-300">{pct(greenLive.rate!)}</span> ({greenLive.n} Einstiege)
+              Zonen-Quote wie HKCM: Kurs taucht in die Zone ein, dreht vor der Unterkante und läuft oben heraus. Grün = gemessen auf gesperrten Testdaten aller Werte. Blau = deine langfristigen Einstiege im Verlauf (erledigt gegen ungültig). Gelb zählt nicht.
             </p>
           )}
-          <p className="border-t border-white/5 py-1.5 text-[12px] text-stone-500">Trainiert im Hintergrund: {rows.map((r) => HORIZON_LABEL[r.h]).join(", ")}</p>
         </div>
+      </section>
 
-        <p className="text-center text-[13px] text-stone-400">
-          Trade-Quote (Ziel 1 erreicht): <span className="num text-stone-300">{tradeTotal.hitRate != null ? pct(tradeTotal.hitRate) : "–"}</span>
+      <section className="card space-y-2 p-4">
+        <h2 className="text-[17px] text-gold-light">Turnier: Blacktrader gegen 7 Gegner</h2>
+        <p className="text-[14px] text-stone-400">
+          Nach jedem Training: {eur(RULES.start)} Startkapital, {RULES.trades} Trades, {RULES.reps} Durchgänge – bullisch, neutral, bärisch und gemischt. Nach Gebühren und 26,5 % KESt. Alle Werte, gleiche Daten, kein Blick in die Zukunft.
         </p>
-
-        <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/5 p-1">
-          {KINDS.map((k) => (
-            <button key={k} className={`min-h-[44px] rounded-lg text-[15px] ${k === kind ? "bg-gold/20 font-medium text-gold-light" : "text-stone-400"}`} onClick={() => setKind(k)}>
-              {KIND_LABEL[k]}
-            </button>
+        <ul className="space-y-1 text-[14px]">
+          {OPPONENTS.map((o) => (
+            <li key={o.id} className="flex gap-2">
+              <span className="shrink-0 text-stone-100">{o.name}</span>
+              <span className="text-stone-500">– {o.desc}</span>
+            </li>
           ))}
-        </div>
+        </ul>
       </section>
 
       <section className="card space-y-3 p-4">
@@ -210,8 +249,11 @@ export default function TrainerPage() {
               ))}
             </div>
             {adminRequired && !hasToken && <input className="input" type="password" placeholder="Zugangscode" value={token} onChange={(e) => setToken(e.target.value)} />}
-            <button className="btn btn-primary min-h-[48px] w-full" onClick={start}>
-              Start · {KIND_LABEL[kind]}
+            <button className="btn btn-primary min-h-[48px] w-full" onClick={() => start(dur)}>
+              Training + Turnier starten
+            </button>
+            <button className="w-full py-1 text-center text-[14px] text-stone-400 underline-offset-4 active:underline" onClick={() => start(0)}>
+              Nur Turnier ohne Training (ca. 3–8 Min.)
             </button>
           </>
         ) : (
@@ -223,17 +265,19 @@ export default function TrainerPage() {
           <div className="space-y-1">
             {curCell && (
               <p className="text-[14px] text-stone-300">
-                Trainiert gerade: <span className="text-stone-100">{KIND_LABEL[curCell.split(":")[0] as AssetKind]} · {HORIZON_LABEL[curCell.split(":")[1] as Horizon]}</span>
+                Trainiert gerade: <span className="text-stone-100">{cellLabel(curCell)}</span>
                 {st.focus ? <> · {st.focus}</> : null}
               </p>
             )}
+            {inTournament && <p className="text-[14px] text-stone-300">Turnier: {st.tournament!.text}</p>}
             <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
               <div className="h-full rounded-full bg-gold transition-all" style={{ width: `${progress}%` }} />
             </div>
             <div className="flex justify-between text-[14px] text-stone-300">
               <span className="num">{progress.toFixed(0)} %</span>
-              <span>{running ? mins(st.cfg.durationMs - st.elapsedMs) : st.status === "stopped" ? "gestoppt" : "fertig"}</span>
+              <span>{running ? (inTournament ? "Turnier läuft" : mins(st.cfg.durationMs - st.elapsedMs)) : st.status === "stopped" ? "gestoppt" : "fertig"}</span>
             </div>
+            {st.tournament?.failed && <p className="text-[14px] text-amber-300">{st.tournament.failed}</p>}
           </div>
         )}
         {st && saves.length > 0 && (
@@ -245,12 +289,58 @@ export default function TrainerPage() {
             ))}
           </div>
         )}
-        {st && !running && st.results.length > 0 && !saves.some((m) => m.startsWith("Gespeichert")) && (
-          <p className="text-[15px] text-stone-300">{st.results.every((r) => !r.base) ? "Keine Kursdaten erreichbar – alter Stand bleibt" : "Keine Verbesserung – alter Stand bleibt"}</p>
-        )}
       </section>
 
-      <button className="w-full py-2 text-center text-[14px] text-stone-400 underline-offset-4 active:underline" onClick={() => void exportResults(cells)}>
+      {latest && (
+        <section className="card space-y-3 p-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-[17px] text-gold-light">Auswertung</h2>
+            <span className="text-[13px] text-stone-500">{new Date(latest.at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</span>
+          </div>
+          <div className="space-y-1 text-[15px] text-stone-200">
+            {lines.map((l, i) => (
+              <p key={i}>{l}</p>
+            ))}
+          </div>
+          <Ranking rep={latest} />
+          <h3 className="pt-1 text-[15px] text-stone-300">Blacktrader je Szenario</h3>
+          <ScenarioTable rep={latest} />
+          {!!latest.improvedCells?.length && (
+            <div className="text-[14px]">
+              <h3 className="pb-1 text-[15px] text-stone-300">Im Training verbessert</h3>
+              {latest.improvedCells.map((c) => (
+                <p key={c.cell} className="text-stone-300">
+                  {cellLabel(c.cell)}: <span className="num">{c.old != null ? pct(c.old) : "–"}</span> → <span className="num text-up">{c.neu != null ? pct(c.neu) : "–"}</span>
+                </p>
+              ))}
+            </div>
+          )}
+          {latest.note && <p className="text-[12px] text-stone-500">{latest.note} Spanne = schlechteste bis beste 10 % der Durchgänge. Ergebnisse aus der Vergangenheit sind keine Garantie.</p>}
+          {t.reports.length > 1 && (
+            <div>
+              <button className="flex min-h-[44px] w-full items-center justify-between text-[14px] text-stone-300" onClick={() => setOlder(!older)} aria-expanded={older}>
+                <span>Frühere Auswertungen ({t.reports.length - 1})</span>
+                <span className="text-stone-500">{older ? "▲" : "▼"}</span>
+              </button>
+              {older && (
+                <ul className="divide-y divide-white/5 text-[14px]">
+                  {t.reports.slice(1).map((r) => {
+                    const b = r.ranking.find((c) => c.id === "blacktrader");
+                    return (
+                      <li key={r.at} className="flex justify-between py-1.5 text-stone-400">
+                        <span>{new Date(r.at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</span>
+                        <span className="num">{b ? `Platz ${b.rank} · ${eur(b.median)}` : "–"}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      <button className="w-full py-2 text-center text-[14px] text-stone-400 underline-offset-4 active:underline" onClick={() => void exportResults({ cells, reports: t.reports })}>
         Ergebnisse exportieren (JSON)
       </button>
     </div>
@@ -269,7 +359,7 @@ async function exportResults(local: unknown) {
   const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), server, thisDevice: local }, null, 1)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `black-ship-trainer-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `blacktrader-trainer-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 }

@@ -56,6 +56,8 @@ export interface SessionState {
   saved: Partial<Record<CellKey, SavedPoint>>;
   /** Aktuell beste Trefferquote auf unbekannten Daten (nur Anzeige) und alter Stand */
   live?: { cell: CellKey; best: number | null; old: number | null };
+  /** Turnier nach dem Training: Blacktrader gegen 7 Bots */
+  tournament?: { progress: number; text: string; done?: boolean; failed?: string };
   status: "running" | "done" | "stopped";
 }
 
@@ -80,6 +82,8 @@ export interface SessionIO {
   now?: () => number;
   /** Länge eines Arbeitsblocks zwischen zwei Fortschrittsmeldungen */
   chunkMs?: number;
+  /** Nach dem Training (nicht bei Stopp): Turnier und Auswertung */
+  afterTraining?: (st: SessionState) => Promise<void>;
 }
 
 const PHASE_ORDER: WFPhase[] = ["load", "backtest", "select", "verify", "done"];
@@ -88,10 +92,7 @@ export async function runSession(st: SessionState, io: SessionIO): Promise<Sessi
   const now = io.now ?? Date.now;
   const chunk = io.chunkMs ?? 1500;
   while (st.status === "running") {
-    if (st.cellIdx >= st.cfg.cells.length || st.elapsedMs >= st.cfg.durationMs) {
-      st.status = "done";
-      break;
-    }
+    if (st.cellIdx >= st.cfg.cells.length || st.elapsedMs >= st.cfg.durationMs) break;
     const cell = st.cfg.cells[st.cellIdx];
     if (!st.wf) {
       const [kind, horizon] = cell.split(":") as [AssetKind, Horizon];
@@ -148,6 +149,8 @@ export async function runSession(st: SessionState, io: SessionIO): Promise<Sessi
     }
     io.onProgress(st);
   }
+  if (st.status === "running" && io.afterTraining && !st.tournament?.done) await io.afterTraining(st);
+  if (st.status === "running") st.status = "done";
   st.phase = "done";
   io.onProgress(st);
   return st;

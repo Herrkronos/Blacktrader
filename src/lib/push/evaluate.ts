@@ -36,7 +36,7 @@ export async function evaluatePush(rec: PushRecord, load: CandleLoader, deadline
       continue;
     }
     if (c.length < 5) continue;
-    const url = "/journal";
+    const url = "/depot";
     if (t.strategy === "longterm" && t.lt) {
       const filled = (t.tranches ?? []).filter((x) => x.filledAt);
       const lowNow = Math.min(...recent(c).map((x) => x.low));

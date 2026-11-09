@@ -7,7 +7,7 @@ const NAV = [
   { href: "/", label: "Übersicht", Icon: IconHome, match: (p: string) => p === "/" },
   { href: "/chancen", label: "Chancen", Icon: IconSpark, match: (p: string) => p.startsWith("/chancen") },
   { href: "/watchlist", label: "Watchlist", Icon: IconList, match: (p: string) => p.startsWith("/watchlist") || p.startsWith("/analyse") },
-  { href: "/journal", label: "Journal", Icon: IconBook, match: (p: string) => p.startsWith("/journal") },
+  { href: "/depot", label: "Depot", Icon: IconBook, match: (p: string) => p.startsWith("/depot") || p.startsWith("/journal") },
   { href: "/mehr", label: "Mehr", Icon: IconMore, match: (p: string) => ["/mehr", "/echochart", "/einstellungen", "/trainer"].some((x) => p.startsWith(x)) },
 ];
 

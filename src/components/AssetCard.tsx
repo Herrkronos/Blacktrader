@@ -70,6 +70,7 @@ export function AssetCard({
   source,
   onOpen,
   onRemove,
+  hideOpen,
 }: {
   asset: ResolvedAsset;
   /** Ergebnis von Blacktrader (fehlt, solange noch gerechnet wird) */
@@ -80,6 +81,8 @@ export function AssetCard({
   source?: string;
   onOpen: (h: Horizon) => void;
   onRemove?: () => void;
+  /** In der Detailansicht: ohne „Analyse ansehen“ (die Analyse steht darunter) */
+  hideOpen?: boolean;
 }) {
   const [confirm, setConfirm] = useState<null | "trade" | "longterm">(null);
   const [showPast, setShowPast] = useState(false);
@@ -106,7 +109,7 @@ export function AssetCard({
 
   const myLine = (() => {
     if (!myLong) return null;
-    if (myLong.strategy === "core") return "Deine frühere Kernposition (vor dem Update) – schließen kannst du sie im Journal.";
+    if (myLong.strategy === "core") return "Deine frühere Kernposition (vor dem Update) – schließen kannst du sie im Depot.";
     const n = filledTranches(myLong).length;
     const e = avgEntry(myLong);
     const p = lastPrice && n ? ((lastPrice - e) / e) * 100 : null;
@@ -254,9 +257,11 @@ export function AssetCard({
 
       {/* Max. 2 Buttons */}
       <div className="flex gap-2">
-        <button className="btn flex-1" onClick={() => onOpen(openHorizon)}>
-          Analyse ansehen
-        </button>
+        {!hideOpen && (
+          <button className="btn flex-1" onClick={() => onOpen(openHorizon)}>
+            Analyse ansehen
+          </button>
+        )}
         {plan && b?.res && !tradeOpen ? (
           <button className="btn-primary flex-1" onClick={() => setConfirm("trade")}>
             {isNachkauf ? "Nachkauf übernehmen" : "Als Papier-Trade übernehmen"}
@@ -265,12 +270,17 @@ export function AssetCard({
           <button className="btn-primary flex-1" onClick={() => setConfirm("longterm")}>
             Langfristig übernehmen
           </button>
-        ) : onRemove ? (
+        ) : onRemove && !hideOpen ? (
           <button className="btn flex-1" onClick={onRemove}>
             Entfernen
           </button>
         ) : null}
       </div>
+      {hideOpen && onRemove && (
+        <button className="w-full py-1 text-center text-[14px] text-stone-400 underline-offset-4 active:underline" onClick={onRemove}>
+          Aus der Watchlist entfernen
+        </button>
+      )}
 
       <ConfirmSheet
         open={confirm === "trade"}

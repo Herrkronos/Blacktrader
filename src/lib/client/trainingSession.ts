@@ -10,10 +10,12 @@ import type { WFResult } from "../trainer/walkforward";
 import type { Metrics } from "../trainer/engine";
 import { getData } from "../store/store";
 import type { CellOutcome, SessionState } from "../trainer/session";
-import { ACTIVE_CELL_KEYS, CELL_KEYS, type CellKey } from "../trainer/universe";
+import { ACTIVE_CELL_KEYS, type CellKey } from "../trainer/universe";
+import type { TournamentReport } from "../trainer/tournament";
 
 const KEY = "bsh-training-session";
 const MSG_KEY = "bsh-training-messages";
+const REPORTS_KEY = "bt-tournament-reports";
 export const TOKEN_KEY = "bsh-trainer-token";
 
 interface View {
@@ -22,8 +24,10 @@ interface View {
   messages: Record<string, string[]>;
   running: boolean;
   wakeLock: boolean;
+  /** Turnier-Auswertungen, neueste zuerst */
+  reports: TournamentReport[];
 }
-let view: View = { session: null, messages: {}, running: false, wakeLock: false };
+let view: View = { session: null, messages: {}, running: false, wakeLock: false, reports: [] };
 const subs = new Set<() => void>();
 const emit = (patch: Partial<View>) => {
   view = { ...view, ...patch };
@@ -151,7 +155,12 @@ function spawn(state: SessionState) {
       | { type: "cell"; id: string; outcome: CellOutcome; state: SessionState }
       | { type: "improve"; id: string; cell: CellKey; result: WFResult; baseParams: LearnableParams; state: SessionState }
       | { type: "measured"; cell: CellKey; base: Metrics; baseParams: LearnableParams; state?: undefined }
-      | { type: "protocol"; cell: CellKey; entries: unknown[]; state?: undefined };
+      | { type: "protocol"; cell: CellKey; entries: unknown[]; state?: undefined }
+      | { type: "report"; report: TournamentReport; state?: undefined };
+    if (m.type === "report") {
+      saveReport(m.report);
+      return;
+    }
     if (m.type === "measured") {
       void saveMeasurement(m.cell, m.base, m.baseParams);
       return;
@@ -191,7 +200,31 @@ function spawn(state: SessionState) {
   void acquireWakeLock();
 }
 
-/** Neue Sitzung starten. */
+/** Auswertung auf dem Gerät und (falls möglich) beim Server speichern. */
+function saveReport(r: TournamentReport) {
+  const reports = [r, ...view.reports.filter((x) => x.at !== r.at)].slice(0, 20);
+  write(REPORTS_KEY, reports);
+  emit({ reports });
+  void fetch("/api/trainer/report", { method: "POST", headers: { "Content-Type": "application/json", ...tokenHeader() }, body: JSON.stringify(r) }).catch(() => {});
+}
+
+/** Gespeicherte Auswertungen laden (Gerät + Server, zusammengeführt). */
+export async function loadReports() {
+  const local = read<TournamentReport[]>(REPORTS_KEY) ?? [];
+  let server: TournamentReport[] = [];
+  try {
+    const r = await fetch("/api/trainer/report", { cache: "no-store" });
+    if (r.ok) server = ((await r.json()) as { reports?: TournamentReport[] }).reports ?? [];
+  } catch {
+    /* nur Gerät */
+  }
+  const map = new Map<string, TournamentReport>();
+  for (const x of [...local, ...server]) if (x && x.at && Array.isArray(x.ranking)) map.set(x.at, x);
+  const reports = [...map.values()].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 20);
+  emit({ reports });
+}
+
+/** Neue Sitzung starten (alle Bereiche: Aktien, Krypto, Rohstoffe). Dauer 0 = nur Turnier ohne Training. */
 export async function startTraining(durationMs: number, cells: CellKey[] = [...ACTIVE_CELL_KEYS]) {
   if (view.running) return;
   await refreshTrainerParams(true);

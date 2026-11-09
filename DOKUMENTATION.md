@@ -21,9 +21,9 @@ Es gibt **keine Shorts**. Fallende Kurse bedeuten „Gelb – abwarten“.
 src/app/                Seiten (Next.js App Router) und API-Routen
   page.tsx              Übersicht: Performance, Top 3 Einstiege, offene Trades, News
   chancen/              Chancen: Filter Alle · Blau · Grün, Gruppen Aktien/Krypto/Rohstoffe
-  watchlist/            Watchlist: je Wert der aktuelle Einstieg (auch Gelb)
-  journal/              Papier-Trades: Filter Alle · Blau · Grün, Zeitraum nur als Info
-  trainer/              Trainer: Zonen-Quote je Signalart, Training starten
+  watchlist/            Watchlist: kompakte Kacheln mit Mini-Chart (auch Gelb); Antippen = Details + übernehmen
+  depot/                Depot (früher Journal): Papier-Trades, Filter Alle · Blau · Grün; /journal leitet weiter
+  trainer/              Trainer: Training + Turnier gegen 7 Bots, Rangliste und Auswertung
   echochart/            Rückblick: Wie hätten die Zonen früher gehalten?
   einstellungen/        Gewichtung (in festen Grenzen), Kerzengrößen, Push, Keys
   api/                  candles, quote, fundamentals, news, resolve, llm, history,
@@ -41,6 +41,8 @@ src/lib/analysis/       BLACKTRADER-KERN (reine Funktionen, ohne React/Browser)
   locked-config.ts      feste Werte (vom Trainer nie veränderbar)
   params.ts             lernbare Parameter mit Grenzen
 src/lib/trainer/        Trainer (Walk-Forward, Zellen je Klasse × Zeitraum, Speicher)
+  tournament.ts         Turnier: 7 Gegner, Marktlage, Simulation, Rangliste, Auswertung in Worten
+  tournamentRun.ts      Turnier rechnen (Daten laden, Blacktrader vor/nach dem Training)
 src/lib/client/         Browser: Scanner (Blacktrader im Hintergrund), Verlauf, Live-Kurse, Push
 src/lib/store/          lokaler Speicher (localStorage), Migrationen mit Backup, Export/Import
 src/components/         Karten, Charts, Sheets
@@ -67,6 +69,8 @@ tests/                  Vitest (über 170 Tests)
 | Signal Gelb | Amber `#fbbf24` (`edge-wait`, `badge-wait`) |
 | Grau (alt) | Stein-Grau, gestrichelte Box im Mini-Chart, Liste „Verlauf“ |
 | Stop/Verlust | `#f87171` |
+
+Watchlist und „Top 3 Chancen“ nutzen dieselbe kompakte Kachel (Signalart, Abstand zur Zone, Einstieg/Stop/Ziel); in der Watchlist zusätzlich mit Mini-Chart (Elliott-Wellen, erwartete Richtung, Zone, alte Einstiege grau). Antippen öffnet den vollständigen Einstieg mit „übernehmen“ und darunter die Analyse.
 
 Mobil zuerst: große Touch-Flächen (≥ 44 px), Bottom-Navigation, Bottom-Sheets. Als PWA installierbar (`manifest.webmanifest`, `sw.js`).
 
@@ -119,15 +123,37 @@ ZigZag 6 × ATR, Welle ≥ 8 ATR; Bereich 61,8–88,6 % Rücksetzer; Kauf in 3 T
 
 ## 4. Trainer
 
-**Lernt** (je Anlageklasse × Zeitraum, `params.ts`): Gewichtung in Grenzen, Mindeststärke (darf nur steigen), Elliott-Übereinstimmung, Welle-5-Filter, Bestätigung durch den höheren Zeitraum, Welle-5-Ausstieg.
+Der Trainer hat zwei Teile – beide laufen im Browser (Web Worker), die App bleibt bedienbar.
 
-**Gesperrt** (`locked-config.ts`, eingefroren, durch Tests abgesichert): Methode, Elliott-Regeln, Mindest-Gewichtungsgrenzen (Elliott ≥ 60 %), Risiko-Logik (Zone, Stop, CRV ≥ 1,5), Annahmeregeln (≥ 200 Signale, Signale/Monat höchstens −40 %, Gewinnfaktor und Drawdown nicht schlechter).
+### 4.1 Lernen (unverändert streng)
+**Lernt** (je Anlageklasse × Zeitraum, `params.ts`): Gewichtung in Grenzen, Mindeststärke (darf nur steigen), Elliott-Übereinstimmung, Welle-5-Filter, Bestätigung durch den höheren Zeitraum, Welle-5-Ausstieg. Trainiert werden immer **alle** Bereiche (Aktien, Krypto, Rohstoffe) – es gibt keinen Klassen-Umschalter mehr. Aktien- und Krypto-Kurzfrist werden nicht trainiert (Blacktrader nutzt sie nicht).
 
-**Messung:** Zonen-Quote wie HKCM – Kurs taucht in die Zone ein, dreht vor der Unterkante und läuft oben heraus. Walk-Forward mit gesperrten Testdaten (letzte 12 Monate). Gespeichert wird nur, wenn das Ergebnis besser ist.
+**Gesperrt** (`locked-config.ts`, eingefroren, durch Tests abgesichert): Methode, Elliott-Regeln, Gewichtungsgrenzen (Elliott ≥ 60 %), Risiko-Logik (Zone, Stop, CRV ≥ 1,5), Annahmeregeln (≥ 200 Signale, Signale/Monat höchstens −40 %, Gewinnfaktor und Drawdown nicht schlechter).
 
-**Anzeige:** Quote je Signalart – **Grün** (Testdaten der Zeiträume, die Blacktrader nutzt) und **Blau** (erledigte gegen ungültige blaue Einstiege im Verlauf). Gelb zählt nicht. Aktien- und Krypto-Kurzfrist werden nicht mehr trainiert; alte Stände bleiben gespeichert.
+**Messung:** Zonen-Quote wie HKCM, Walk-Forward mit gesperrten Testdaten (letzte 12 Monate). Gespeichert wird nur, was dort besser ist.
 
-**Speicher:** Je Zelle eigener Schlüssel (`trainer:aktien:mittel` …) mit Sperre auf dem Server (Upstash/Vercel KV) **und** sofort eine lokale Kopie im Browser; der jüngere Stand gewinnt. Ohne KV bleibt nur die lokale Kopie.
+### 4.2 Turnier: Blacktrader gegen 7 Gegner
+Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen sieben Analysten/Bots an:
+
+| Gegner | Regel |
+|---|---|
+| Zufalls-Bot | kauft an zufälligen Tagen, hält 20 Tage |
+| Kaufen & Halten | kauft jeden Monat, hält ein halbes Jahr |
+| Trendfolger | kauft über der 200-Tage-Linie, verkauft darunter |
+| RSI-Bot | kauft bei RSI < 30, verkauft bei Erholung (RSI > 55, 20 Tage oder −10 %) |
+| MACD-Bot | kauft beim MACD-Kreuz nach oben, verkauft beim Kreuz nach unten |
+| Ausbruchs-Bot | kauft beim 55-Tage-Hoch, verkauft beim 20-Tage-Tief (Turtle) |
+| KI-Bot | logistische Regression, lernt jedes Jahr nur mit bereits bekannten Ergebnissen |
+
+**Fair, ohne Tricks:** gleiche Werte (alle Aktien, Krypto, Rohstoffe), gleiches Zeitfenster (15 Jahre Tageskerzen), nur Kauf-Einstiege, Ein- und Ausstieg zum Eröffnungskurs der nächsten Kerze, jedes Signal kennt nur die Vergangenheit (Tests prüfen: abgeschnittene Zukunft ändert keine früheren Trades).
+
+**Ablauf je Durchgang:** 5.000 € Startkapital, 500 Trades, 500 € je Trade (bzw. Restgeld), 0,2 % Gebühren je Trade, 26,5 % KESt auf Gewinne (je ca. 55 Trades ≈ 1 Jahr). **50 Durchgänge**, abwechselnd bullisch, neutral, bärisch und gemischt (Marktlage wechselt in Phasen von 30–80 Trades). Die Marktlage eines Trades ist die des S&P 500 beim Einstieg. Alle Teilnehmer bekommen in Durchgang k dieselbe Szenario-Folge. Hat jemand in einer Marktlage keinen Trade, bleibt sein Geld liegen.
+
+**Auswertung:** Rangliste nach Median-Endkapital (mit Spanne der schlechtesten/besten 10 %, Pleiten, Platz je Szenario). Blacktrader wird mit dem Stand **vor und nach** dem Training auf denselben Durchgängen gerechnet – daraus „wo hat er sich verbessert“ (je Szenario in €, Platz vorher → nachher), dazu die im Training verbesserten Bereiche und der Vergleich zur letzten Auswertung. Gespeichert auf dem Gerät und beim Server (`/api/trainer/report`, letzte 20), im JSON-Export enthalten.
+
+**Ehrlicher Hinweis:** Auch „bärische“ Phasen der letzten 15 Jahre wurden meist schnell wieder aufgeholt; Kauf-Strategien schneiden dort deshalb oft gut ab. Ergebnisse der Vergangenheit sind keine Garantie.
+
+**Speicher Lernstände:** je Zelle eigener Schlüssel (`trainer:aktien:mittel` …) mit Sperre auf dem Server (Upstash/Vercel KV) **und** sofort eine lokale Kopie; der jüngere Stand gewinnt.
 
 ## 5. Datenquellen
 
@@ -142,7 +168,7 @@ ZigZag 6 × ATR, Welle ≥ 8 ATR; Bereich 61,8–88,6 % Rücksetzer; Kauf in 3 T
 
 ## 6. Nutzerdaten & Migration
 
-Alle Daten liegen im Browser (`black-ship-trading-analyst:v1`). Beim ersten Start nach dem Blacktrader-Update wird ein **JSON-Backup** angelegt (`…:backup:<Datum>-vor-blacktrader`); Trades, Watchlist und Einstellungen bleiben unverändert. Offene Trades behalten ihren alten Zeitraum als Info-Label. Export/Import als JSON unter Einstellungen.
+Alle Daten liegen im Browser (`black-ship-trading-analyst:v1`). Das Journal heißt jetzt **Depot** (Adresse `/depot`, `/journal` leitet weiter); die Daten sind dieselben. Beim ersten Start nach dem Blacktrader-Update wird ein **JSON-Backup** angelegt (`…:backup:<Datum>-vor-blacktrader`); Trades, Watchlist und Einstellungen bleiben unverändert. Offene Trades behalten ihren alten Zeitraum als Info-Label. Export/Import als JSON unter Einstellungen.
 
 ## 7. Lokal starten
 

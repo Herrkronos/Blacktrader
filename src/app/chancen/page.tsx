@@ -141,7 +141,7 @@ export default function ChancenPage() {
         }}
         text={
           <p>
-            Es werden {tradable.length} Papier-Trades ins Journal übernommen (bereits laufende werden übersprungen). Einstieg, Stop und Ziele kommen unverändert von Blacktrader.
+            Es werden {tradable.length} Papier-Trades ins Depot übernommen (bereits laufende werden übersprungen). Einstieg, Stop und Ziele kommen unverändert von Blacktrader.
           </p>
         }
       />

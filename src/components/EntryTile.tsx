@@ -1,0 +1,90 @@
+"use client";
+// Kompakte Kachel (wie „Top 3 Chancen“): Name, Signalart, Abstand zur Zone, Einstieg/Stop/Ziel –
+// optional mit Mini-Chart (Elliott-Wellen, erwartete Richtung, Einstiegszone, alte Einstiege grau).
+// Antippen öffnet alle Details und die Möglichkeit, den Trade zu übernehmen.
+import { money } from "@/lib/analysis/persona";
+import type { LiveStatus } from "@/lib/client/market";
+import { lastPrice, type ScanEntry } from "@/lib/client/scanner";
+import type { ResolvedAsset } from "@/lib/types";
+import { COLOR_LABEL, signalStrength } from "./AssetCard";
+import { MiniChart } from "./MiniChart";
+import { StatusPill } from "./StatusPill";
+import { waveCaption } from "./waveText";
+
+const EDGE = { blau: "edge-core", gruen: "edge-trade", gelb: "edge-wait" } as const;
+const BADGE = { blau: "badge-core", gruen: "badge-trade", gelb: "badge-wait" } as const;
+const RISK_LIMIT = 15;
+
+export function EntryTile({ asset, entry, price, changePct, status, source, chart = false, onOpen }: { asset: ResolvedAsset; entry?: ScanEntry; price?: number; changePct?: number; status?: LiveStatus; source?: string; chart?: boolean; onOpen: () => void }) {
+  const b = entry?.best;
+  const cur = asset.currency;
+  const p = price ?? (entry ? lastPrice(entry) : undefined);
+  const dist = b?.zoneTop != null && p != null ? (p <= b.zoneTop ? 0 : ((p - b.zoneTop) / p) * 100) : null;
+  const blue = b?.color === "blau";
+  const strength = b?.color === "gruen" ? signalStrength(b.res) : null;
+  const risk = b?.color === "gruen" && b.zoneTop && b.stop ? ((b.zoneTop - b.stop) / b.zoneTop) * 100 : 0;
+
+  // Chart: Kerzen des aktuellen Einstiegs, Wellenzählung, Zone (grün/blau), alte Einstiege grau
+  const view = (() => {
+    if (!entry || !b) return null;
+    if (b.color === "gruen" && b.horizon) return { candles: entry.horizons[b.horizon]?.candles ?? [], best: b.res?.elliott.best };
+    if (blue && entry.ltCandles?.length) return { candles: entry.ltCandles, best: undefined };
+    const h = entry.horizons.medium ?? entry.horizons.long ?? entry.horizons.short;
+    return h ? { candles: h.candles, best: h.res.elliott.best } : null;
+  })();
+  const lt = blue && b?.lt ? { start: b.lt.start, high: b.lt.high, zoneTop: b.lt.zoneTop, zoneBottom: b.lt.zoneBottom, invalidation: b.lt.invalidation, target: b.lt.targets[0] } : null;
+
+  return (
+    <button onClick={onOpen} className={`card w-full p-3.5 text-left ${b ? EDGE[b.color] : ""}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-[16px] font-semibold text-stone-50">{asset.name}</div>
+          <div className="text-[13px] text-stone-400">
+            {asset.symbol}
+            {p != null ? ` · ${money(p, cur)}` : ""}
+            {changePct != null && <span className={changePct >= 0 ? "text-up" : "text-down"}>{` ${changePct >= 0 ? "+" : ""}${changePct.toFixed(2).replace(".", ",")} %`}</span>}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {b ? (
+            <span className={BADGE[b.color]}>
+              {COLOR_LABEL[b.color]}
+              {strength != null ? ` · Stärke ${strength.toFixed(0)}` : ""}
+            </span>
+          ) : (
+            <span className="badge-muted">rechnet …</span>
+          )}
+          {b && b.color !== "gelb" && dist != null && <span className={dist === 0 ? "text-[13px] text-emerald-300" : "text-[13px] text-amber-300"}>{dist === 0 ? "jetzt in der Zone" : `noch ${dist.toFixed(1).replace(".", ",")} %`}</span>}
+          {status && !b && <StatusPill status={status} source={source} />}
+        </div>
+      </div>
+
+      {chart && view && view.candles.length > 4 && (
+        <div className="mt-2">
+          <MiniChart candles={view.candles} plan={b?.color === "gruen" ? b.plan : null} best={view.best} longterm={lt} past={entry?.history.past ?? []} height={84} />
+          {!blue && waveCaption(view.best) && <p className="text-[12px] text-stone-400">{waveCaption(view.best)}</p>}
+        </div>
+      )}
+
+      {b && b.color !== "gelb" ? (
+        <div className="num mt-2 grid grid-cols-3 gap-2 text-[14px]">
+          <span>
+            <span className="label block">Einstieg</span>
+            {money(b.zoneTop!, cur)}
+          </span>
+          <span className="text-red-300">
+            <span className="label block">{blue ? "Ungültig unter" : "Stop"}</span>
+            {money((blue ? b.invalidation : b.stop)!, cur)}
+          </span>
+          <span className="text-emerald-300">
+            <span className="label block">Ziel</span>
+            {b.targets?.[0] != null ? money(b.targets[0], cur) : "–"}
+          </span>
+        </div>
+      ) : b ? (
+        <p className="mt-2 text-[14px] text-amber-100/90">{b.waitFor ?? b.reason}</p>
+      ) : null}
+      {risk > RISK_LIMIT && <span className="badge-risk mt-2">Hohes Risiko · Stop −{risk.toFixed(0)} %</span>}
+    </button>
+  );
+}

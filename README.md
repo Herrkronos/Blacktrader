@@ -2,6 +2,7 @@
 
 Web-App für Watchlist, Echtzeit-Überwachung und regelbasierte Analyse (Elliott-Wellen 60 %, Fundamental/News 20 %, Volumen/RSI 20 %) mit Papier-Trade-Journal und Backtest.
 Der Analyst heißt **Blacktrader**: Er rechnet die Zeiträume im Hintergrund und zeigt je Wert **genau einen Einstieg** – Blau (langfristig), Grün (Trade) oder Gelb (abwarten); alte Einstiege werden grau. Keine Shorts.
+Der Trainer lässt Blacktrader nach jedem Training in einem Turnier gegen 7 andere Bots antreten (5.000 €, 500 Trades, 50 Durchgänge in bullischen, neutralen, bärischen und gemischten Märkten) und erstellt eine Rangliste. Das Journal heißt jetzt **Depot**.
 Ausführliche Beschreibung: **[DOKUMENTATION.md](DOKUMENTATION.md)**.
 **Kein Login, keine Registrierung, keine Zahlungsmittel.** Alle Daten liegen lokal im Browser (localStorage) und lassen sich als JSON exportieren und importieren.
 

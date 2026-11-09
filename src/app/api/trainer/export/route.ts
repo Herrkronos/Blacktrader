@@ -8,7 +8,7 @@ import { CELL_KEYS } from "@/lib/trainer/universe";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const [cells, protocols, state, signals, echochart] = await Promise.all([loadAllCells(), Promise.all(CELL_KEYS.map(loadProtocol)), loadState(), loadSignals(), getJson<unknown[]>("trainer:echochart")]);
+  const [cells, protocols, state, signals, echochart, tournament] = await Promise.all([loadAllCells(), Promise.all(CELL_KEYS.map(loadProtocol)), loadState(), loadSignals(), getJson<unknown[]>("trainer:echochart"), getJson<unknown[]>("trainer:tournament")]);
   const body = {
     exportedAt: new Date().toISOString(),
     storage: storageKind(),
@@ -20,6 +20,7 @@ export async function GET() {
     lastRun: state.lastRun,
     signals,
     echochart: echochart ?? [],
+    tournament: tournament ?? [],
   };
   return new NextResponse(JSON.stringify(body, null, 1), {
     headers: { "Content-Type": "application/json", "Content-Disposition": `attachment; filename="trainer-export-${body.exportedAt.slice(0, 10)}.json"`, "Cache-Control": "no-store" },

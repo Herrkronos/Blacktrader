@@ -9,7 +9,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Black Ship Holding – Blacktrader",
-  description: "Elliott-Wellen-, Fundamental- und Volumenanalyse mit Watchlist, Echtzeit-Signalen und Trade-Journal.",
+  description: "Elliott-Wellen-, Fundamental- und Volumenanalyse mit Watchlist, Echtzeit-Signalen und Depot.",
   manifest: "/manifest.webmanifest",
   icons: { icon: [{ url: "/favicon.png", type: "image/png" }], apple: "/icon-180.png" },
   appleWebApp: {
