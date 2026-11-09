@@ -32,16 +32,27 @@ describe("Turnier: Regeln", () => {
     expect(r.end).toBe(5000);
     expect(r.trades).toBe(0);
   });
-  it("Gewinn wird nach Gebühren und 27,5 % KESt pro Kalenderjahr gerechnet", () => {
+  it("KESt sofort bei jedem Gewinn: 100 € → 110 € ergibt 2,75 € KESt", () => {
+    // 500 € Einsatz, +10 %: 50 € Gewinn − 1 € Gebühr = 49 € → KESt 13,475 €
+    const r = runWindow([T("A", 10, 40, 10)], W(1_500_000_000), flat);
+    expect(r.tax).toBeCloseTo(49 * 0.275, 6);
+    expect(10 * 0.275).toBeCloseTo(2.75, 6);
+  });
+  it("Gewinn wird nach Gebühren und 27,5 % KESt gerechnet", () => {
     // ein Trade +10 % auf 500 €: 50 € Gewinn − 1 € Gebühr = 49 €, davon 27,5 % KESt
     const r = runWindow([T("A", 10, 40, 10)], W(1_500_000_000), flat);
     expect(r.trades).toBe(1);
     expect(r.tax).toBeCloseTo(49 * 0.275, 6);
     expect(r.profit).toBeCloseTo(49 * 0.725, 6);
   });
-  it("Verluste werden im selben Jahr verrechnet", () => {
-    const r = runWindow([T("A", 10, 40, 10), T("B", 50, 80, -10)], W(1_500_000_000), flat);
-    expect(r.tax).toBe(0);
+  it("Verlust im selben Jahr holt bezahlte KESt zurück (Verlustausgleich), nicht über das Jahr hinaus", () => {
+    const start = Date.UTC(2018, 0, 2) / 1000;
+    const at = (d: number) => start + d * DAY;
+    const t = (sym: string, d0: number, d1: number, r: number): PoolTrade => ({ sym, entry: at(d0), exit: at(d1), r, px: 100 });
+    // Gewinn im Februar, Verlust im März desselben Jahres → KESt zurück
+    expect(runWindow([t("A", 10, 40, 10), t("B", 50, 80, -10)], W(start), flat).tax).toBeCloseTo(0, 6);
+    // Gewinn 2018, Verlust 2019 → keine Rückzahlung
+    expect(runWindow([t("A", 10, 40, 10), t("B", 400, 430, -10)], W(start), flat).tax).toBeCloseTo(49 * 0.275, 6);
   });
   it("nur 500 € je Trade und nur mit genug Geld: höchstens 10 Trades gleichzeitig", () => {
     const many = Array.from({ length: 15 }, (_, i) => T(`S${i}`, 10, 100, 1));

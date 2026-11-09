@@ -134,7 +134,7 @@ Der Trainer hat zwei Teile – beide laufen im Browser (Web Worker), die App ble
 
 **Gesperrt** (`locked-config.ts`, eingefroren, durch Tests abgesichert): Methode, Elliott-Regeln, Gewichtungsgrenzen (Elliott ≥ 60 %), Risiko-Logik (Zone, Stop, CRV ≥ 1,5), Annahmeregeln (≥ 200 Signale, Signale/Monat höchstens −40 %, Gewinnfaktor und Drawdown nicht schlechter).
 
-**Messung:** Zonen-Quote wie HKCM, Walk-Forward mit gesperrten Testdaten (letzte 12 Monate). Gespeichert wird nur, was dort besser ist.
+**Messung:** Zonen-Quote wie HKCM, Walk-Forward mit gesperrten Testdaten (letzte 12 Monate). Gespeichert wird nur, was dort besser ist – und **kein Zufall** ist: (1) die höhere Quote muss statistisch gesichert sein (einseitiger Test, 95 % Sicherheit), (2) sie muss in mindestens 3 von 4 Prüfzeiträumen auftreten, nicht nur in einem. Dazu wie bisher mindestens 200 Zonen, Gewinnfaktor nicht niedriger, Rückgang nicht größer, höchstens −40 % Signale pro Monat. Das gilt für das Training, das Lernen im Turnier und die Prüfung beim Server.
 
 ### 4.2 Turnier: Blacktrader gegen 7 Gegner
 Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen sieben Analysten/Bots an:
@@ -151,7 +151,7 @@ Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen sieben Anal
 
 **Fair, ohne Tricks:** gleiche Werte (alle Aktien, Krypto, Rohstoffe), gleiche Zeiträume, nur Kauf-Einstiege, Ein- und Ausstieg zum Eröffnungskurs der nächsten Kerze, jedes Signal kennt nur die Vergangenheit (Tests prüfen: abgeschnittene Zukunft ändert keine früheren Trades).
 
-**Ein Versuch = 5 Jahre echte Zeit:** 5.000 € Startkapital, 500 € je Trade (nur wenn genug Geld da ist; je Wert höchstens eine Position, also höchstens 10 Trades gleichzeitig), 0,2 % Gebühren je Trade, **27,5 % KESt** auf den Netto-Gewinn jedes Kalenderjahres (Verluste nur im selben Jahr verrechenbar). Offene Positionen werden am Ende zum Tageskurs bewertet und versteuert. **Wer kein Geld mehr für einen Trade hat und keine Position mehr hält, scheidet aus.**
+**Ein Versuch = 5 Jahre echte Zeit:** 5.000 € Startkapital, 500 € je Trade (nur wenn genug Geld da ist; je Wert höchstens eine Position, also höchstens 10 Trades gleichzeitig), 0,2 % Gebühren je Trade, **27,5 % KESt sofort bei jedem Verkauf mit Gewinn** (100 € → 110 €: 2,75 € KESt). Ein Verlust im selben Kalenderjahr holt bereits bezahlte KESt anteilig zurück (automatischer Verlustausgleich der österreichischen Bank); ins nächste Jahr wird nichts übertragen. Offene Positionen werden am Ende zum Tageskurs bewertet und versteuert. **Wer kein Geld mehr für einen Trade hat und keine Position mehr hält, scheidet aus.**
 
 **50 Versuche** mit gleichmäßig verteilten Startzeitpunkten in den letzten 15 Jahren – für alle Teilnehmer dieselben. Jeder Zeitraum wird nach der Marktlage des S&P 500 eingeordnet: **bärisch** (≥ 15 % Bärentage, also mit Crash/Bärenmarkt 2015/16, 2018, 2020 oder 2022), **bullisch** (≥ 55 % Bullentage), **neutral** (< 45 % Bullentage), sonst **gemischt**.
 
@@ -232,5 +232,5 @@ const entry = pickBestEntry({ symbol: "AAPL", kind: "stock", views, lt: findLong
 
 Chronologischer Test Sep 2022 – Nov 2026, 5.000 € Startkapital, nach 27,5 % KESt (Österreich): Blacktrader mit Sektor-Regel 9.859 € (+97,2 %), ohne Sektor-Regel 9.155 € (+83,1 %), Zufall 8.483 € (+69,7 %), S&P 500 Kaufen-und-Halten 8.103 € (+62,1 %), KI 7.725 € (+54,5 %), RSI 7.359 € (+47,2 %), Trendfolger 6.631 € (+32,6 %).
 
-Turnier (50 Versuche à 5 Jahre, 27,5 % KESt, Standard-Einstellung, Ø pro Jahr): 1. MACD-Bot +23,4 % · 2. Kaufen & Halten +20,3 % · **3. Blacktrader +20,0 %** (Ø 167 Trades, Ø Gewinn nach KESt 8.228 €) · 4. Ausbruchs-Bot +17,4 % · 5. Trendfolger +17,1 % · 6. Zufalls-Bot +10,9 % · 7. KI-Bot +9,1 % · 8. RSI-Bot +6,4 %. Niemand ist ausgeschieden. Blacktrader nur Grün: +22,6 % pro Jahr, nur Blau: +6,0 %.
+Turnier (50 Versuche à 5 Jahre, KESt sofort je Gewinn, Standard-Einstellung, Ø pro Jahr): 1. MACD-Bot +20,9 % · **2. Blacktrader +18,9 %** (Ø 154 Trades, Ø Gewinn nach KESt 7.677 €, Platz 1 bei bullischen Märkten) · 3. Kaufen & Halten +18,0 % · 4. Trendfolger +16,9 % · 5. Ausbruchs-Bot +16,7 % · 6. Zufalls-Bot +9,8 % · 7. KI-Bot +8,3 % · 8. RSI-Bot +3,9 %. Niemand ist ausgeschieden. Blacktrader nur Grün: +20,5 % pro Jahr, nur Blau: +5,8 %.
 **Ehrlicher Hinweis:** überwiegend steigende Märkte; der Vorsprung vor Zufall ist im chronologischen Test klein. Bei Krypto ist der Gewinnfaktor trotz höherer Quote schwach.

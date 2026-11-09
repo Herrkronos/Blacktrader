@@ -1,3 +1,4 @@
+import { consistencyError } from "../src/lib/trainer/walkforward";
 import { describe, expect, it } from "vitest";
 import { LOCKED } from "../src/lib/analysis/locked-config";
 import { DEFAULT_PARAMS, validateParams } from "../src/lib/analysis/params";
@@ -73,10 +74,17 @@ describe("Trainer: Walk-Forward", () => {
 });
 
 describe("Trainer: Regeln gegen Selbstbetrug", () => {
-  const m = (o: Partial<ReturnType<typeof metrics>>) => ({ trades: 300, hitRate: 0.4, avgWin: 2, avgLoss: -1, profitFactor: 1.3, maxDrawdown: -10, perMonth: 10, ...o });
+  const m = (o: Partial<ReturnType<typeof metrics>>) => ({ trades: 3000, hitRate: 0.4, avgWin: 2, avgLoss: -1, profitFactor: 1.3, maxDrawdown: -10, perMonth: 10, ...o });
   it("übernimmt nur, wenn auf unbekannten Daten besser", () => {
     expect(decide(m({}), m({ hitRate: 0.45 })).accept).toBe(true);
     expect(decide(m({}), m({ hitRate: 0.39 })).accept).toBe(false);
+  });
+  it("kein Zufall: kleine Verbesserung bei wenigen Signalen wird nicht übernommen", () => {
+    const r = decide(m({ trades: 300 }), m({ hitRate: 0.42, trades: 300 }));
+    expect(r.accept).toBe(false);
+    expect(r.reasons.join()).toMatch(/Zufall/);
+    // dieselbe Verbesserung bei sehr vielen Signalen ist statistisch gesichert
+    expect(decide(m({ trades: 20000 }), m({ hitRate: 0.42, trades: 20000 })).accept).toBe(true);
   });
   it("lehnt ab, wenn der Profit-Faktor sinkt", () => {
     expect(decide(m({}), m({ hitRate: 0.5, profitFactor: 1.2 })).reasons.join()).toMatch(/Profit-Faktor/);
@@ -102,4 +110,27 @@ describe("Trainer rührt feste Werte nicht an", () => {
     expect(validateParams(st.result!.deployed)).toEqual([]);
     expect(Object.keys(st.result!.deployed).sort()).toEqual(Object.keys(DEFAULT_PARAMS).sort());
   }, 120000);
+});
+
+describe("Kein Zufall: Verbesserung muss beständig sein", () => {
+  // 4 Prüfzeiträume (0–10, 10–20, 20–30, 30–40); je Zeitraum 10 Zonen
+  const run = (okPerFold: number[]) => {
+    const zt: number[] = [];
+    const zo: number[] = [];
+    okPerFold.forEach((ok, k) => {
+      for (let i = 0; i < 10; i++) {
+        zt.push(k * 10 + i);
+        zo.push(i < ok ? 1 : 0);
+      }
+    });
+    return { zt, zo };
+  };
+  const st = (cand: number[], ref: number[]) =>
+    ({ folds: 4, specs: [{}], info: [{ bounds: [0, 10, 20, 30, 40] }], pool: { C: { runs: [run(cand)] }, R: { runs: [run(ref)] } } }) as never;
+  it("nur in einem Zeitraum viel besser → abgelehnt", () => {
+    expect(consistencyError(st([10, 5, 5, 5], [6, 5, 5, 5]), ["C", "C", "C", "C"], "R")).toMatch(/1 von 4/);
+  });
+  it("in 3 von 4 Zeiträumen besser → in Ordnung", () => {
+    expect(consistencyError(st([7, 6, 6, 5], [6, 5, 5, 5]), ["C", "C", "C", "C"], "R")).toBeNull();
+  });
 });

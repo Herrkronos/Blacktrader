@@ -143,6 +143,49 @@ export function oosMetrics(st: WFState, keys: string[]): Metrics | null {
   return withZones(metrics(trades, months), zones);
 }
 
+/** Quote je Prüfzeitraum (Fold) – für die Beständigkeits-Prüfung. */
+export function foldRates(st: WFState, keys: string[]): (number | null)[] {
+  const out: (number | null)[] = [];
+  for (let k = 0; k < st.folds; k++) {
+    const e = st.pool[keys[k]];
+    let ok = 0;
+    let n = 0;
+    for (let s = 0; s < st.specs.length; s++) {
+      const inf = st.info[s];
+      const run = e?.runs[s];
+      if (inf === "failed" || !inf || !run) continue;
+      const a = inf.bounds[k];
+      const b = inf.bounds[k + 1];
+      run.zt?.forEach((x, i) => {
+        if (x >= a && x < b) {
+          n++;
+          ok += run.zo![i];
+        }
+      });
+    }
+    out.push(n ? ok / n : null);
+  }
+  return out;
+}
+
+/**
+ * Kein Zufall (2): Die Verbesserung muss in mindestens 3 von 4 Prüfzeiträumen auftreten – nicht nur in einem.
+ * Gibt einen Grund zurück, wenn sie das nicht tut.
+ */
+export function consistencyError(st: WFState, candKeys: string[], refKey: string): string | null {
+  const c = foldRates(st, candKeys);
+  const r = foldRates(st, Array.from({ length: st.folds }, () => refKey));
+  let better = 0;
+  let counted = 0;
+  for (let k = 0; k < st.folds; k++) {
+    if (c[k] == null || r[k] == null) continue;
+    counted++;
+    if (c[k]! > r[k]!) better++;
+  }
+  const need = Math.ceil(counted * 0.75);
+  return counted && better < need ? `nur in ${better} von ${counted} Prüfzeiträumen besser (mindestens ${need} nötig)` : null;
+}
+
 const complete = (st: WFState, key: string) => st.pool[key]?.runs.every((r, s) => r != null || st.info[s] === "failed");
 
 export interface WFContext {
@@ -296,6 +339,8 @@ export function finalizeWF(st: WFState): WFResult | null {
   const d = decide(base, cand);
   const strict = strictnessErrors(st.pool[st.baseKey].params, deployed);
   if (deployedKey === st.baseKey) d.reasons.push("Auf allen Lerndaten zusammen keine bessere Einstellung gefunden");
+  const cons = consistencyError(st, st.climbers.slice(0, st.folds).map((k) => (complete(st, k) ? k : st.baseKey)), st.baseKey);
+  if (cons) d.reasons.push(cons);
   d.reasons.push(...strict);
   d.accept = d.reasons.length === 0;
   st.result = { base, cand, decision: d, deployed, changes: describeChanges(st.pool[st.baseKey].params, deployed), improved: d.accept };
@@ -342,6 +387,9 @@ export function improvementCheck(st: WFState, last?: SavedPoint): WFResult | nul
   const prev = last?.params ?? st.pool[st.baseKey].params;
   const deployed = st.pool[finalKey].params;
   const d = decide(base, cand);
+  const refKey = last && complete(st, last.key) ? last.key : st.baseKey;
+  const cons = consistencyError(st, st.climbers.slice(0, st.folds).map((k) => (complete(st, k) ? k : st.baseKey)), refKey);
+  if (cons) d.reasons.push(cons);
   d.reasons.push(...strictnessErrors(prev, deployed));
   d.accept = d.reasons.length === 0;
   return { base, cand, decision: d, deployed, changes: describeChanges(prev, deployed), improved: d.accept };

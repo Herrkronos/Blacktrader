@@ -5,7 +5,7 @@ import { loadAllCells, loadCell, serverCells } from "../src/lib/trainer/cellStor
 import type { Metrics } from "../src/lib/trainer/engine";
 import { CELL_KEYS, type CellKey } from "../src/lib/trainer/universe";
 
-const m = (hitRate: number, o: Partial<Metrics> = {}): Metrics => ({ trades: 300, hitRate, avgWin: 3, avgLoss: -2, profitFactor: 1.5, maxDrawdown: -10, perMonth: 4, ...o });
+const m = (hitRate: number, o: Partial<Metrics> = {}): Metrics => ({ trades: 3000, hitRate, avgWin: 3, avgLoss: -2, profitFactor: 1.5, maxDrawdown: -10, perMonth: 4, ...o });
 const better = (from: number, to: number, zone = 4.5): Proposal => ({ baseParams: DEFAULT_PARAMS, base: m(from), cand: m(to, { profitFactor: 1.6 }), deployed: { ...DEFAULT_PARAMS, zoneAtrMult: zone }, source: "Test" });
 
 beforeEach(() => (globalThis as unknown as { __trainerMem?: Map<string, string> }).__trainerMem?.clear());
@@ -41,9 +41,9 @@ describe("Getrennte Speicherung je Klasse × Horizont", () => {
   });
 
   it("gleichzeitige Speichervorgänge für verschiedene Zellen gehen nicht verloren", async () => {
-    await Promise.all(CELL_KEYS.map((c, i) => serverCells.propose(c, better(0.4, 0.41 + i / 100))));
+    await Promise.all(CELL_KEYS.map((c, i) => serverCells.propose(c, better(0.4, 0.45 + i / 100))));
     const all = await loadAllCells();
-    for (const [i, c] of CELL_KEYS.entries()) expect(all.find((r) => r.cell === c)!.current?.hitRate).toBeCloseTo(0.41 + i / 100);
+    for (const [i, c] of CELL_KEYS.entries()) expect(all.find((r) => r.cell === c)!.current?.hitRate).toBeCloseTo(0.45 + i / 100);
   });
 
   it("gleichzeitig dieselbe Zelle: nur eins wird gespeichert, das andere sieht den geänderten Ausgangsstand", async () => {

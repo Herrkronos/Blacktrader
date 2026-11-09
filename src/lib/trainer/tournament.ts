@@ -4,8 +4,10 @@
 // Jedes Signal kennt nur Kerzen bis zu seinem Tag; Einstieg und Ausstieg zum Eröffnungskurs der nächsten Kerze.
 //
 // Ein Versuch = 5 Jahre ECHTE Zeit: 5.000 € Startkapital, 500 € je Trade (nur wenn genug Geld da ist, je Wert höchstens
-// eine Position), 0,2 % Gebühren je Trade, 27,5 % KESt (Österreich) auf den Netto-Gewinn jedes Kalenderjahres
-// (Verluste nur im selben Jahr verrechenbar). Offene Positionen werden am Ende zum Tageskurs bewertet und versteuert.
+// eine Position), 0,2 % Gebühren je Trade, 27,5 % KESt (Österreich) SOFORT bei jedem Verkauf mit Gewinn
+// (100 € → 110 €: 2,75 € KESt). Ein Verlust im selben Kalenderjahr holt bereits bezahlte KESt anteilig zurück
+// (automatischer Verlustausgleich der Bank), ins nächste Jahr wird nichts übertragen.
+// Offene Positionen werden am Ende zum Tageskurs bewertet, verkauft und versteuert.
 // Wer kein Geld mehr für einen Trade hat und keine offene Position hält, scheidet aus.
 // 50 Versuche mit verschiedenen Startzeitpunkten – für alle Teilnehmer dieselben. Jeder Zeitraum wird nach der
 // Marktlage (S&P 500) als bullisch, neutral, bärisch oder gemischt eingeordnet. Gewertet wird der Durchschnitt.
@@ -316,34 +318,40 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
   const open = new Map<number, number>(); // Trade-Index → Einsatz
   const openSym = new Set<string>();
   let year = yearOf(w.from);
-  let pnlYear = 0;
+  let paidThisYear = 0; // in diesem Kalenderjahr bezahlte KESt (für den Verlustausgleich)
   let tax = 0;
   let taken = 0;
   let wins = 0;
   let low: number = cash;
   let broke = false;
-  const settleYear = () => {
-    const t = Math.max(0, pnlYear) * RULES.tax;
-    cash -= t;
-    tax += t;
-    pnlYear = 0;
-  };
-  const close = (i: number, r: number) => {
+  const close = (i: number, r: number, t: number) => {
+    if (yearOf(t) !== year) {
+      year = yearOf(t);
+      paidThisYear = 0;
+    }
     const stake = open.get(i)!;
     const g = (stake * r) / 100 - stake * RULES.fee;
     cash += stake + g;
-    pnlYear += g;
-    if (g > 0) wins++;
+    if (g > 0) {
+      // KESt sofort beim Verkauf mit Gewinn
+      const k = g * RULES.tax;
+      cash -= k;
+      tax += k;
+      paidThisYear += k;
+      wins++;
+    } else if (g < 0 && paidThisYear > 0) {
+      // Verlustausgleich im selben Jahr: bereits bezahlte KESt anteilig zurück
+      const back = Math.min(paidThisYear, -g * RULES.tax);
+      cash += back;
+      tax -= back;
+      paidThisYear -= back;
+    }
     open.delete(i);
     openSym.delete(trades[i].sym);
   };
   for (const e of ev) {
-    while (yearOf(e.t) > year) {
-      settleYear();
-      year++;
-    }
     if (e.kind === 0) {
-      if (open.has(e.i)) close(e.i, trades[e.i].r);
+      if (open.has(e.i)) close(e.i, trades[e.i].r, e.t);
     } else if (!broke) {
       const p = trades[e.i];
       if (openSym.has(p.sym) || cash < RULES.stake) {
@@ -360,17 +368,12 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
     for (const v of open.values()) eq += v;
     low = Math.min(low, eq);
   }
-  // Ende: offene Positionen zum Tageskurs bewerten und verkaufen, letztes Jahr versteuern
+  // Ende: offene Positionen zum Tageskurs bewerten, verkaufen und versteuern
   for (const i of [...open.keys()]) {
     const p = trades[i];
     const now = priceAt(p.sym, w.to);
-    close(i, now && p.px ? (now / p.px - 1) * 100 : 0);
+    close(i, now && p.px ? (now / p.px - 1) * 100 : 0, w.to);
   }
-  while (yearOf(w.to) > year) {
-    settleYear();
-    year++;
-  }
-  settleYear();
   if (cash < RULES.stake) broke = true;
   return { end: cash, profit: cash - RULES.start, tax, trades: taken, wins, low: Math.min(low, cash), broke };
 }

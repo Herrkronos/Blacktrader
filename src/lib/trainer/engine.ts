@@ -204,8 +204,21 @@ export interface Decision {
 }
 
 /**
+ * Kein Zufall: Ist die höhere Quote statistisch gesichert? Einseitiger Test zweier Anteile (95 %, z ≥ 1,645).
+ * Bei sich überschneidenden Prüfdaten ist dieser Test eher streng (er verlangt mehr Abstand als nötig).
+ */
+export const SIGNIFICANCE_Z = 1.645;
+export function significance(a: number, n1: number, b: number, n2: number): number {
+  if (n1 <= 0 || n2 <= 0) return 0;
+  const p = (a * n1 + b * n2) / (n1 + n2);
+  const se = Math.sqrt(p * (1 - p) * (1 / n1 + 1 / n2));
+  return se > 0 ? (a - b) / se : 0;
+}
+
+/**
  * Regeln gegen Selbstbetrug: nur übernehmen, wenn auf UNBEKANNTEN Daten
- * Trefferquote höher, Profit-Faktor nicht niedriger, Signale/Monat höchstens −40 %, genug Signale.
+ * Trefferquote höher (und statistisch gesichert, kein Zufall), Profit-Faktor nicht niedriger,
+ * Signale/Monat höchstens −40 %, genug Signale.
  */
 export function decide(base: Metrics, cand: Metrics): Decision {
   const reasons: string[] = [];
@@ -215,6 +228,10 @@ export function decide(base: Metrics, cand: Metrics): Decision {
   const b = zonal ? base.zoneRate! : base.hitRate;
   if (n < MIN_SIGNALS_VALID) reasons.push(`zu wenige ${zonal ? "Zonen" : "Signale"} (${n} < ${MIN_SIGNALS_VALID})`);
   if (a <= b) reasons.push(`${zonal ? "Zonen-Quote" : "Trefferquote"} nicht besser (${(a * 100).toFixed(1)} % ≤ ${(b * 100).toFixed(1)} %)`);
+  else {
+    const z = significance(a, n, b, zonal ? base.zones! : base.trades);
+    if (z < SIGNIFICANCE_Z) reasons.push(`Verbesserung könnte Zufall sein (${(a * 100).toFixed(1)} % gegen ${(b * 100).toFixed(1)} %, nicht mit 95 % Sicherheit)`);
+  }
   if (cand.profitFactor < base.profitFactor) reasons.push(`Profit-Faktor gesunken (${cand.profitFactor.toFixed(2)} < ${base.profitFactor.toFixed(2)})`);
   if (cand.maxDrawdown < base.maxDrawdown - 1e-9) reasons.push(`max. Rückgang schlechter (${cand.maxDrawdown.toFixed(1)} % < ${base.maxDrawdown.toFixed(1)} %)`);
   if (base.perMonth > 0 && cand.perMonth < base.perMonth * (1 - LOCKED.acceptance.maxSignalDrop)) reasons.push(`zu wenige Signale pro Monat (−${Math.round((1 - cand.perMonth / base.perMonth) * 100)} %)`);
