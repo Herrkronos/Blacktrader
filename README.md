@@ -129,3 +129,23 @@ Der Trainer verbessert nur die **Anwendung** der Methode – die Strenge wird ni
 - **Sofort speichern:** Sobald im Training ein Stand auf unbekannten Daten besser ist (alle Strenge-Regeln), wird er sofort gespeichert (Server + lokal), nicht erst am Ende der Sitzung.
 - **Speicher:** In Vercel unter Storage „Upstash for Redis“ verbinden (`KV_REST_API_URL`/`KV_REST_API_TOKEN`). Optional `CRON_SECRET`, `TRAINER_ADMIN_TOKEN`.
 - Offline-Messung: `DATA_DIR=<ordner> BUDGET_S=120 npx tsx scripts/train.ts`.
+
+## Modellvergleich: drei Zeiträume (alt) gegen ein Szenario pro Wert (neu)
+
+`src/lib/analysis/scenario.ts` berechnet EIN Szenario je Wert (Kernposition / Trade / Short / Warten) aus allen
+Zeiteinheiten: Monat/Woche geben die Richtung, die feinste untergeordnete Zeiteinheit mit Signal liefert Einstieg,
+Stop und Ziele (unverändert aus der bestehenden Analyse); Widersprüche → Warten. Vergleich auf denselben unbekannten
+Testdaten (letzte 40 % jeder Reihe, nur abgeschlossene Kerzen): `DATA_DIR=<ordner> npx tsx scripts/compare-models.ts`.
+
+| Klasse | Modell | Trefferquote | Signale | Profit-Faktor | max. Rückgang | Signale/Monat |
+|---|---|---|---|---|---|---|
+| Aktien (S&P 500, Google; Tag/Woche/Monat) | alt | 40,0 % | 15 | 1,87 | −41,9 % | 0,11 |
+| | neu | 22,2 % | 9 | 0,55 | −40,8 % | 0,07 |
+| Rohstoffe (Gold 2013, 2016–17; 1h/4h/Tag/Woche) | alt | 40,7 % | 59 | 1,52 | −4,2 % | 4,13 |
+| | neu | 50,0 % | 6 | 3,77 | −1,2 % | 0,42 |
+| Krypto | – | nicht gemessen (keine historischen Daten offline) | | | | |
+
+Ergebnis: Das neue Modell ist nach den Regeln **nicht besser** (Aktien: Trefferquote und Profit-Faktor schlechter;
+Rohstoffe: zwar höhere Quote, aber −90 % Signale, Regel „höchstens −40 %“ verletzt). Daher bleibt
+`FEATURES.scenarioModel = false` (`src/lib/config/features.ts`) und die App nutzt weiter das alte Modell.
+Die Stichproben sind klein; mit echten Online-Daten (mehr Werte, Krypto, 1h/4h für Aktien) sollte erneut gemessen werden.
