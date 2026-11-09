@@ -31,6 +31,9 @@ export interface PoolTrade {
   color?: "blau" | "gruen" | "rot";
   /** Short: Gewinn bei fallenden Kursen */
   short?: boolean;
+  /** Abstand Einstieg–Stop bzw. Einstieg–Ziel in % (nur Blacktrader, für die Chancen-Regeln) */
+  riskPct?: number;
+  chancePct?: number;
 }
 
 export interface Series {

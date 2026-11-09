@@ -137,12 +137,15 @@ export async function blacktraderPool(prep: Prepared, params: Params, io: Tourna
     const a = assets[k];
     io.onProgress(span[0] + ((span[1] - span[0]) * k) / assets.length, `${label}: ${a.symbol}`);
     const tech = TECH_SYMBOLS.has(a.symbol);
-    const green = (t: { direction: string; reason: string; entryTime: number; exitTime: number; returnPct: number; entry: number }) => {
+    const green = (t: { direction: string; reason: string; entryTime: number; exitTime: number; returnPct: number; entry: number; stop?: number; target?: number; score?: number }) => {
       if (t.reason === "end" || t.entryTime < from) return;
       const short = t.direction === "short";
       if (!short && tech && techWeakAt(t.entryTime)) return; // Sektor-Regel (nur grüne Tech-Trades)
       if (short && regimeAt(t.entryTime) !== "baerisch") return; // Shorts nur bei bärischem Gesamtmarkt (wie in der App)
-      out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, color: short ? "rot" : "gruen", short });
+      const riskPct = t.stop != null ? (Math.abs(t.entry - t.stop) / t.entry) * 100 : undefined;
+      const chancePct = t.target != null ? (Math.abs(t.target - t.entry) / t.entry) * 100 : undefined;
+      if (chancePct != null && chancePct < 15) return; // wie in den Chancen: Chance bis zum Ziel mindestens 15 %
+      out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, color: short ? "rot" : "gruen", short, riskPct, chancePct });
     };
     try {
       if (a.daily.length > 300) for (const t of backtestSeries({ name: a.symbol, kind: a.kind, horizon: "medium", interval: "1d", candles: a.daily }, params(a.kind, "medium"), { step: 1 }).trades) green(t);

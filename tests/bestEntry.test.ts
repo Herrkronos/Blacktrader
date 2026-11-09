@@ -167,11 +167,12 @@ describe("Chancen: nur die mit der höchsten Chance (höchstens 20, gern weniger
     const { isTopChance } = await import("../src/lib/client/scanner");
     expect(isTopChance(green(60, 85))).toBe(true);
   });
-  it("schwaches Signal, weiter Stop oder weit weg → nicht dabei", async () => {
+  it("weit weg von der Zone oder zu wenig Chance → nicht dabei; weiter Stop ist erlaubt (im Turnier besser)", async () => {
     const { isTopChance } = await import("../src/lib/client/scanner");
-    expect(isTopChance(green(45, 85))).toBe(false); // Stärke unter 55
-    expect(isTopChance(green(60, 60))).toBe(false); // Stop 40 % entfernt
     expect(isTopChance(green(60, 85, 130))).toBe(false); // Kurs 23 % über der Zone
+    expect(isTopChance(green(60, 60))).toBe(true); // Stop 40 % entfernt – erlaubt
+    const small = entry({ color: "gruen", zoneTop: 100, zoneBottom: 95, stop: 90, targets: [110], res: { total: 60, plan: { direction: "long" }, decision: { level: "buy" } } as never }, 100);
+    expect(isTopChance(small)).toBe(false); // Chance nur 10 %
   });
   it("Blau nur im Bereich und mit begrenzter Ungültig-Grenze", async () => {
     const { isTopChance } = await import("../src/lib/client/scanner");

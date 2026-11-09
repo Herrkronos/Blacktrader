@@ -59,7 +59,9 @@ tests/                  Vitest (über 170 Tests)
 4. `recordEntry` aktualisiert den Verlauf: der alte Einstieg wird grau (mit Datum und Grund).
 5. `applyPromotions` prüft offene grüne Trades auf Hochstufung zu Blau.
 
-**Chancen – Mindestanforderungen** (nur wer sie erfüllt, erscheint; höchstens 20): Grün/Rot – Kurs höchstens 8 % von der Zone, Stärke mindestens 55, Stop höchstens 25 % entfernt. Blau – Kurs im Bereich, Ungültig-Grenze höchstens 40 % entfernt, Chance mindestens 40 %. Alle – Chance bis zum Ziel mindestens 15 %.
+**Chancen – Mindestanforderungen** (nur wer sie erfüllt, erscheint; höchstens 20): Grün/Rot – Kurs höchstens 8 % von der Zone, Chance bis zum Ziel mindestens 15 % (dieselbe Regel gilt im Turnier: +22,0 % statt +21,8 % pro Jahr; ein Stop-Limit von 25 % wurde getestet und schadete stark – +6,8 % –, weil die besten Trades große Wellen mit weitem Stop sind). Blau – Kurs im Bereich, Ungültig-Grenze höchstens 40 % entfernt, Chance mindestens 40 %.
+
+**Gleiche Rechnung in App und Training:** Einstieg, Zone, Stop und Ziel kommen in Chancen, Training und Turnier aus derselben Analyse (Elliott-Wellen, Zonen, Volumen/RSI). Unterschied: In Training und Turnier fehlen Firmenzahlen und Nachrichten, weil es dafür keine historischen Daten gibt.
 
 **Chancen – Potenzial (Reihenfolge):** Chance bis zum Ziel in % (höchstens 60 % angerechnet) × Chance/Risiko (höchstens 4) × Signalstärke × Nähe zur Zone × gemessene Stärke der Signalart im Turnier (Grün 1, Rot 0,6, Blau 0,35). So stehen nicht automatisch die Werte mit dem höchsten Ziel oben, sondern die mit dem besten Verhältnis aus Chance, Risiko und Verlässlichkeit. Die Übersicht zeigt davon die Top 3. Suche in zwei Schritten: zuerst Chart, Wellen und Volumen für alle Werte, dann Firmenzahlen und Nachrichten nur für die 40 aussichtsreichsten (Watchlist und offene Trades immer vollständig). Gelernt wird weiter mit den 65 Trainings-Werten; die gelernten Einstellungen gelten je Anlageklasse für alle Werte.
 
