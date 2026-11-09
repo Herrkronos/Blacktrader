@@ -5,6 +5,7 @@ import { effectiveWeights, learnedParams, useTrainerVersion } from "@/lib/client
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { analyze } from "@/lib/analysis/analyze";
+import { longOnly } from "@/lib/analysis/longOnly";
 import { findLongTermZone } from "@/lib/analysis/longterm";
 import { avgEntry, filledTranches, openLongTerm, openLongTermTrade } from "@/lib/client/longterm";
 import { money } from "@/lib/analysis/persona";
@@ -112,7 +113,7 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
   const analysis = useMemo(
     () =>
       chartCandles.length >= 30
-        ? analyze({ symbol: asset.symbol, name: asset.name, candles: chartCandles, horizon, interval, fundamentals, news, weights: effectiveWeights(settings, asset.kind, horizon), kind: asset.kind, currency, params: learnedParams(asset.kind, horizon) })
+        ? longOnly(analyze({ symbol: asset.symbol, name: asset.name, candles: chartCandles, horizon, interval, fundamentals, news, weights: effectiveWeights(settings, asset.kind, horizon), kind: asset.kind, currency, params: learnedParams(asset.kind, horizon) }))
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [asset.symbol, asset.name, asset.kind, chartCandles, horizon, interval, fundamentals, news, settings.weights, settings.weightsMode, currency, trainerV],

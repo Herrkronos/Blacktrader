@@ -19,7 +19,7 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
   // Blacktrader: nur Kauf-Einstiege – fallende Kurse bedeuten „abwarten“
   const active = !!a.plan && a.decision.level !== "neutral";
   const buy = active && a.plan!.direction === "long";
-  const falling = active && a.plan!.direction === "short";
+  const falling = (active && a.plan!.direction === "short") || !!a.waitNote;
   return (
     <div className={`panel space-y-3 p-4 ${buy ? "trade-bg" : ""}`}>
       <div className="flex items-center justify-between">
@@ -115,7 +115,7 @@ export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: str
           </button>
         )}
       </div>
-      <p className={`text-lg font-semibold leading-snug ${a.decision.level === "neutral" ? "text-stone-200" : a.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{c.summary}</p>
+      <p className={`text-lg font-semibold leading-snug ${a.waitNote ? "text-amber-200" : a.decision.level === "neutral" ? "text-stone-200" : "text-emerald-300"}`}>{c.summary}</p>
       <p className="text-base leading-relaxed text-stone-100">{c.reason}</p>
       {llm && <div className="whitespace-pre-wrap text-sm leading-relaxed text-stone-300">{llm}</div>}
       {c.risk && <p className="text-sm text-stone-300">{c.risk}</p>}
