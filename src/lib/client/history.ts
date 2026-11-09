@@ -91,7 +91,9 @@ export async function loadHistory(plan: HistoryPlan, interval: Interval, days: n
       start += stepMs * 1000;
       continue;
     }
+    const before = all.length;
     for (const c of r.candles) if (!all.length || c.time > all[all.length - 1].time) all.push(c);
+    if (all.length === before) break; // keine neueren Kerzen – fertig (Schutz vor Endlosschleife)
     start = all[all.length - 1].time * 1000 + stepMs;
     onProgress?.(Math.min(1, 1 - (end - start) / total));
     if (r.candles.length < 1000) break;

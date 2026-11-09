@@ -1,35 +1,44 @@
 "use client";
+// EchoChart: Hätte der Analyst früher richtig gelegen? Einfach gehalten – eine große Zahl, ein Bild, Details zum Aufklappen.
 import { useMemo, useState } from "react";
-import { EquityChart } from "@/components/EquityChart";
-import { HorizonToggle, Stat } from "@/components/ui";
-import type { BacktestResult } from "@/lib/analysis/backtest";
-import { runZoneBacktestAsync } from "@/lib/analysis/zoneBacktest";
-import { DEFAULT_PARAMS } from "@/lib/analysis/params";
-import { learnedParams } from "@/lib/client/trainerParams";
-import { signalFromAnalysis } from "@/lib/trainer/engine";
-import { runLongTermEcho, type LongTermEcho } from "@/lib/analysis/longterm";
+import { ZoneHistoryChart } from "@/components/ZoneHistoryChart";
+import { HorizonToggle } from "@/components/ui";
+import { runEcho, summarize, type EchoKind, type EchoZone } from "@/lib/analysis/echoZones";
 import { fmtPrice } from "@/lib/analysis/persona";
 import { LOOKBACKS, loadHistory, planHistory } from "@/lib/client/history";
 import { SCAN_GROUPS } from "@/lib/client/presets";
+import { learnedParams } from "@/lib/client/trainerParams";
 import { useAppData } from "@/lib/store/store";
-import { HORIZON_INTERVALS, type Candle, type Horizon, type Interval, type ResolvedAsset } from "@/lib/types";
+import { HORIZON_LABEL, type AssetKind, type Candle, type Horizon, type ResolvedAsset } from "@/lib/types";
 
-const fmtDate = (t: number) => new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+const fmtDate = (t: number) => new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
+const pct = (x: number) => `${Math.round(x * 100)} %`;
+const KIND_TEXT: Record<EchoKind, string> = { trade: "Kauf", short: "Short", core: "Kernposition" };
+const KIND_CLS: Record<EchoKind, string> = { trade: "text-emerald-300", short: "text-red-300", core: "text-sky-300" };
+const GROUP_KEYS: Record<string, AssetKind> = { "gruppe:stock": "stock", "gruppe:crypto": "crypto", "gruppe:commodity": "commodity" };
+
+interface AssetResult {
+  asset: ResolvedAsset;
+  zones: EchoZone[];
+  candles: Candle[];
+  tradeHit: number | null;
+  tradeReturn: number | null;
+  trades: number;
+  error?: string;
+}
 
 export default function EchoChartPage() {
   const watchlist = useAppData((d) => d.watchlist);
   const intervals = useAppData((d) => d.settings.intervals);
   const [key, setKey] = useState<string>("");
   const [horizon, setHorizon] = useState<Horizon>("medium");
-  const [interval, setInterval_] = useState<Interval>(intervals.medium);
   const [days, setDays] = useState(365);
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState<{ label: string; p: number } | null>(null);
+  const [progress, setProgress] = useState<{ label: string; p: number } | null>(null);
+  const [results, setResults] = useState<AssetResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [core, setCore] = useState<LongTermEcho | null>(null);
-  const [result, setResult] = useState<(BacktestResult & { symbol: string; bars: number; from: number; to: number; note?: string; interval: Interval }) | null>(null);
+  const interval = intervals[horizon];
 
-  // Auswahl: Watchlist + feste Gruppen (Aktien, Krypto, Rohstoffe)
   const options = useMemo(() => {
     const groups: { title: string; assets: ResolvedAsset[] }[] = [];
     if (watchlist.length) groups.push({ title: "Meine Watchlist", assets: watchlist });
@@ -37,109 +46,116 @@ export default function EchoChartPage() {
     return groups;
   }, [watchlist]);
   const all = options.flatMap((g) => g.assets);
-  const asset = all.find((a) => `${a.kind}:${a.symbol}` === key) ?? all[0];
-  const plan = asset ? planHistory(asset, interval, days) : null;
+  const groupKind = GROUP_KEYS[key];
+  const targets: ResolvedAsset[] = groupKind ? SCAN_GROUPS.find((g) => g.kind === groupKind)!.assets : [all.find((a) => `${a.kind}:${a.symbol}` === key) ?? all[0]].filter(Boolean);
+  const label = groupKind ? `Alle ${SCAN_GROUPS.find((g) => g.kind === groupKind)!.title}` : targets[0]?.name ?? "";
+  const plan = targets[0] ? planHistory(targets[0], interval, days) : null;
+
+  const reset = () => {
+    setResults(null);
+    setError(null);
+  };
 
   const run = async () => {
-    if (!asset || !plan?.ok) return;
+    if (!targets.length || !plan?.ok) return;
     setBusy(true);
-    setError(null);
-    setResult(null);
-    try {
-      setPhase({ label: "Kurse laden", p: 0 });
-      const candles = await loadHistory(plan, interval, days, (p) => setPhase({ label: "Kurse laden", p }));
-      if (candles.length < 150) throw new Error(`Zu wenig Kursdaten (${candles.length} Kerzen, mindestens 150 nötig).`);
-      setPhase({ label: "Analyst spielt die Vergangenheit durch", p: 0 });
-      setCore(null);
-      const params = learnedParams(asset.kind, horizon);
-      // Gelernte Werte wie in der App (Standardwerte = identisch zur Zielzonen-Erkennung)
-      const learned = JSON.stringify(params) !== JSON.stringify(DEFAULT_PARAMS);
-      const opts = learned ? { warmup: 200, signalAt: (h: Candle[]) => signalFromAnalysis(h, { kind: asset.kind, horizon: horizon, interval }, params) } : { warmup: 200 };
-      const r = await runZoneBacktestAsync(candles, opts, (p) => setPhase({ label: "Zonen-Trades werden durchgespielt", p }));
-      setPhase({ label: "Langfristige Einstiegsbereiche werden durchgespielt", p: 0.95 });
-      await new Promise((r) => setTimeout(r, 0));
-      const c = candles.length >= 260 ? runLongTermEcho(candles, undefined, Math.max(1, Math.ceil(candles.length / 3000))) : null;
-      setCore(c);
-      setResult({ ...r, symbol: asset.name, bars: candles.length, from: candles[0].time, to: candles[candles.length - 1].time, note: plan.note, interval });
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-      setPhase(null);
+    reset();
+    const out: AssetResult[] = [];
+    for (const [i, a] of targets.entries()) {
+      const step = (p: number, what: string) => setProgress({ label: targets.length > 1 ? `${a.name} (${i + 1} von ${targets.length}) – ${what}` : what, p: (i + p) / targets.length });
+      try {
+        const pl = planHistory(a, interval, days);
+        if (!pl.ok) throw new Error(pl.reason);
+        step(0, "Kurse laden");
+        const candles = await loadHistory(pl, interval, days, (p) => step(p * 0.3, "Kurse laden"));
+        if (candles.length < 200) throw new Error("zu wenig Kursdaten");
+        const r = await runEcho(candles, { kind: a.kind, horizon, interval, params: learnedParams(a.kind, horizon) }, (p) => step(0.3 + p * 0.7, "Analyst spielt die Vergangenheit durch"));
+        const t = r.trades.trades;
+        out.push({
+          asset: a,
+          zones: r.zones,
+          candles,
+          trades: t.length,
+          tradeHit: t.length ? t.filter((x) => x.returnPct > 0).length / t.length : null,
+          tradeReturn: t.length ? (t.reduce((e, x) => e * (1 + x.returnPct / 100), 1) - 1) * 100 : null,
+        });
+      } catch (e) {
+        out.push({ asset: a, zones: [], candles: [], trades: 0, tradeHit: null, tradeReturn: null, error: (e as Error).message });
+      }
     }
+    setResults(out);
+    setProgress(null);
+    setBusy(false);
+    if (out.every((r) => r.error)) setError(out[0]?.error ?? "Keine Daten");
+    // Ergebnis still für den Trainer aufbewahren
+    const zs = out.flatMap((r) => r.zones.map((z) => ({ symbol: r.asset.symbol, ...z })));
+    void fetch("/api/trainer/echo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label, horizon, interval, days, summary: summarize(zs), zones: zs }) }).catch(() => {});
   };
+
+  const allZones = results?.flatMap((r) => r.zones) ?? [];
+  const sum = summarize(allZones);
+  const single = results && results.length === 1 ? results[0] : null;
+  const tradesAll = results?.reduce((s, r) => s + r.trades, 0) ?? 0;
+  const tradeHit = results && tradesAll ? results.reduce((s, r) => s + (r.tradeHit ?? 0) * r.trades, 0) / tradesAll : null;
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl text-gold sm:text-3xl">EchoChart</h1>
-        <p className="text-sm text-stone-300">Das Echo der Vergangenheit: Wie viel hättest du verdient, wenn du den Signalen des Analysten früher gefolgt wärst?</p>
-        <details className="mt-1 text-sm text-stone-400">
-          <summary className="cursor-pointer text-gold/80">So funktioniert&apos;s</summary>
-          <ol className="mt-2 list-inside list-decimal space-y-1">
-            <li>Wert, Kerzengröße und „Wie weit zurück?“ wählen, dann „EchoChart starten“ tippen.</li>
-            <li>Die App spielt die vergangenen Kurse Schritt für Schritt durch – der Analyst kennt dabei immer nur, was bis zu diesem Tag passiert war.</li>
-            <li>Bei jedem Signal legt der Analyst eine Order in seine Kaufzone (bzw. Verkaufszone). Nur wenn der Kurs dorthin kommt, wird der Übungs-Trade eröffnet und bei Ziel oder Stop geschlossen.</li>
-            <li>Am Ende siehst du den Gewinn, die Trefferquote und den Vergleich mit „einfach kaufen und halten“.</li>
-          </ol>
-          <p className="mt-2 text-xs text-stone-500">Firmenzahlen und Nachrichten von damals fehlen und zählen neutral. Berührt der Kurs Stop und Ziel in derselben Kerze, wird vorsichtig mit dem Stop gerechnet. Gute Ergebnisse von früher sind keine Garantie für die Zukunft.</p>
-        </details>
+        <h1 className="text-[22px] text-gold">EchoChart</h1>
+        <p className="text-[15px] text-stone-300">Hätte der Analyst früher richtig gelegen? Wähle einen Wert oder eine ganze Gruppe.</p>
       </div>
 
-      <div className="panel space-y-3 p-3">
-        <label className="block text-xs text-stone-400">
-          Wert
-          <select className="input mt-1" value={asset ? `${asset.kind}:${asset.symbol}` : ""} onChange={(e) => {
-              setKey(e.target.value);
-              setResult(null);
-            }}>
-            {options.map((g) => (
-              <optgroup key={g.title} label={g.title}>
-                {g.assets.map((a) => (
-                  <option key={`${g.title}-${a.kind}:${a.symbol}`} value={`${a.kind}:${a.symbol}`}>
-                    {a.name} ({a.symbol})
-                  </option>
-                ))}
-              </optgroup>
+      <section className="card space-y-3 p-4">
+        <select
+          className="input"
+          value={key || (all[0] ? `${all[0].kind}:${all[0].symbol}` : "")}
+          onChange={(e) => {
+            setKey(e.target.value);
+            reset();
+          }}
+        >
+          <optgroup label="Ganze Gruppe">
+            {SCAN_GROUPS.map((g) => (
+              <option key={g.kind} value={`gruppe:${g.kind}`}>
+                Alle {g.title} ({g.assets.length})
+              </option>
             ))}
-          </select>
-        </label>
-        <div className="flex flex-wrap gap-4">
-          <div className="text-xs text-stone-400">
-            Zeitraum der Signale
-            <div className="mt-1">
-              <HorizonToggle
-                value={horizon}
-                onChange={(h) => {
-                  if (!h) return;
-                  setResult(null);
-                  setHorizon(h);
-                  setInterval_(intervals[h]);
-                }}
-              />
-            </div>
-          </div>
-          <div className="text-xs text-stone-400">
-            Kerzengröße
-            <div className="mt-1 flex gap-1">
-              {HORIZON_INTERVALS[horizon].map((iv) => (
-                <button key={iv} onClick={() => { setInterval_(iv); setResult(null); }} className={`chip ${iv === interval ? "border-gold bg-gold/20 text-gold-light" : "border-stone-700 text-stone-400"}`}>
-                  {{ "5m": "5 Min", "15m": "15 Min", "1h": "1 Std", "4h": "4 Std", "1d": "1 Tag", "1w": "1 Woche", "1M": "1 Monat" }[iv]}
-                </button>
+          </optgroup>
+          {options.map((g) => (
+            <optgroup key={g.title} label={g.title}>
+              {g.assets.map((a) => (
+                <option key={`${g.title}-${a.kind}:${a.symbol}`} value={`${a.kind}:${a.symbol}`}>
+                  {a.name}
+                </option>
               ))}
-            </div>
-          </div>
+            </optgroup>
+          ))}
+        </select>
+        <div>
+          <div className="label mb-1">Zeitraum</div>
+          <HorizonToggle
+            value={horizon}
+            onChange={(h) => {
+              if (!h) return;
+              setHorizon(h);
+              reset();
+            }}
+          />
         </div>
-        <div className="text-xs text-stone-400">
-          Wie weit zurück?
-          <div className="mt-1 flex flex-wrap gap-1">
+        <div>
+          <div className="label mb-1">Wie weit zurück?</div>
+          <div className="flex flex-wrap gap-1.5">
             {LOOKBACKS.map((l) => {
-              const ok = asset ? planHistory(asset, interval, l.days).ok : false;
+              const ok = targets[0] ? planHistory(targets[0], interval, l.days).ok : false;
               return (
                 <button
                   key={l.days}
-                  onClick={() => { setDays(l.days); setResult(null); }}
-                  className={`chip ${l.days === days ? "border-gold bg-gold/20 text-gold-light" : ok ? "border-stone-700 text-stone-300" : "border-stone-800 text-stone-600 line-through"}`}
+                  disabled={!ok}
+                  onClick={() => {
+                    setDays(l.days);
+                    reset();
+                  }}
+                  className={`chip ${l.days === days ? "border-gold bg-gold/20 text-gold-light" : ok ? "border-stone-700 text-stone-300" : "border-stone-800 text-stone-600"}`}
                 >
                   {l.label}
                 </button>
@@ -147,85 +163,95 @@ export default function EchoChartPage() {
             })}
           </div>
         </div>
-        {plan && !plan.ok && <p className="text-sm text-amber-300">{plan.reason}</p>}
-        {plan?.ok && (
-          <p className="text-xs text-stone-500">
-            ca. {plan.candlesEstimate.toLocaleString("de-DE")} Kerzen · Quelle: {plan.source === "binance" ? "Binance" : "Yahoo Finance"}
-            {plan.note ? ` · ${plan.note}` : ""}
-          </p>
-        )}
-        <button className="btn-primary w-full sm:w-auto" disabled={!asset || busy || !plan?.ok} onClick={run}>
-          {busy ? "Läuft …" : "EchoChart starten"}
+        {plan && !plan.ok && <p className="text-[14px] text-amber-300">{plan.reason}</p>}
+        <button className="btn-primary min-h-[48px] w-full" disabled={busy || !plan?.ok} onClick={run}>
+          {busy ? "Läuft …" : "Prüfen"}
         </button>
-        {phase && (
-          <div>
-            <div className="mb-1 flex justify-between text-xs text-stone-400">
-              <span>{phase.label}</span>
-              <span>{Math.round(phase.p * 100)} %</span>
+        {progress && (
+          <div className="space-y-1">
+            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-gold transition-all" style={{ width: `${Math.round(progress.p * 100)}%` }} />
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-stone-800">
-              <div className="h-full bg-gold transition-all" style={{ width: `${phase.p * 100}%` }} />
-            </div>
+            <p className="text-[13px] text-stone-400">{progress.label}</p>
           </div>
         )}
-      </div>
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {result && (
-        <p className="text-sm text-stone-300">
-          <b className="text-gold-light">{result.symbol}</b> · {fmtDate(result.from)} – {fmtDate(result.to)} · {result.bars.toLocaleString("de-DE")} Kerzen ({result.interval})
-          {result.note ? <span className="block text-xs text-stone-500">{result.note}</span> : null}
-        </p>
-      )}
-      {result && (
-        <div className="panel space-y-3 p-3">
-          <div className="panel-title">Vergleich</div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {core ? (
-              <Stat
-                accent="core"
-                label="Langfristige Einstiege (blau)"
-                value={core.erfolgreich + core.invalidiert ? `${(core.quote * 100).toFixed(0)} % erfolgreich` : "–"}
-                hint={`${core.zones} Bereiche · ${core.erfolgreich} erfolgreich · ${core.invalidiert} ungültig · ${core.offen} offen`}
-              />
-            ) : (
-              <Stat accent="core" label="Langfristige Einstiege (blau)" value="–" hint="Zu wenig Kerzen – längeren Zeitraum wählen" />
-            )}
-            <Stat
-              accent="trade"
-              label="Zonen-Trades"
-              value={`${result.stats.totalReturn >= 0 ? "+" : ""}${result.stats.totalReturn.toFixed(1)} %`}
-              tone={result.stats.totalReturn >= 0 ? "up" : "down"}
-              hint={`${result.trades.length} Trades · Trefferquote ${(result.stats.winRate * 100).toFixed(0)} %`}
-            />
-            <Stat
-              label="Einfach gehalten"
-              value={`${result.buyAndHold >= 0 ? "+" : ""}${result.buyAndHold.toFixed(1)} %`}
-            />
+      </section>
+
+      {error && <p className="text-[15px] text-red-300">{error}</p>}
+
+      {results && !error && (
+        <section className="card space-y-3 p-4">
+          <div className="text-center">
+            <div className="text-[14px] text-stone-400">
+              {label} · {HORIZON_LABEL[horizon]}
+            </div>
+            <div className={`num text-[44px] font-semibold leading-tight ${sum.rate != null && sum.rate >= 0.7 ? "text-up" : "text-gold"}`}>{sum.rate != null ? pct(sum.rate) : "–"}</div>
+            <p className="text-[15px] text-stone-200">{sum.zones ? `Von ${sum.zones} Zonen haben ${sum.held} gehalten.` : "In diesem Zeitraum gab es keine Zone."}</p>
           </div>
-          {result.trades.length > 0 && result.trades.length < 10 && <p className="text-xs text-amber-300">Weniger als 10 Zonen-Trades – statistisch nicht belastbar.</p>}
-          {core && core.trades.length > 0 && (
-            <details className="text-sm">
-              <summary className="cursor-pointer text-sky-300">Alle {core.trades.length} langfristigen Einstiege anzeigen</summary>
-              <table className="mt-2 w-full text-xs">
-                <tbody>
-                  {[...core.trades].reverse().map((t) => (
-                    <tr key={t.entryTime} className="core-row">
-                      <td className="px-2 py-1">{new Date(t.entryTime * 1000).toLocaleDateString("de-DE")} – {new Date(t.exitTime * 1000).toLocaleDateString("de-DE")}</td>
-                      <td className="num px-2 py-1 text-right">{fmtPrice(t.entry)} → {fmtPrice(t.exit)}</td>
-                      <td className="px-2 py-1">{t.result === "erfolgreich" ? "Ziel erreicht" : t.result === "invalidiert" ? "ungültig" : "läuft noch"}</td>
-                      <td className={`num px-2 py-1 text-right ${t.returnPct >= 0 ? "text-up" : "text-down"}`}>{`${t.returnPct >= 0 ? "+" : ""}${t.returnPct.toFixed(2)} %`}</td>
-                    </tr>
+          {sum.zones > 0 && (
+            <div className="grid grid-cols-3 gap-2 text-center text-[13px]">
+              {(["trade", "short", "core"] as EchoKind[]).map((k) => (
+                <div key={k} className="rounded-xl bg-white/5 px-1 py-2">
+                  <div className={KIND_CLS[k]}>{KIND_TEXT[k]}</div>
+                  <div className="num text-stone-200">{sum.byKind[k].zones ? `${sum.byKind[k].held} / ${sum.byKind[k].zones}` : "–"}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {single && single.candles.length > 0 && <ZoneHistoryChart candles={single.candles} zones={single.zones} />}
+          {tradeHit != null && (
+            <p className="text-center text-[13px] text-stone-400">
+              Trades bis zum Ziel: {pct(tradeHit)} Treffer{single?.tradeReturn != null ? ` · Ergebnis ${single.tradeReturn >= 0 ? "+" : ""}${single.tradeReturn.toFixed(1).replace(".", ",")} %` : ""}
+            </p>
+          )}
+
+          {!single && (
+            <ul className="divide-y divide-white/5 text-[14px]">
+              {[...results]
+                .sort((a, b) => (summarize(b.zones).rate ?? -1) - (summarize(a.zones).rate ?? -1))
+                .map((r) => {
+                  const s = summarize(r.zones);
+                  return (
+                    <li key={r.asset.symbol} className="flex items-center justify-between gap-2 py-2">
+                      <span className="text-stone-200">{r.asset.name}</span>
+                      <span className="num text-stone-400">{r.error ? "keine Daten" : s.zones ? `${s.held}/${s.zones} · ${pct(s.rate!)}` : "keine Zone"}</span>
+                    </li>
+                  );
+                })}
+            </ul>
+          )}
+
+          {allZones.length > 0 && (
+            <details className="text-[14px]">
+              <summary className="cursor-pointer text-gold-light">Alle Zonen anzeigen</summary>
+              <ul className="mt-2 divide-y divide-white/5">
+                {[...(single ? single.zones.map((z) => ({ z, name: "" })) : results.flatMap((r) => r.zones.map((z) => ({ z, name: r.asset.name }))))]
+                  .sort((a, b) => b.z.t - a.z.t)
+                  .slice(0, 150)
+                  .map(({ z, name }, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2 py-1.5">
+                      <span className="min-w-0">
+                        <span className="text-stone-400">{fmtDate(z.t)}</span> <span className={KIND_CLS[z.kind]}>{KIND_TEXT[z.kind]}</span>
+                        {name && <span className="text-stone-400"> · {name}</span>}
+                        <span className="num block text-[13px] text-stone-500">
+                          {fmtPrice(z.top)} – {fmtPrice(z.bottom)}
+                        </span>
+                      </span>
+                      <span className={`shrink-0 font-semibold ${z.ok ? "text-up" : "text-down"}`}>{z.ok ? "✓ gehalten" : "✗ gescheitert"}</span>
+                    </li>
                   ))}
-                </tbody>
-              </table>
+              </ul>
             </details>
           )}
-          <p className="text-[13px] text-stone-500">
-            Langfristig: Einstieg in drei Teilen im blauen Bereich. Erfolgreich = altes Hoch (Ziel 1) wieder erreicht, ungültig = Schlusskurs unter dem Wellenstart. Nur Kerzen bis zum jeweiligen Zeitpunkt werden verwendet.
-          </p>
-        </div>
-      )}
 
+          <details className="text-[13px] text-stone-400">
+            <summary className="cursor-pointer">Wie wird gezählt?</summary>
+            <p className="mt-1">
+              Wie bei HKCM: Eine Zone hat gehalten, wenn der Kurs hineinläuft, vor der Unterkante dreht und oben wieder herausläuft (bei Short umgekehrt). Fällt er vorher unter die Unterkante, ist sie gescheitert. Zonen, die der Kurs nie erreicht hat, zählen nicht. Der Analyst kennt dabei immer nur die Kurse bis zum jeweiligen Tag. Gute Ergebnisse von früher sind keine Garantie für die Zukunft.
+            </p>
+          </details>
+        </section>
+      )}
     </div>
   );
 }
