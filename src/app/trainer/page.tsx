@@ -70,7 +70,7 @@ function Ranking({ rep }: { rep: TournamentReport }) {
                 {Math.round(c.avgTrades)} Trades · Gewinn nach KESt {eur0(c.avgProfit)}
               </span>
               <span className="num block text-[12px] text-stone-500">
-                KESt {eur0(c.avgTax)} · Treffer {Math.round(c.winRate * 100)} %{c.broke ? ` · ${c.broke}× ausgeschieden` : ""}
+                KESt {eur0(c.avgTax)}{c.avgFees != null ? ` · Gebühren ${eur0(c.avgFees)}` : ""} · Treffer {Math.round(c.winRate * 100)} %{c.broke ? ` · ${c.broke}× ausgeschieden` : ""}
               </span>
             </span>
             <span className={`num text-right text-[16px] font-semibold ${c.avgPerYear >= 0 ? "text-up" : "text-down"}`}>{pct1(c.avgPerYear)}</span>
@@ -229,7 +229,7 @@ export default function TrainerPage() {
       <section className="card space-y-2 p-4">
         <h2 className="text-[17px] text-gold-light">Turnier: Blacktrader gegen 9 Gegner</h2>
         <p className="text-[14px] text-stone-400">
-          {RULES.reps} Versuche à {RULES.years} Jahre echte Zeit: {eur(RULES.start)} Startkapital, {eur(RULES.stake)} je Trade, Gebühren und 27,5 % KESt pro Jahr. Wer kein Geld mehr hat, scheidet aus. Zeiträume bullisch, neutral, bärisch und gemischt; gewertet wird der Durchschnitt. Blacktrader spielt in {RULES.rounds} Runden und lernt dazwischen – Verbesserungen werden sofort gespeichert. Alle Werte, gleiche Daten, kein Blick in die Zukunft.
+          {RULES.reps} Versuche à {RULES.years} Jahre echte Zeit: {eur(RULES.start)} Startkapital, {eur(RULES.stake)} je Trade, 7,90 € Gebühr je Order (flatex) und 27,5 % KESt. Gehandelt wird nur die obere Hälfte der Signale nach Potenzial (wie in den Chancen). Wer kein Geld mehr hat, scheidet aus. Zeiträume bullisch, neutral, bärisch und gemischt; gewertet wird der Durchschnitt. Blacktrader spielt in {RULES.rounds} Runden und lernt dazwischen – Verbesserungen werden sofort gespeichert. Alle Werte, gleiche Daten, kein Blick in die Zukunft.
         </p>
         <ul className="space-y-1 text-[14px]">
           {OPPONENTS.map((o) => (

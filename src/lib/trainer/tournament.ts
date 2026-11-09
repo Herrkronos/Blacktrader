@@ -4,7 +4,7 @@
 // Jedes Signal kennt nur Kerzen bis zu seinem Tag; Einstieg und Ausstieg zum Eröffnungskurs der nächsten Kerze.
 //
 // Ein Versuch = 5 Jahre ECHTE Zeit: 5.000 € Startkapital, 500 € je Trade (nur wenn genug Geld da ist, je Wert höchstens
-// eine Position), 0,2 % Gebühren je Trade, 27,5 % KESt (Österreich) SOFORT bei jedem Verkauf mit Gewinn
+// eine Position), 7,90 € Gebühr je Order (flatex; Kauf und Verkauf je einmal), 27,5 % KESt (Österreich) SOFORT bei jedem Verkauf mit Gewinn
 // (100 € → 110 €: 2,75 € KESt). Ein Verlust im selben Kalenderjahr holt bereits bezahlte KESt anteilig zurück
 // (automatischer Verlustausgleich der Bank), ins nächste Jahr wird nichts übertragen.
 // Offene Positionen werden am Ende zum Tageskurs bewertet, verkauft und versteuert.
@@ -41,7 +41,8 @@ export interface Series {
   candles: Candle[];
 }
 
-export const RULES = { start: 5000, years: 5, reps: 50, stake: 500, fee: 0.002, tax: 0.275, rounds: 5 } as const;
+/** fee: Gebühr je Order in € (flatex 7,90 €); KESt in Österreich auf den Gewinn ohne Abzug der Spesen */
+export const RULES = { start: 5000, years: 5, reps: 50, stake: 500, fee: 7.9, tax: 0.275, rounds: 5 } as const;
 
 // ---------------------------------------------------------------------------------------------
 // Marktlage aus dem S&P 500 (nur Vergangenheit)
@@ -339,6 +340,8 @@ export interface RunResult {
   /** Gewinn nach Gebühren und KESt */
   profit: number;
   tax: number;
+  /** bezahlte Gebühren */
+  fees?: number;
   trades: number;
   wins: number;
   low: number;
@@ -369,6 +372,7 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
   let year = yearOf(w.from);
   let paidThisYear = 0; // in diesem Kalenderjahr bezahlte KESt (für den Verlustausgleich)
   let tax = 0;
+  let fees = 0;
   let taken = 0;
   let wins = 0;
   let low: number = cash;
@@ -379,15 +383,17 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
       paidThisYear = 0;
     }
     const stake = open.get(i)!;
-    const g = (stake * r) / 100 - stake * RULES.fee;
-    cash += stake + g;
+    // KESt auf den Kursgewinn – Spesen sind in Österreich steuerlich nicht abzugsfähig
+    const g = (stake * r) / 100;
+    cash += stake + g - RULES.fee;
+    fees += RULES.fee;
+    if (g - 2 * RULES.fee > 0) wins++;
     if (g > 0) {
       // KESt sofort beim Verkauf mit Gewinn
       const k = g * RULES.tax;
       cash -= k;
       tax += k;
       paidThisYear += k;
-      wins++;
     } else if (g < 0 && paidThisYear > 0) {
       // Verlustausgleich im selben Jahr: bereits bezahlte KESt anteilig zurück
       const back = Math.min(paidThisYear, -g * RULES.tax);
@@ -403,12 +409,13 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
       if (open.has(e.i)) close(e.i, trades[e.i].r, e.t);
     } else if (!broke) {
       const p = trades[e.i];
-      if (openSym.has(p.sym) || cash < RULES.stake) {
+      if (openSym.has(p.sym) || cash < RULES.stake + RULES.fee) {
         // ohne Geld und ohne offene Position: ausgeschieden
-        if (cash < RULES.stake && open.size === 0) broke = true;
+        if (cash < RULES.stake + RULES.fee && open.size === 0) broke = true;
         continue;
       }
-      cash -= RULES.stake;
+      cash -= RULES.stake + RULES.fee;
+      fees += RULES.fee;
       open.set(e.i, RULES.stake);
       openSym.add(p.sym);
       taken++;
@@ -423,8 +430,8 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
     const now = priceAt(p.sym, w.to);
     close(i, now && p.px ? (p.short ? (1 - now / p.px) * 100 : (now / p.px - 1) * 100) : 0, w.to);
   }
-  if (cash < RULES.stake) broke = true;
-  return { end: cash, profit: cash - RULES.start, tax, trades: taken, wins, low: Math.min(low, cash), broke };
+  if (cash < RULES.stake + RULES.fee) broke = true;
+  return { end: cash, profit: cash - RULES.start, tax, fees, trades: taken, wins, low: Math.min(low, cash), broke };
 }
 
 /**
@@ -445,10 +452,11 @@ export function benchmarkRun(etf: Candle[], w: Window): RunResult {
   };
   const a = at(w.from);
   const b = at(w.to);
-  const g = RULES.start * (b / a - 1) - RULES.start * RULES.fee * 2;
+  const inv = RULES.start - RULES.fee;
+  const g = inv * (b / a - 1);
   const tax = Math.max(0, g) * RULES.tax;
-  const end = RULES.start + g - tax;
-  return { end, profit: end - RULES.start, tax, trades: 1, wins: g > 0 ? 1 : 0, low: Math.min(RULES.start, end), broke: false };
+  const end = inv + g - RULES.fee - tax;
+  return { end, profit: end - RULES.start, tax, fees: 2 * RULES.fee, trades: 1, wins: g > 2 * RULES.fee ? 1 : 0, low: Math.min(RULES.start, end), broke: false };
 }
 
 /** 50 Zeiträume à 5 Jahre (gleichmäßig verteilte Startzeitpunkte) mit ihrer Marktlage. */
@@ -490,6 +498,8 @@ export interface ContestantResult {
   avgEnd: number;
   avgProfit: number;
   avgTax: number;
+  /** Ø bezahlte Gebühren */
+  avgFees?: number;
   avgTrades: number;
   /** Ø Rendite pro Jahr (nach Gebühren und KESt) */
   avgPerYear: number;
@@ -522,6 +532,7 @@ export function summarizeRuns(id: string, name: string, desc: string, runs: { w:
     avgEnd: mean(runs.map((x) => x.r.end)),
     avgProfit: mean(runs.map((x) => x.r.profit)),
     avgTax: mean(runs.map((x) => x.r.tax)),
+    avgFees: mean(runs.map((x) => x.r.fees ?? 0)),
     avgTrades: mean(runs.map((x) => x.r.trades)),
     avgPerYear: mean(py),
     worstPerYear: py.length ? Math.min(...py) : 0,

@@ -2,6 +2,7 @@
 // Chancen-Scanner (geteilt von Übersicht, Chancen und Watchlist): Blacktrader rechnet die Zeiträume im Hintergrund
 // und wählt GENAU EINEN aktuellen Einstieg pro Wert (blau / grün / rot / gelb). Shorts nur bei bärischem Gesamtmarkt, Aktien und Krypto ohne
 // kurzfristige Signale, Rohstoffe kurzfristig nur bei bullischem Gesamtmarkt (S&P 500).
+import { basePotential, MIN_POTENTIAL, type PotentialColor } from "../analysis/potential";
 import { effectiveWeights, learnedParams, refreshTrainerParams } from "./trainerParams";
 import { useSyncExternalStore } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
@@ -244,17 +245,11 @@ export function bestDistance(e: ScanEntry): number {
 export const isChance = (e: ScanEntry) => inMarket(e.asset);
 
 /**
- * Gemessene Stärke je Signalart im Turnier (Ø Rendite pro Jahr, relativ zu Grün = 1):
- * Grün +22,7 %, Blau +5,8 %, Rot (nur bei bärischem Markt) schwächer – so steht nicht automatisch das höchste Ziel oben.
- */
-const COLOR_WEIGHT = { gruen: 1, blau: 0.35, rot: 0.6 } as const;
-
-/**
  * Potenzial eines Einstiegs (für die Rangliste der Chancen):
  * Chance bis zum Ziel in % (gedeckelt bei 60 %, damit „Mondziele“ nicht alles verdrängen), gewichtet mit
  * Chance/Risiko (gedeckelt bei 4), Signalstärke, Nähe zur Zone und der im Turnier gemessenen Stärke der Signalart.
  */
-export function potential(e: ScanEntry): { score: number; chancePct: number; riskPct: number } | null {
+export function potential(e: ScanEntry): { score: number; base: number; chancePct: number; riskPct: number } | null {
   const b = e.best;
   if (b.color === "gelb" || b.zoneTop == null || b.zoneBottom == null || !b.targets?.length) return null;
   const short = b.color === "rot";
@@ -263,12 +258,11 @@ export function potential(e: ScanEntry): { score: number; chancePct: number; ris
   if (!entry || limit == null) return null;
   const chancePct = (Math.abs(b.targets[0] - entry) / entry) * 100;
   const riskPct = Math.max(0.5, (Math.abs(entry - limit) / entry) * 100);
-  const crv = Math.min(4, chancePct / riskPct);
   const strength = b.res ? (b.res.plan?.direction === "short" ? 100 - b.res.total : b.res.total) : 55;
   const dist = bestDistance(e);
   const near = dist === 0 ? 1 : Math.max(0.25, 1 - dist / 15);
-  const weight = COLOR_WEIGHT[b.color as keyof typeof COLOR_WEIGHT] ?? 1;
-  return { score: Math.min(60, chancePct) * (crv / 2) * (strength / 60) * near * weight, chancePct, riskPct };
+  const base = basePotential(chancePct, riskPct, b.color as PotentialColor);
+  return { score: base * (strength / 60) * near, base, chancePct, riskPct };
 }
 
 /**
@@ -277,6 +271,7 @@ export function potential(e: ScanEntry): { score: number; chancePct: number; ris
  *    Im Turnier geprüft: „Chance ≥ 15 %“ +22,0 % statt +21,8 % pro Jahr. Ein Stop-Limit (≤ 25 %) schadete stark
  *    (+6,8 %) – die besten Trades sind große Wellen mit weitem Stop –, darum gibt es keins.
  *  Blau: Kurs schon im Bereich, Ungültig-Grenze höchstens 40 % entfernt, Chance mindestens 40 %.
+ *  Alle: Potenzial-Grundwert mindestens MIN_POTENTIAL (obere Hälfte, siehe analysis/potential.ts) – wie im Turnier.
  */
 export const CHANCE_RULES = {
   trade: { maxDistancePct: 8 },
@@ -287,7 +282,7 @@ export const CHANCE_RULES = {
 /** Erfüllt der Einstieg die Mindestanforderungen für die Chancen? */
 export function isTopChance(e: ScanEntry): boolean {
   const p = potential(e);
-  if (!p || p.chancePct < CHANCE_RULES.minChancePct) return false;
+  if (!p || p.chancePct < CHANCE_RULES.minChancePct || p.base < MIN_POTENTIAL) return false;
   const b = e.best;
   const d = bestDistance(e);
   if (b.color === "blau") return d === 0 && p.riskPct <= CHANCE_RULES.blau.maxRiskPct && p.chancePct >= CHANCE_RULES.blau.minChancePct;

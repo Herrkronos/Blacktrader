@@ -170,15 +170,29 @@ describe("Chancen: nur die mit der höchsten Chance (höchstens 20, gern weniger
   it("weit weg von der Zone oder zu wenig Chance → nicht dabei; weiter Stop ist erlaubt (im Turnier besser)", async () => {
     const { isTopChance } = await import("../src/lib/client/scanner");
     expect(isTopChance(green(60, 85, 130))).toBe(false); // Kurs 23 % über der Zone
-    expect(isTopChance(green(60, 60))).toBe(true); // Stop 40 % entfernt – erlaubt
+    const far = (target: number) => entry({ color: "gruen", zoneTop: 100, zoneBottom: 95, stop: 60, targets: [target], res: { total: 60, plan: { direction: "long" }, decision: { level: "buy" } } as never }, 100);
+    expect(isTopChance(far(200))).toBe(true); // Stop 40 % entfernt – erlaubt, wenn das Potenzial reicht
+    expect(isTopChance(far(140))).toBe(false); // gleicher Stop, aber nur Chance 40 % → untere Hälfte nach Potenzial
     const small = entry({ color: "gruen", zoneTop: 100, zoneBottom: 95, stop: 90, targets: [110], res: { total: 60, plan: { direction: "long" }, decision: { level: "buy" } } as never }, 100);
     expect(isTopChance(small)).toBe(false); // Chance nur 10 %
   });
   it("Blau nur im Bereich und mit begrenzter Ungültig-Grenze", async () => {
     const { isTopChance } = await import("../src/lib/client/scanner");
     const blue = (inv: number, price: number) => entry({ color: "blau", zoneTop: 100, zoneBottom: 80, invalidation: inv, targets: [160] }, price);
-    expect(isTopChance(blue(70, 95))).toBe(true);
+    expect(isTopChance(blue(80, 95))).toBe(true);
+    expect(isTopChance(blue(70, 95))).toBe(false); // Potenzial zu klein (Chance 60 %, Risiko 30 %)
     expect(isTopChance(blue(20, 95))).toBe(false); // Ungültig 80 % entfernt
-    expect(isTopChance(blue(70, 110))).toBe(false); // noch nicht im Bereich
+    expect(isTopChance(blue(80, 110))).toBe(false); // noch nicht im Bereich
+  });
+});
+
+describe("Potenzial (gleich in Chancen, Turnier und Training)", () => {
+  it("Grundwert: Chance (max. 60) × Chance/Risiko (max. 4) / 2 × Signalart", async () => {
+    const { basePotential, MIN_POTENTIAL } = await import("../src/lib/analysis/potential");
+    expect(basePotential(40, 10, "gruen")).toBeCloseTo(80, 6);
+    expect(basePotential(100, 10, "gruen")).toBeCloseTo(120, 6);
+    expect(basePotential(40, 10, "blau")).toBeCloseTo(28, 6);
+    expect(basePotential(undefined, 10, "gruen")).toBe(0);
+    expect(MIN_POTENTIAL).toBe(26);
   });
 });

@@ -33,17 +33,18 @@ describe("Turnier: Regeln", () => {
     expect(r.trades).toBe(0);
   });
   it("KESt sofort bei jedem Gewinn: 100 € → 110 € ergibt 2,75 € KESt", () => {
-    // 500 € Einsatz, +10 %: 50 € Gewinn − 1 € Gebühr = 49 € → KESt 13,475 €
+    // 500 € Einsatz, +10 %: 50 € Kursgewinn → KESt 13,75 € (Spesen sind in Österreich nicht abzugsfähig)
     const r = runWindow([T("A", 10, 40, 10)], W(1_500_000_000), flat);
-    expect(r.tax).toBeCloseTo(49 * 0.275, 6);
+    expect(r.tax).toBeCloseTo(50 * 0.275, 6);
     expect(10 * 0.275).toBeCloseTo(2.75, 6);
   });
-  it("Gewinn wird nach Gebühren und 27,5 % KESt gerechnet", () => {
-    // ein Trade +10 % auf 500 €: 50 € Gewinn − 1 € Gebühr = 49 €, davon 27,5 % KESt
+  it("Gewinn wird nach 7,90 € Gebühr je Order und 27,5 % KESt gerechnet", () => {
+    // ein Trade +10 % auf 500 €: 50 € Gewinn, 2 × 7,90 € Gebühr, 13,75 € KESt
     const r = runWindow([T("A", 10, 40, 10)], W(1_500_000_000), flat);
     expect(r.trades).toBe(1);
-    expect(r.tax).toBeCloseTo(49 * 0.275, 6);
-    expect(r.profit).toBeCloseTo(49 * 0.725, 6);
+    expect(r.fees).toBeCloseTo(15.8, 6);
+    expect(r.tax).toBeCloseTo(50 * 0.275, 6);
+    expect(r.profit).toBeCloseTo(50 - 15.8 - 50 * 0.275, 6);
   });
   it("Verlust im selben Jahr holt bezahlte KESt zurück (Verlustausgleich), nicht über das Jahr hinaus", () => {
     const start = Date.UTC(2018, 0, 2) / 1000;
@@ -52,11 +53,11 @@ describe("Turnier: Regeln", () => {
     // Gewinn im Februar, Verlust im März desselben Jahres → KESt zurück
     expect(runWindow([t("A", 10, 40, 10), t("B", 50, 80, -10)], W(start), flat).tax).toBeCloseTo(0, 6);
     // Gewinn 2018, Verlust 2019 → keine Rückzahlung
-    expect(runWindow([t("A", 10, 40, 10), t("B", 400, 430, -10)], W(start), flat).tax).toBeCloseTo(49 * 0.275, 6);
+    expect(runWindow([t("A", 10, 40, 10), t("B", 400, 430, -10)], W(start), flat).tax).toBeCloseTo(50 * 0.275, 6);
   });
-  it("nur 500 € je Trade und nur mit genug Geld: höchstens 10 Trades gleichzeitig", () => {
+  it("nur 500 € je Trade (+ 7,90 € Gebühr) und nur mit genug Geld: höchstens 9 Trades gleichzeitig", () => {
     const many = Array.from({ length: 15 }, (_, i) => T(`S${i}`, 10, 100, 1));
-    expect(runWindow(many, W(1_500_000_000), flat).trades).toBe(10);
+    expect(runWindow(many, W(1_500_000_000), flat).trades).toBe(9);
   });
   it("wer kein Geld mehr hat, scheidet aus", () => {
     const crash = Array.from({ length: 30 }, (_, i) => T(`S${i % 10}`, 10 + i * 40, 30 + i * 40, -95));
@@ -64,7 +65,7 @@ describe("Turnier: Regeln", () => {
   });
   it("offene Positionen werden am Ende zum Tageskurs bewertet", () => {
     const r = runWindow([T("A", 10, 5000, 50)], W(1_500_000_000), () => 120);
-    expect(r.end).toBeCloseTo(5000 + (100 - 1) * 0.725, 6);
+    expect(r.end).toBeCloseTo(5000 + 100 - 15.8 - 100 * 0.275, 6);
   });
   it("50 Zeiträume à 5 Jahre mit Marktlage", () => {
     const spx = series(15 * 252, 3, 0.0004);
@@ -115,11 +116,11 @@ describe("Vergleich: echter ETF", () => {
     const d = 86400;
     const etf = [0, 1, 2, 3].map((i) => ({ time: i * 100 * d, open: 100 + i * 10, high: 100 + i * 10, low: 100 + i * 10, close: 100 + i * 10, volume: 0 }));
     const up = benchmarkRun(etf, { from: 0, to: 300 * d, scenario: "bullisch" });
-    const g = RULES.start * 0.3 - RULES.start * RULES.fee * 2;
-    expect(up.end).toBeCloseTo(RULES.start + g * (1 - RULES.tax), 6);
+    const inv = RULES.start - RULES.fee;
+    expect(up.end).toBeCloseTo(inv + inv * 0.3 * (1 - RULES.tax) - RULES.fee, 6);
     expect(up.broke).toBe(false);
     const down = benchmarkRun([...etf].reverse().map((c, i) => ({ ...c, time: i * 100 * d })), { from: 0, to: 300 * d, scenario: "baerisch" });
     expect(down.tax).toBe(0);
-    expect(down.end).toBeCloseTo(RULES.start * (100 / 130) - RULES.start * RULES.fee * 2, 6);
+    expect(down.end).toBeCloseTo((RULES.start - RULES.fee) * (100 / 130) - RULES.fee, 6);
   });
 });
