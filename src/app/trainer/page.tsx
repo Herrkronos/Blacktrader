@@ -308,7 +308,7 @@ export default function TrainerPage() {
               ))}
             </div>
           )}
-          {latest.note && <p className="text-[12px] text-stone-500">{latest.note} Spanne = schlechteste bis beste 10 % der Durchgänge. Ergebnisse aus der Vergangenheit sind keine Garantie.</p>}
+          {latest.note && <p className="text-[12px] text-stone-500">{latest.note} Durchschnitt der Versuche. Ergebnisse aus der Vergangenheit sind keine Garantie.</p>}
           {t.reports.length > 1 && (
             <div>
               <button className="flex min-h-[44px] w-full items-center justify-between text-[14px] text-stone-300" onClick={() => setOlder(!older)} aria-expanded={older}>
