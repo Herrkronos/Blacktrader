@@ -15,7 +15,15 @@ export interface MiniLongTerm {
   target: number;
 }
 
-export function MiniChart({ candles, plan, best, height = 92, showWaves = true, longterm }: { candles: Candle[]; plan?: TradePlan | null; best?: WaveCount; height?: number; showWaves?: boolean; longterm?: MiniLongTerm | null }) {
+/** Alter Einstieg (grau) mit Zeitraum */
+export interface MiniPast {
+  from: number;
+  to?: number;
+  zoneTop?: number;
+  zoneBottom?: number;
+}
+
+export function MiniChart({ candles, plan, best, height = 92, showWaves = true, longterm, past = [] }: { candles: Candle[]; plan?: TradePlan | null; best?: WaveCount; height?: number; showWaves?: boolean; longterm?: MiniLongTerm | null; past?: MiniPast[] }) {
   const data = candles.slice(longterm ? -150 : -90);
   if (data.length < 5) return <div style={{ height }} className="rounded-xl bg-white/5" />;
   const W = 320;
@@ -24,6 +32,9 @@ export function MiniChart({ candles, plan, best, height = 92, showWaves = true, 
   const levels = [...data.map((c) => c.high), ...data.map((c) => c.low)];
   if (plan) levels.push(plan.stop, plan.targets[0], plan.zoneStart ?? plan.entry, plan.zoneEnd ?? plan.entry);
   if (longterm) levels.push(longterm.invalidation, longterm.zoneBottom, longterm.target);
+  const t00 = data[0].time;
+  const greys = past.filter((p) => p.zoneTop != null && p.zoneBottom != null && (p.to ?? Infinity) >= t00);
+  for (const g of greys) levels.push(g.zoneTop!, g.zoneBottom!);
   const lo = Math.min(...levels);
   const hi = Math.max(...levels);
   const y = (p: number) => pad + (1 - (p - lo) / (hi - lo || 1)) * (H - 2 * pad);
@@ -38,6 +49,11 @@ export function MiniChart({ candles, plan, best, height = 92, showWaves = true, 
   const lastX = x(data.length - 1);
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }} role="img" aria-label="Mini-Chart mit Zonen">
+      {greys.map((g, i) => {
+        const x1 = Math.max(0, xt(Math.max(g.from, t0)));
+        const x2 = Math.min(W, g.to ? xt(g.to) : W);
+        return <rect key={i} x={x1} width={Math.max(3, x2 - x1)} y={y(g.zoneTop!)} height={Math.max(3, y(g.zoneBottom!) - y(g.zoneTop!))} fill="rgba(168,162,158,0.18)" stroke="rgba(168,162,158,0.5)" strokeWidth="1" strokeDasharray="3 2" rx="2" />;
+      })}
       {plan && (
         <>
           <rect x={lastX - 70} width={W - lastX + 70} y={Math.min(y(plan.zoneStart ?? plan.entry), y(plan.zoneEnd ?? plan.entry)) - 1} height={Math.max(3, Math.abs(y(plan.zoneStart ?? plan.entry) - y(plan.zoneEnd ?? plan.entry)) + 2)} fill="rgba(201,162,74,0.28)" rx="2" />

@@ -1,5 +1,5 @@
 "use client";
-// EchoChart: Hätte der Analyst früher richtig gelegen? Einfach gehalten – eine große Zahl, ein Bild, Details zum Aufklappen.
+// EchoChart: Hätte Blacktrader früher richtig gelegen? Einfach gehalten – eine große Zahl, ein Bild, Details zum Aufklappen.
 import { useMemo, useState } from "react";
 import { ZoneHistoryChart } from "@/components/ZoneHistoryChart";
 import { HorizonToggle } from "@/components/ui";
@@ -64,7 +64,7 @@ export default function EchoChartPage() {
     for (const [i, a] of targets.entries()) {
       const step = (p: number, what: string) => setProgress({ label: targets.length > 1 ? `${a.name} (${i + 1} von ${targets.length}) – ${what}` : what, p: (i + p) / targets.length });
       try {
-        // Vorlauf automatisch dazuladen: der Analyst braucht ca. 200 Kerzen, um die Wellen zu zählen.
+        // Vorlauf automatisch dazuladen: Blacktrader braucht ca. 200 Kerzen, um die Wellen zu zählen.
         // Gezählt werden danach nur Zonen im gewählten Zeitraum.
         const periodStart = Date.now() / 1000 - days * 86400;
         let loadDays = days + Math.ceil((220 * INTERVAL_SECONDS[interval]) / 86400);
@@ -78,9 +78,9 @@ export default function EchoChartPage() {
         const candles = await loadHistory(pl, interval, loadDays, (p) => step(p * 0.3, "Kurse laden"));
         if (candles.length < 200)
           throw new Error(
-            `Zu kurze Kursgeschichte: ${a.name} hat für „${HORIZON_LABEL[horizon]}“ erst ${candles.length} Kerzen, der Analyst braucht etwa 200, um die Wellen zu zählen. Tipp: einen kürzeren Zeitraum wählen (z. B. Mittelfristig).`,
+            `Zu kurze Kursgeschichte: ${a.name} hat für „${HORIZON_LABEL[horizon]}“ erst ${candles.length} Kerzen, Blacktrader braucht etwa 200, um die Wellen zu zählen. Tipp: einen kürzeren Zeitraum wählen (z. B. Mittelfristig).`,
           );
-        const r = await runEcho(candles, { kind: a.kind, horizon, interval, params: learnedParams(a.kind, horizon) }, (p) => step(0.3 + p * 0.7, "Analyst spielt die Vergangenheit durch"));
+        const r = await runEcho(candles, { kind: a.kind, horizon, interval, params: learnedParams(a.kind, horizon) }, (p) => step(0.3 + p * 0.7, "Blacktrader spielt die Vergangenheit durch"));
         const t = r.trades.trades.filter((x) => x.entryTime >= periodStart);
         out.push({
           asset: a,
@@ -113,7 +113,7 @@ export default function EchoChartPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-[22px] text-gold">EchoChart</h1>
-        <p className="text-[15px] text-stone-300">Hätte der Analyst früher richtig gelegen? Wähle einen Wert oder eine ganze Gruppe.</p>
+        <p className="text-[15px] text-stone-300">Hätte Blacktrader früher richtig gelegen? Wähle einen Wert oder eine ganze Gruppe.</p>
       </div>
 
       <section className="card space-y-3 p-4">
@@ -258,7 +258,7 @@ export default function EchoChartPage() {
           <details className="text-[13px] text-stone-400">
             <summary className="cursor-pointer">Wie wird gezählt?</summary>
             <p className="mt-1">
-              Wie bei HKCM: Eine Zone hat gehalten, wenn der Kurs hineinläuft, vor der Unterkante dreht und oben wieder herausläuft (bei Short umgekehrt). Fällt er vorher unter die Unterkante, ist sie gescheitert. Zonen, die der Kurs nie erreicht hat, zählen nicht. Der Analyst kennt dabei immer nur die Kurse bis zum jeweiligen Tag. Gute Ergebnisse von früher sind keine Garantie für die Zukunft.
+              Wie bei HKCM: Eine Zone hat gehalten, wenn der Kurs hineinläuft, vor der Unterkante dreht und oben wieder herausläuft (bei Short umgekehrt). Fällt er vorher unter die Unterkante, ist sie gescheitert. Zonen, die der Kurs nie erreicht hat, zählen nicht. Blacktrader kennt dabei immer nur die Kurse bis zum jeweiligen Tag. Gute Ergebnisse von früher sind keine Garantie für die Zukunft.
             </p>
           </details>
         </section>

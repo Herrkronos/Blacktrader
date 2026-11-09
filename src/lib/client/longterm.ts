@@ -1,6 +1,6 @@
 "use client";
 // Langfrist-Positionen (blau) als Papier-Trades: Einstieg in drei Teilen, kein fester Stop.
-// Teilausstieg / Stop / Ausstieg NUR, wenn der Analyst eine geänderte Zählung meldet (assessLongTerm).
+// Teilausstieg / Stop / Ausstieg NUR, wenn Blacktrader eine geänderte Zählung meldet (assessLongTerm).
 import { analyzeElliott } from "../analysis/elliott";
 import { assessLongTerm, blendedReturn, type LongTermAction, type LongTermZone } from "../analysis/longterm";
 import { fmtPrice } from "../analysis/persona";
@@ -44,7 +44,7 @@ export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizo
     remaining: 1,
     source: "manual",
   });
-  actions.addWatch(asset as ResolvedAsset); // überwachen, damit der Analyst Meldungen geben kann
+  actions.addWatch(asset as ResolvedAsset); // überwachen, damit Blacktrader Meldungen geben kann
   return true;
 }
 
@@ -90,7 +90,7 @@ export function closeLongTerm(t: Trade, price: number, reason: Trade["closeReaso
   actions.updateTrade(t.id, { status: "closed", exit: price, closedAt: Date.now(), closeReason: reason, returnPct: blendedReturn(entry, t.partials ?? [], price), lastPrice: price, remaining: 0 });
 }
 
-/** Meldung des Analysten auf die Position anwenden (Papier-Trade folgt der Meldung). */
+/** Meldung von Blacktrader auf die Position anwenden (Papier-Trade folgt der Meldung). */
 export function applyLongTermAction(t: Trade, a: LongTermAction, price: number): string {
   const filled = filledTranches(t).length;
   const base = { lastActionKey: a.key, lastActionText: a.reason };

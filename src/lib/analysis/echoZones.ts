@@ -1,4 +1,4 @@
-// EchoChart: Wie haben die Zonen des Analysten in der Vergangenheit gehalten? (gezählt wie HKCM)
+// EchoChart: Wie haben die Zonen von Blacktrader in der Vergangenheit gehalten? (gezählt wie HKCM)
 // Jede Zone wird nur mit Kerzen bis zu ihrem Entstehen gefunden und danach mit den folgenden Kerzen bewertet.
 import type { Candle, Horizon, Interval, AssetKind } from "../types";
 import type { BacktestResult } from "./backtest";

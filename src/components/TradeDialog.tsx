@@ -60,7 +60,7 @@ export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; anal
                 Wartende Order: Der Trade startet erst, wenn der Kurs {fmtPrice(plan.entry)} erreicht. Läuft der Kurs vorher über {fmtPrice(plan.cancelAbove ?? plan.entry)} oder passiert 60 Kerzen lang nichts, verfällt sie.
               </p>
             )}
-            <p className="mt-3 text-[13px] text-stone-500">Einstieg, Stop und Ziele sind vom Analysten festgelegt und werden unverändert übernommen.</p>
+            <p className="mt-3 text-[13px] text-stone-500">Einstieg, Stop und Ziele sind von Blacktrader festgelegt und werden unverändert übernommen.</p>
           </>
         )}
         {err && <p className="mt-2 text-sm text-red-400">{err}</p>}

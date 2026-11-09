@@ -1,19 +1,25 @@
 "use client";
+// Watchlist: je Wert der EINE aktuelle Einstieg von Blacktrader (blau / grün / gelb = abwarten).
+import { useEffect } from "react";
 import { AddAsset } from "@/components/AddAsset";
-import { AssetCard, type HorizonView } from "@/components/AssetCard";
+import { AssetCard } from "@/components/AssetCard";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { Legend } from "@/components/Legend";
-import { instrumentKey, itemHorizon, useMarket } from "@/lib/client/market";
-import { useScan } from "@/lib/client/scanner";
+import { instrumentKey, useMarket } from "@/lib/client/market";
+import { runScan, useScan } from "@/lib/client/scanner";
 import { actions, useAppData } from "@/lib/store/store";
-import type { Horizon } from "@/lib/types";
 
 export default function WatchlistPage() {
   const watchlist = useAppData((d) => d.watchlist);
-  const global = useAppData((d) => d.settings.globalHorizon);
-  const { live, analyses } = useMarket();
+  const { live } = useMarket();
   const scan = useScan();
   const { open, sheet } = useAssetSheet();
+
+  // Neuer Wert in der Watchlist, der noch nicht berechnet ist → gleich neu rechnen
+  const missing = !scan.busy && scan.at != null && watchlist.some((w) => !scan.entries.some((e) => e.asset.kind === w.kind && e.asset.symbol === w.symbol));
+  useEffect(() => {
+    runScan(missing ? 0 : undefined);
+  }, [missing]);
 
   return (
     <div className="space-y-4">
@@ -29,23 +35,13 @@ export default function WatchlistPage() {
         </div>
       )}
       {watchlist.map((w) => {
-        const a = analyses[w.id];
         const lv = live[instrumentKey(w)];
-        const h: Horizon = a?.horizon ?? itemHorizon(w, global);
-        // Alle Zeiträume aus dem Chancen-Scan, der eigene Zeitraum mit Live-Analyse
         const entry = scan.entries.find((e) => e.asset.kind === w.kind && e.asset.symbol === w.symbol);
-        const views: Partial<Record<Horizon, HorizonView>> = {};
-        for (const [k, v] of Object.entries(entry?.horizons ?? {})) if (v) views[k as Horizon] = { res: v.res, candles: v.candles };
-        views[h] = { res: a?.result ?? null, candles: a?.candles ?? views[h]?.candles ?? [] };
         return (
           <AssetCard
             key={w.id}
             asset={w}
-            views={views}
-            longterm={entry?.longterm ?? a?.longterm}
-            ltCandles={entry?.longterm ? entry.ltCandles : a?.candles}
-            ltHorizon={entry?.longterm ? entry.ltHorizon : h}
-            initial={h}
+            entry={entry}
             price={lv?.price}
             changePct={lv?.changePct}
             status={lv?.status}

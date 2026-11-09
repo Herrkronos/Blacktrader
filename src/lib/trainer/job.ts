@@ -5,7 +5,7 @@ import type { AssetKind, Candle, Horizon } from "../types";
 import { applyProposal, emptyRecord, recordParams, type ApplyOutcome, type CellRecord, type Proposal } from "./cells";
 import { holdoutSeries, primaryRate } from "./engine";
 import { addHistory, addLog, toUnit, unitMetrics, type FinalJob, type TrainerState, type TrainJob, type UnitResult } from "./state";
-import { CELL_KEYS, universe, type CellKey, type SeriesSpec } from "./universe";
+import { ACTIVE_CELL_KEYS, CELL_KEYS, universe, type CellKey, type SeriesSpec } from "./universe";
 import { advanceWF, initWF, protocolOf, type ProtocolEntry, type WFResult, type WFState } from "./walkforward";
 
 export type Loader = (spec: SeriesSpec) => Promise<Candle[]>;
@@ -39,8 +39,8 @@ export const SERVER_CANDIDATES = 6;
 const pct = (x: number) => `${(x * 100).toFixed(1).replace(".", ",")} %`;
 
 export async function startTrainJob(s: TrainerState, cells: CellAccess, cell?: CellKey, uni: Universe = universe): Promise<TrainJob> {
-  const c = cell ?? CELL_KEYS[s.rotation % CELL_KEYS.length];
-  if (!cell) s.rotation = (s.rotation + 1) % CELL_KEYS.length;
+  const c = cell ?? ACTIVE_CELL_KEYS[s.rotation % ACTIVE_CELL_KEYS.length];
+  if (!cell) s.rotation = (s.rotation + 1) % ACTIVE_CELL_KEYS.length;
   const base = recordParams(await cells.get(c));
   const wf = initWF(c, uni(c), base, { maxSteps: 1, candidatesPerStep: SERVER_CANDIDATES, rotation: s.round * SERVER_CANDIDATES });
   s.round++;

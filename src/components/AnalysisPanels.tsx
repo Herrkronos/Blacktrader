@@ -16,18 +16,18 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
   const w = a.weights;
   const sum = w.elliott + w.fundamental + w.volume || 1;
   const expert = useAppData((d) => d.settings.expertMode);
+  // Blacktrader: nur Kauf-Einstiege – fallende Kurse bedeuten „abwarten“
+  const active = !!a.plan && a.decision.level !== "neutral";
+  const buy = active && a.plan!.direction === "long";
+  const falling = active && a.plan!.direction === "short";
   return (
-    <div className={`panel space-y-3 p-4 ${a.plan && a.decision.level !== "neutral" ? (a.plan.direction === "short" ? "sell-bg" : "trade-bg") : ""}`}>
+    <div className={`panel space-y-3 p-4 ${buy ? "trade-bg" : ""}`}>
       <div className="flex items-center justify-between">
         <span className="panel-title">
           Signal{" "}
-          {a.plan?.direction === "short" && a.decision.level !== "neutral" ? (
-            <span className="sell-tag ml-1 align-middle">Verkauf</span>
-          ) : (
-            <span className="trade-tag ml-1 align-middle">Kauf</span>
-          )}
+          {buy ? <span className="trade-tag ml-1 align-middle">Kauf</span> : <span className="badge-wait ml-1 align-middle">Abwarten</span>}
         </span>
-        <SignalBadge level={a.decision.level} />
+        {buy && <SignalBadge level={a.decision.level} />}
       </div>
       <div className="flex items-end gap-2">
         <span className="num font-display text-4xl text-gold-light">{a.total.toFixed(0)}</span>
@@ -41,7 +41,8 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
           Roh-Signal „{SIGNAL_LABEL[a.decision.rawLevel]}“ neutralisiert: {a.decision.vetoes.join("; ")}.
         </div>
       )}
-      {a.plan && (expert || a.decision.level !== "neutral") ? (
+      {falling && <p className="rounded-lg bg-amber-500/10 p-2 text-sm text-amber-100">Der Chart zeigt fallende Kurse – Blacktrader wartet, bis die Korrektur abgeschlossen ist und sich ein Kauf-Einstieg bildet.</p>}
+      {a.plan && (expert || buy) ? (
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
           <dt className="text-stone-400">Richtung</dt>
           <dd className={a.plan.direction === "long" ? "text-up" : "text-down"}>{a.plan.direction === "long" ? "Auf steigende Kurse" : "Auf fallende Kurse"}</dd>
@@ -67,9 +68,9 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
       ) : (
         <p className="text-sm text-stone-400">Aktuell kein Einstieg geplant.</p>
       )}
-      {a.plan && a.decision.level !== "neutral" ? (
+      {buy ? (
         <button className="btn-primary w-full" onClick={onTrade}>
-          {a.plan.orderType === "limit" ? "Order in die Zone legen (Papier-Trade)" : "Als Papier-Trade übernehmen"}
+          {a.plan!.orderType === "limit" ? "Order in die Zone legen (Papier-Trade)" : "Als Papier-Trade übernehmen"}
         </button>
       ) : (
         <p className="rounded-lg border border-stone-700 p-2 text-center text-xs text-stone-400">Kein Einstieg – kein Trade möglich.</p>

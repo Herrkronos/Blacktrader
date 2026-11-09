@@ -1,5 +1,5 @@
 // Service Worker: App-Shell offline verfügbar, API-Aufrufe immer frisch aus dem Netz.
-const CACHE = "bsh-shell-v5";
+const CACHE = "bsh-shell-v6";
 const SHELL = ["/", "/chancen", "/watchlist", "/journal", "/mehr", "/echochart", "/einstellungen", "/manifest.webmanifest", "/icon-192.png", "/background.webp", "/background.jpg"];
 
 self.addEventListener("install", (e) => {
@@ -36,7 +36,7 @@ self.addEventListener("push", (e) => {
     d = { title: "Black Ship", body: e.data ? e.data.text() : "" };
   }
   e.waitUntil(
-    self.registration.showNotification(d.title || "Black Ship Trading Analyst", {
+    self.registration.showNotification(d.title || "Blacktrader", {
       body: d.body || "",
       icon: "/icon-192.png",
       badge: "/icon-192.png",

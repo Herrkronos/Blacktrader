@@ -1,6 +1,8 @@
-# Black Ship Holding – Trading Analyst
+# Black Ship Holding – Blacktrader
 
 Web-App für Watchlist, Echtzeit-Überwachung und regelbasierte Analyse (Elliott-Wellen 60 %, Fundamental/News 20 %, Volumen/RSI 20 %) mit Papier-Trade-Journal und Backtest.
+Der Analyst heißt **Blacktrader**: Er rechnet die Zeiträume im Hintergrund und zeigt je Wert **genau einen Einstieg** – Blau (langfristig), Grün (Trade) oder Gelb (abwarten); alte Einstiege werden grau. Keine Shorts.
+Ausführliche Beschreibung: **[DOKUMENTATION.md](DOKUMENTATION.md)**.
 **Kein Login, keine Registrierung, keine Zahlungsmittel.** Alle Daten liegen lokal im Browser (localStorage) und lassen sich als JSON exportieren und importieren.
 
 > Keine Anlageberatung. Analysen können falsch sein. Handel auf eigenes Risiko.
@@ -45,7 +47,9 @@ src/lib/analysis/   reine, getestete Analyse-Module
   fundamental.ts    Kennzahlen-Score + News-Sentiment
   volume.ts         Volumen/RSI-Score
   score.ts          Gewichtung, Signalstufen, Trade-Plan, Veto („lieber kein Trade“)
-  persona.ts        regelbasierte Begründungstexte im Analysten-Stil
+  persona.ts        regelbasierte Begründungstexte im Stil von Blacktrader
+  bestEntry.ts      ein Einstieg pro Wert (Blau/Grün/Gelb), Marktlage, Sektor-Regel, Verlauf
+  promotion.ts      Hochstufung Grün → Blau, Stop nur nachziehen
   backtest.ts       EchoChart: Walk-Forward-Backtest ohne Blick in die Zukunft
 src/lib/data/       Server: Provider, Cache, Drosselung, Rate-Limit
 src/app/api/        Proxy-Routen (resolve, candles, quote, fundamentals, news, llm)

@@ -1,0 +1,218 @@
+// Blacktrader: EIN aktueller Einstieg pro Wert, berechnet aus den Zeiträumen im Hintergrund.
+//   BLAU  – langfristiger Einstieg (Kernposition / Langfrist-Bereich, Logik unverändert aus longterm.ts)
+//   GRÜN  – Trade auf steigende Kurse (bestehende Zonen-Analyse, unverändert)
+//   GELB  – momentan kein sauberer Einstieg (mit Hinweis, worauf gewartet wird)
+// Regeln aus dem Vergleich auf gesperrten Testdaten (siehe DOKUMENTATION.md):
+//   - keine Shorts; Aktien und Krypto ohne kurzfristige Signale; Rohstoffe kurzfristig nur bei bullischem Gesamtmarkt
+//   - Sektor-Regel: ist der Tech-Markt schwach (NASDAQ 100 unter der 200-Tage-Linie), keine grünen Tech-Trades
+//   - Rangfolge der Zeiträume je Anlageklasse nach gemessener Zonen-Quote
+import type { AssetKind, Candle, Horizon } from "../types";
+import { HORIZON_LABEL } from "../types";
+import type { AnalysisResult } from "./analyze";
+import type { LongTermZone } from "./longterm";
+import type { TradePlan } from "./score";
+
+export type EntryColor = "blau" | "gruen" | "gelb";
+
+export interface MarketContext {
+  /** Gesamtmarkt (S&P 500) bullisch: über der 200-Tage-Linie und +5 % in 100 Tagen */
+  spBull: boolean | null;
+  /** Tech-Markt schwach: NASDAQ 100 unter seiner 200-Tage-Linie */
+  techWeak: boolean | null;
+}
+
+export interface BestEntry {
+  color: EntryColor;
+  /** Kennung – ändert sich, wenn ein anderer Einstieg aktuell wird */
+  key: string;
+  horizon?: Horizon;
+  plan?: TradePlan | null;
+  lt?: LongTermZone | null;
+  res?: AnalysisResult | null;
+  zoneTop?: number;
+  zoneBottom?: number;
+  stop?: number;
+  targets?: number[];
+  invalidation?: number;
+  reason: string;
+  /** Bei Gelb: worauf gewartet wird */
+  waitFor?: string;
+}
+
+/** Tech-/Wachstumswerte für die Sektor-Regel */
+export const TECH_SYMBOLS = new Set(["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "GOOG", "META", "TSLA", "NFLX", "ADBE", "CRM", "ORCL", "INTC", "AMD", "CSCO", "SAP.DE", "AVGO", "QCOM", "PLTR", "SHOP", "TEAM", "MSTR", "ZS", "TTD", "^NDX"]);
+
+/** Rangfolge der Zeiträume je Klasse (gemessene Zonen-Quote, beste zuerst) */
+export const HORIZON_RANK: Record<AssetKind, Horizon[]> = {
+  stock: ["long", "medium"],
+  crypto: ["medium", "long"],
+  commodity: ["short", "long", "medium"],
+};
+
+/** Welche Zeiträume dürfen ein grünes Signal liefern? */
+export function allowedHorizons(kind: AssetKind, ctx: MarketContext): Horizon[] {
+  return HORIZON_RANK[kind].filter((h) => h !== "short" || (kind === "commodity" && ctx.spBull === true));
+}
+
+/** Marktlage aus Tageskerzen (nur Vergangenheit). */
+export function marketContext(spx: Candle[] | null | undefined, ndx: Candle[] | null | undefined): MarketContext {
+  const sma = (c: Candle[], i: number) => c.slice(i - 199, i + 1).reduce((s, x) => s + x.close, 0) / 200;
+  let spBull: boolean | null = null;
+  let techWeak: boolean | null = null;
+  if (spx && spx.length > 200) {
+    const i = spx.length - 1;
+    spBull = spx[i].close > sma(spx, i) && spx[i].close / spx[i - 100].close - 1 > 0.05;
+  }
+  if (ndx && ndx.length > 200) {
+    const i = ndx.length - 1;
+    techWeak = ndx[i].close < sma(ndx, i);
+  }
+  return { spBull, techWeak };
+}
+
+const zoneOf = (p: TradePlan) => ({ top: Math.max(p.zoneStart ?? p.entry, p.zoneEnd ?? p.entry), bottom: Math.min(p.zoneStart ?? p.entry, p.zoneEnd ?? p.entry) });
+
+export interface PickInput {
+  symbol: string;
+  kind: AssetKind;
+  views: Partial<Record<Horizon, AnalysisResult | null>>;
+  lt?: LongTermZone | null;
+  ctx: MarketContext;
+  /** Bereits erledigte oder ungültige Einstiege (Kennungen) – werden nicht erneut gezeigt */
+  done?: Set<string>;
+  fmt?: (n: number) => string;
+}
+
+/** Wählt GENAU EINEN aktuellen Einstieg pro Wert. */
+export function pickBestEntry(inp: PickInput): BestEntry {
+  const fmt = inp.fmt ?? ((n: number) => n.toFixed(2));
+  const done = inp.done ?? new Set<string>();
+  const lt = inp.lt && inp.lt.status !== "invalidiert" && !done.has(`blau:${inp.lt.key}`) ? inp.lt : null;
+  const blue = (): BestEntry => ({
+    color: "blau",
+    key: `blau:${lt!.key}`,
+    lt,
+    zoneTop: lt!.zoneTop,
+    zoneBottom: lt!.zoneBottom,
+    invalidation: lt!.invalidation,
+    targets: [...lt!.targets],
+    reason: `Langfristiger Einstieg in drei Teilen ${fmt(lt!.zoneTop)} – ${fmt(lt!.zoneBottom)}. Ungültig unter ${fmt(lt!.invalidation)}.`,
+  });
+
+  const sectorBlocked = inp.kind === "stock" && TECH_SYMBOLS.has(inp.symbol) && inp.ctx.techWeak === true;
+  const greens: BestEntry[] = [];
+  if (!sectorBlocked)
+    for (const h of allowedHorizons(inp.kind, inp.ctx)) {
+      const r = inp.views[h];
+      const p = r?.plan;
+      if (!r || !p || r.decision.level === "neutral" || p.direction !== "long") continue;
+      const z = zoneOf(p);
+      const key = `gruen:${h}:${z.top.toPrecision(6)}:${z.bottom.toPrecision(6)}`;
+      if (done.has(key)) continue;
+      greens.push({
+        color: "gruen",
+        key,
+        horizon: h,
+        plan: p,
+        res: r,
+        zoneTop: z.top,
+        zoneBottom: z.bottom,
+        stop: p.stop,
+        targets: p.targets,
+        invalidation: p.stop,
+        reason: `${HORIZON_LABEL[h]}: ${r.commentary.reason || r.commentary.summary}`,
+      });
+    }
+
+  if (lt && lt.status === "in-zone") return blue();
+  if (greens.length) return greens[0];
+  if (lt) return blue();
+
+  // GELB: worauf wartet Blacktrader?
+  let waitFor: string;
+  const anyShort = HORIZON_RANK[inp.kind].some((h) => inp.views[h]?.plan?.direction === "short" && inp.views[h]?.decision.level !== "neutral");
+  if (sectorBlocked) waitFor = "Der Tech-Markt ist schwach – Blacktrader wartet, bis der NASDAQ 100 wieder über seiner 200-Tage-Linie liegt.";
+  else if (anyShort) waitFor = "Der Chart zeigt fallende Kurse – Blacktrader wartet, bis die Korrektur abgeschlossen ist und sich ein Kauf-Einstieg bildet.";
+  else {
+    const r = HORIZON_RANK[inp.kind].map((h) => inp.views[h]).find((x) => x);
+    const b = r?.elliott.best;
+    const veto = r?.decision.vetoes?.[0];
+    waitFor = b ? `${b.phase}. Blacktrader wartet auf eine saubere Einstiegszone.` : veto ? `${veto} – Blacktrader wartet.` : "Kein sauberes Setup – Blacktrader wartet.";
+  }
+  return { color: "gelb", key: "gelb", reason: waitFor, waitFor };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Verlauf: erledigte, ungültige oder abgelöste Einstiege werden grau.
+
+export type PastStatus = "erledigt" | "ungültig" | "abgelöst";
+
+export interface HistEntry {
+  key: string;
+  color: EntryColor;
+  horizon?: Horizon;
+  zoneTop?: number;
+  zoneBottom?: number;
+  stop?: number;
+  target?: number;
+  invalidation?: number;
+  /** seit (Unix-Sekunden) */
+  from: number;
+  to?: number;
+  status?: PastStatus;
+  /** Kurs ist schon in die Zone eingetaucht */
+  touched?: boolean;
+}
+
+/**
+ * Prüft den laufenden Einstieg mit den Kerzen seit seinem Beginn:
+ * eingetaucht und oben wieder heraus → erledigt; unter Stop/Invalidierung → ungültig.
+ */
+export function entryStatus(e: HistEntry, candles: Candle[]): { status: PastStatus | null; touched: boolean; at?: number } {
+  if (e.color === "gelb" || e.zoneTop == null || e.zoneBottom == null) return { status: null, touched: false };
+  let touched = !!e.touched;
+  const floor = e.invalidation ?? e.stop;
+  for (const c of candles) {
+    if (c.time <= e.from) continue;
+    if (floor != null && c.close < floor) return { status: "ungültig", touched, at: c.time };
+    if (touched && c.close > e.zoneTop) return { status: "erledigt", touched, at: c.time }; // eingetaucht und oben wieder heraus
+    if (c.low <= e.zoneTop) touched = true;
+  }
+  return { status: null, touched };
+}
+
+/**
+ * Aktualisiert den Verlauf eines Werts: alter Einstieg → grau (mit Datum und Grund), neuer → aktuell.
+ * Gibt den neuen Verlauf zurück (höchstens `max` alte Einträge).
+ */
+export function updateHistory(h: { current?: HistEntry; past: HistEntry[] }, next: BestEntry, now: number, candles: Candle[] = [], max = 10): { current?: HistEntry; past: HistEntry[] } {
+  const past = [...h.past];
+  let cur = h.current;
+  // Läuft der aktuelle Einstieg noch? (erledigt/ungültig → grau)
+  if (cur && cur.color !== "gelb") {
+    const s = entryStatus(cur, candles);
+    cur = { ...cur, touched: s.touched };
+    if (s.status) {
+      past.unshift({ ...cur, status: s.status, to: s.at ?? now });
+      cur = undefined;
+    }
+  }
+  if (!cur || cur.key !== next.key) {
+    if (cur && cur.color !== "gelb") past.unshift({ ...cur, status: "abgelöst", to: now });
+    cur = {
+      key: next.key,
+      color: next.color,
+      horizon: next.horizon,
+      zoneTop: next.zoneTop,
+      zoneBottom: next.zoneBottom,
+      stop: next.stop,
+      target: next.targets?.[0],
+      invalidation: next.invalidation,
+      from: now,
+    };
+  }
+  return { current: cur, past: past.slice(0, max) };
+}
+
+/** Kennungen erledigter/ungültiger Einstiege (werden nicht erneut als aktuell gezeigt). */
+export const doneKeys = (h: { past: HistEntry[] }) => new Set(h.past.filter((p) => p.status === "erledigt" || p.status === "ungültig").map((p) => p.key));

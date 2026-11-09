@@ -1,49 +1,28 @@
 "use client";
-// Chancen: alle Werte (Watchlist + feste Liste) in allen Zeiträumen – Trade (grün), Short (rot), Langfristig (blau).
+// Chancen: alle Werte (Watchlist + feste Liste) – je Wert GENAU EIN Einstieg von Blacktrader: Blau (langfristig) oder Grün (Trade).
+// Gelb (kein Einstieg) erscheint nur in der Watchlist.
 import { useEffect, useMemo, useState } from "react";
-import { AssetCard, signalStrength, type HorizonView } from "@/components/AssetCard";
+import { AssetCard, signalStrength } from "@/components/AssetCard";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { Legend } from "@/components/Legend";
 import { ConfirmSheet } from "@/components/Sheet";
 import { haptic } from "@/lib/client/alerts";
 import { openPaperTrade } from "@/lib/client/autotrade";
-import { entryDistance, longTermDistance, entryKinds, runScan, useScan, type ScanEntry, type SignalKind } from "@/lib/client/scanner";
+import { bestDistance, runScan, useScan, type ScanEntry, type SignalKind } from "@/lib/client/scanner";
 import { SCAN_GROUPS } from "@/lib/client/presets";
 import { getData } from "@/lib/store/store";
-import type { AssetKind, Horizon } from "@/lib/types";
+import type { AssetKind } from "@/lib/types";
 
 type KindFilter = "all" | SignalKind;
 const KIND_FILTERS: { k: KindFilter; label: string; cls: string }[] = [
   { k: "all", label: "Alle", cls: "border-gold/60 text-gold-light" },
-  { k: "trade", label: "Trade", cls: "border-emerald-400/60 text-emerald-300" },
-  { k: "short", label: "Short", cls: "border-red-400/60 text-red-300" },
-  { k: "longterm", label: "Langfristig", cls: "border-sky-400/60 text-sky-300" },
+  { k: "blau", label: "Blau", cls: "border-sky-400/60 text-sky-300" },
+  { k: "gruen", label: "Grün", cls: "border-emerald-400/60 text-emerald-300" },
 ];
 
-function views(e: ScanEntry): Partial<Record<Horizon, HorizonView>> {
-  const v: Partial<Record<Horizon, HorizonView>> = {};
-  for (const [k, x] of Object.entries(e.horizons)) if (x) v[k as Horizon] = { res: x.res, candles: x.candles };
-  return v;
-}
-
-/**
- * Sortierung: Langfristig = im Bereich zuerst, dann nach Abstand zur Oberkante; sonst nach Signalstärke (höher = besser),
- * bei Gleichstand der näher am Einstieg liegende Wert.
- */
-function sortKey(e: ScanEntry, filter: KindFilter): [number, number] {
-  if (filter === "longterm") {
-    const z = e.longterm;
-    if (!z) return [1000, 0];
-    const price = e.horizons[e.ltHorizon ?? "long"]?.res.price ?? z.zoneTop;
-    return [longTermDistance(z, price), 0];
-  }
-  const active = Object.values(e.horizons).filter(
-    (h) => h && h.res.plan && h.res.decision.level !== "neutral" && (filter === "all" || (filter === "trade" ? h.res.plan.direction === "long" : h.res.plan.direction === "short")),
-  );
-  if (!active.length) return [1000, 0];
-  const best = Math.max(...active.map((h) => signalStrength(h!.res) ?? 0));
-  const dist = Math.min(...active.map((h) => entryDistance(h!.res)));
-  return [-best, dist];
+/** Sortierung: zuerst Werte, deren Kurs schon in der Zone liegt, dann nach Nähe; bei Gleichstand das stärkere Signal. */
+function sortKey(e: ScanEntry): [number, number] {
+  return [bestDistance(e), -(signalStrength(e.best.res) ?? 0)];
 }
 
 export default function ChancenPage() {
@@ -61,37 +40,33 @@ export default function ChancenPage() {
   const list = useMemo(
     () =>
       scan.entries
-        .filter((e) => (group === "all" || e.asset.kind === group) && entryKinds(e).length > 0 && (kind === "all" || entryKinds(e).includes(kind)))
+        .filter((e) => (group === "all" || e.asset.kind === group) && e.best.color !== "gelb" && (kind === "all" || e.best.color === kind))
         .sort((a, b) => {
-          const ka = sortKey(a, kind);
-          const kb = sortKey(b, kind);
+          const ka = sortKey(a);
+          const kb = sortKey(b);
           return ka[0] - kb[0] || ka[1] - kb[1];
         }),
     [scan.entries, kind, group],
   );
   const counts = useMemo(() => {
-    const c: Record<KindFilter, number> = { all: 0, trade: 0, short: 0, longterm: 0 };
+    const c: Record<KindFilter, number> = { all: 0, blau: 0, gruen: 0 };
     for (const e of scan.entries) {
       if (group !== "all" && e.asset.kind !== group) continue;
-      const ks = entryKinds(e);
-      if (ks.length) c.all++;
-      ks.forEach((k) => c[k]++);
+      if (e.best.color === "gelb") continue;
+      c.all++;
+      c[e.best.color]++;
     }
     return c;
   }, [scan.entries, group]);
 
-  const tradable = list.flatMap((e) =>
-    Object.values(e.horizons)
-      .filter((h) => h && h.res.plan && h.res.decision.level !== "neutral" && (kind === "all" || kind === "longterm" || (kind === "trade" ? h.res.plan.direction === "long" : h.res.plan.direction === "short")))
-      .map((h) => ({ asset: e.asset, res: h!.res })),
-  );
+  const tradable = list.filter((e) => e.best.color === "gruen" && e.best.res).map((e) => ({ asset: e.asset, res: e.best.res! }));
 
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-2">
         <div>
           <h1 className="text-[22px] text-gold">Chancen</h1>
-          <p className="text-[15px] text-stone-400">15 Aktien, 8 Krypto, 7 Rohstoffe und deine Watchlist – in allen Zeiträumen.</p>
+          <p className="text-[15px] text-stone-400">15 Aktien, 8 Krypto, 7 Rohstoffe und deine Watchlist – Blacktrader zeigt je Wert den besten Einstieg.</p>
         </div>
         <Legend />
       </div>
@@ -114,7 +89,7 @@ export default function ChancenPage() {
       {scan.busy && (
         <div className="card p-3">
           <div className="mb-1.5 flex justify-between text-[14px] text-stone-300">
-            <span>Analyst sucht Chancen …</span>
+            <span>Blacktrader sucht Chancen …</span>
             <span className="num">{Math.round(scan.progress * 100)} %</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
@@ -124,24 +99,12 @@ export default function ChancenPage() {
       )}
 
       {!scan.busy && scan.at && list.length === 0 && (
-        <div className="card p-5 text-center text-[15px] text-stone-300">Gerade keine passenden Einstiege. Lieber kein Trade als ein schwacher – die Suche läuft bei jedem Öffnen neu.</div>
+        <div className="card p-5 text-center text-[15px] text-stone-300">Gerade keine passenden Einstiege. Lieber kein Trade als ein schwacher – Blacktrader sucht bei jedem Öffnen neu.</div>
       )}
 
-      {list.slice(0, more).map((e) => {
-        const v = views(e);
-        const ltProps = { longterm: e.longterm, ltCandles: e.ltCandles, ltHorizon: e.ltHorizon };
-        if (kind === "longterm")
-          return <AssetCard key={`${e.asset.kind}:${e.asset.symbol}`} asset={e.asset} views={v} {...ltProps} initial={e.ltHorizon ?? "long"} focus="longterm" onOpen={(h) => open(e.asset, h)} />;
-        // Zeitraum mit dem stärksten passenden Signal zuerst zeigen
-        const initial = (["short", "medium", "long"] as Horizon[])
-          .filter((h) => {
-            const p = v[h]?.res?.plan;
-            if (!p || v[h]?.res?.decision.level === "neutral") return false;
-            return kind === "all" || (kind === "trade" ? p.direction === "long" : p.direction === "short");
-          })
-          .sort((x, y) => (signalStrength(v[y]?.res) ?? 0) - (signalStrength(v[x]?.res) ?? 0))[0];
-        return <AssetCard key={`${e.asset.kind}:${e.asset.symbol}`} asset={e.asset} views={v} {...ltProps} initial={initial ?? "medium"} onOpen={(h) => open(e.asset, h)} />;
-      })}
+      {list.slice(0, more).map((e) => (
+        <AssetCard key={`${e.asset.kind}:${e.asset.symbol}`} asset={e.asset} entry={e} onOpen={(h) => open(e.asset, h)} />
+      ))}
       {list.length > more && (
         <button className="btn w-full" onClick={() => setMore(more + 10)}>
           Weitere {Math.min(10, list.length - more)} anzeigen
@@ -152,7 +115,7 @@ export default function ChancenPage() {
         <button className="btn flex-1" onClick={() => runScan(0)} disabled={scan.busy}>
           Neu suchen
         </button>
-        {tradable.length > 0 && kind !== "longterm" && (
+        {tradable.length > 0 && kind !== "blau" && (
           <button className="btn flex-1" onClick={() => setConfirmAll(true)}>
             Alle als Papier-Trades
           </button>
@@ -161,6 +124,8 @@ export default function ChancenPage() {
       {scan.at && !scan.busy && (
         <p className="text-[13px] text-stone-500">
           Letzte Suche {new Date(scan.at).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} · {scan.checked} Prüfungen{scan.failed ? ` · ${scan.failed} ohne Daten` : ""}
+          {scan.ctx.spBull != null && ` · Gesamtmarkt ${scan.ctx.spBull ? "bullisch" : "nicht bullisch"}`}
+          {scan.ctx.techWeak && " · Tech-Markt schwach: keine grünen Tech-Trades"}
         </p>
       )}
 
@@ -176,7 +141,7 @@ export default function ChancenPage() {
         }}
         text={
           <p>
-            Es werden {tradable.length} Papier-Trades ins Journal übernommen (bereits laufende werden übersprungen). Einstieg, Stop und Ziele kommen unverändert vom Analysten.
+            Es werden {tradable.length} Papier-Trades ins Journal übernommen (bereits laufende werden übersprungen). Einstieg, Stop und Ziele kommen unverändert von Blacktrader.
           </p>
         }
       />

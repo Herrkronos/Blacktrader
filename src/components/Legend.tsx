@@ -12,23 +12,24 @@ export function Legend() {
       </button>
       {open && (
         <div className="card absolute right-0 top-full z-30 mt-1 w-72 space-y-2.5 p-4 text-[14px] text-stone-300">
+          <p className="text-stone-400">Blacktrader zeigt je Wert genau einen Einstieg:</p>
           <div className="flex items-center gap-2">
-            <span className="badge-trade">Trade</span> steigende Kurse, mit Stop und Ziel
+            <span className="badge-core">Langfristig</span> Blau: Einstieg in 3 Teilen, kein fester Stop
           </div>
           <div className="flex items-center gap-2">
-            <span className="badge-short">Short</span> fallende Kurse, mit Stop und Ziel
+            <span className="badge-trade">Trade</span> Grün: steigende Kurse, mit Stop und Ziel
           </div>
           <div className="flex items-center gap-2">
-            <span className="badge-core">Langfristig</span> Einstieg in 3 Teilen, kein fester Stop
+            <span className="badge-wait">Abwarten</span> Gelb: gerade kein sauberer Einstieg
           </div>
           <div className="flex items-center gap-2">
-            <span className="badge-wait">wartet</span> Einstieg erst in der Zone
+            <span className="badge-muted">Verlauf</span> Grau: alte Einstiege (erledigt, ungültig, abgelöst)
           </div>
           <div className="flex items-center gap-2">
             <span className="badge-risk">Hohes Risiko</span> Stop sehr weit entfernt
           </div>
           <p className="border-t border-white/10 pt-2 text-stone-400">
-            <b className="text-stone-200">Stärke 0–100:</b> je höher, desto stärker das Signal – für Kauf und Short gleich. Langfristige Einstiege haben keine Punkte und sind nach der Nähe zum Einstiegsbereich sortiert.
+            <b className="text-stone-200">Stärke 0–100</b> (nur grün): je höher, desto stärker das Signal. Ein grüner Trade wird blau, wenn der Wochenchart den Aufwärtstrend bestätigt – der Stop wird dann nur noch nachgezogen. Keine Shorts.
           </p>
         </div>
       )}

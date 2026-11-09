@@ -10,7 +10,7 @@ import type { WFResult } from "../trainer/walkforward";
 import type { Metrics } from "../trainer/engine";
 import { getData } from "../store/store";
 import type { CellOutcome, SessionState } from "../trainer/session";
-import { CELL_KEYS, type CellKey } from "../trainer/universe";
+import { ACTIVE_CELL_KEYS, CELL_KEYS, type CellKey } from "../trainer/universe";
 
 const KEY = "bsh-training-session";
 const MSG_KEY = "bsh-training-messages";
@@ -192,7 +192,7 @@ function spawn(state: SessionState) {
 }
 
 /** Neue Sitzung starten. */
-export async function startTraining(durationMs: number, cells: CellKey[] = [...CELL_KEYS]) {
+export async function startTraining(durationMs: number, cells: CellKey[] = [...ACTIVE_CELL_KEYS]) {
   if (view.running) return;
   await refreshTrainerParams(true);
   const { version, params } = trainerParamSet();

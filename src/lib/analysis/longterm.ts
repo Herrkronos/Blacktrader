@@ -3,7 +3,7 @@
 // Impulswelle im Aufwärtstrend) wird die Korrektur (Welle 2) im Bereich 61,8–88,6 % erwartet. Eingestiegen
 // wird in drei Teilen (Oberkante, Mitte, Unterkante). Es gibt zunächst KEINEN festen Stop – nur eine
 // Invalidierung (Schlusskurs unter dem Wellenstart). Teilausstieg und Stop gibt es nur, wenn sich die
-// Zählung ändert bzw. der Analyst das Alternativszenario für wahrscheinlicher hält.
+// Zählung ändert bzw. Blacktrader das Alternativszenario für wahrscheinlicher hält.
 import type { Candle } from "../types";
 import type { ElliottResult, WaveCount } from "./elliott";
 import { atr, exhaustionAt, rsi } from "./indicators";

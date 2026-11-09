@@ -1,9 +1,15 @@
 "use client";
-// Chancen-Scanner (geteilt von Übersicht und Chancen): je Wert alle drei Zeithorizonte + Langfristiger Einstieg.
+// Chancen-Scanner (geteilt von Übersicht, Chancen und Watchlist): Blacktrader rechnet die Zeiträume im Hintergrund
+// und wählt GENAU EINEN aktuellen Einstieg pro Wert (blau / grün / gelb). Keine Shorts, Aktien und Krypto ohne
+// kurzfristige Signale, Rohstoffe kurzfristig nur bei bullischem Gesamtmarkt (S&P 500).
 import { effectiveWeights, learnedParams, refreshTrainerParams } from "./trainerParams";
 import { useSyncExternalStore } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
 import { findLongTermZone, type LongTermZone } from "../analysis/longterm";
+import { HORIZON_RANK, marketContext, pickBestEntry, type BestEntry, type HistEntry, type MarketContext } from "../analysis/bestEntry";
+import { money } from "../analysis/persona";
+import { applyPromotions } from "./promote";
+import { assetKey, doneFor, getHistory, recordEntry, type EntryHistory } from "./entries";
 import { getData } from "../store/store";
 import type { Candle, Horizon, ResolvedAsset } from "../types";
 import { api } from "./api";
@@ -22,6 +28,10 @@ export interface ScanEntry {
   ltHorizon?: Horizon;
   /** Kerzen, auf denen der Bereich berechnet wurde (zum Einzeichnen) */
   ltCandles?: Candle[];
+  /** Der EINE aktuelle Einstieg (blau / grün / gelb) */
+  best: BestEntry;
+  /** Verlauf: aktueller + alte (graue) Einstiege */
+  history: EntryHistory;
 }
 
 export interface ScanState {
@@ -31,9 +41,11 @@ export interface ScanState {
   progress: number;
   checked: number;
   failed: number;
+  /** Marktlage (S&P 500 / NASDAQ 100) */
+  ctx: MarketContext;
 }
 
-let state: ScanState = { at: null, entries: [], busy: false, progress: 0, checked: 0, failed: 0 };
+let state: ScanState = { at: null, entries: [], busy: false, progress: 0, checked: 0, failed: 0, ctx: { spBull: null, techWeak: null } };
 const listeners = new Set<() => void>();
 const emit = (patch: Partial<ScanState>) => {
   state = { ...state, ...patch };
@@ -62,7 +74,10 @@ async function pool<T>(items: T[], limit: number, fn: (x: T) => Promise<void>) {
 
 export function scanAssets(): ResolvedAsset[] {
   const map = new Map<string, ResolvedAsset>();
-  for (const a of [...getData().watchlist, ...SCAN_PRESETS]) if (!map.has(`${a.kind}:${a.symbol}`)) map.set(`${a.kind}:${a.symbol}`, a);
+  const d = getData();
+  // Offene Trades mitrechnen (für Hochstufung und nachgezogenen Stop)
+  const fromTrades: ResolvedAsset[] = d.trades.filter((t) => t.status !== "closed").map((t) => ({ kind: t.kind, symbol: t.symbol, name: t.name, binanceSymbol: t.binanceSymbol, yahooSymbol: t.yahooSymbol }));
+  for (const a of [...d.watchlist, ...SCAN_PRESETS, ...fromTrades]) if (!map.has(`${a.kind}:${a.symbol}`)) map.set(`${a.kind}:${a.symbol}`, a);
   return [...map.values()];
 }
 
@@ -72,15 +87,18 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   if (state.at && Date.now() - state.at < maxAgeMs) return;
   const { settings } = getData();
   const assets = scanAssets();
-  const jobs = assets.flatMap((asset) => (["short", "medium", "long"] as Horizon[]).map((horizon) => ({ asset, horizon })));
-  const byAsset = new Map<string, ScanEntry>();
-  let done = 0;
-  let failed = 0;
   emit({ busy: true, progress: 0 });
   await Promise.race([refreshTrainerParams(), new Promise((r) => setTimeout(r, 3000))]);
+  const ctx = await fetchMarketContext();
+  // Nur die Zeiträume, die ein Signal liefern dürfen oder für den blauen Bereich gebraucht werden
+  const horizonsFor = (kind: ResolvedAsset["kind"]): Horizon[] => (["short", "medium", "long"] as Horizon[]).filter((h) => h !== "short" || (kind === "commodity" && ctx.spBull === true && HORIZON_RANK.commodity.includes("short")));
+  const jobs = assets.flatMap((asset) => horizonsFor(asset.kind).map((horizon) => ({ asset, horizon })));
+  const byAsset = new Map<string, Omit<ScanEntry, "best" | "history"> & { full: Partial<Record<Horizon, Candle[]>> }>();
+  let done = 0;
+  let failed = 0;
   await pool(jobs, 4, async ({ asset, horizon }) => {
-    const key = `${asset.kind}:${asset.symbol}`;
-    const entry = byAsset.get(key) ?? { asset, horizons: {}, longterm: null };
+    const key = assetKey(asset);
+    const entry = byAsset.get(key) ?? { asset, horizons: {}, longterm: null, full: {} };
     byAsset.set(key, entry);
     try {
       const interval = settings.intervals[horizon];
@@ -105,6 +123,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
         });
       }
       if (res) entry.horizons[horizon] = { res, candles: candles.slice(-150) };
+      entry.full[horizon] = candles;
       // Langfristiger Einstieg: auf dem langfristigen Zeitraum, sonst auf dem mittelfristigen
       if ((horizon === "long" || (horizon === "medium" && entry.ltHorizon !== "long")) && candles.length >= 150) {
         const z = findLongTermZone(candles);
@@ -120,14 +139,64 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
     done++;
     emit({ progress: done / jobs.length });
   });
-  emit({ busy: false, at: Date.now(), entries: [...byAsset.values()], checked: jobs.length, failed });
+  const entries: ScanEntry[] = [...byAsset.values()].map(({ full, ...e }) => {
+    const key = assetKey(e.asset);
+    const cur = e.asset.currency;
+    const candlesOf = (h?: HistEntry) => (!h ? [] : h.color === "blau" ? full[e.ltHorizon ?? "long"] ?? [] : h.horizon ? full[h.horizon] ?? [] : []);
+    const pick = () =>
+      pickBestEntry({
+        symbol: e.asset.symbol,
+        kind: e.asset.kind,
+        views: Object.fromEntries(Object.entries(e.horizons).map(([h, v]) => [h, v?.res ?? null])),
+        lt: e.longterm,
+        ctx,
+        done: doneFor(key),
+        fmt: (n) => money(n, cur),
+      });
+    let best = pick();
+    let history = recordEntry(key, best, candlesOf(getHistory(key).current));
+    // Ist der laufende Einstieg gerade erledigt/ungültig geworden, gleich den nächsten wählen
+    if (history.current && doneFor(key).has(history.current.key)) {
+      best = pick();
+      history = recordEntry(key, best, []);
+    }
+    return { ...e, best, history };
+  });
+  emit({ busy: false, at: Date.now(), entries, checked: jobs.length, failed, ctx });
+  try {
+    applyPromotions(entries);
+  } catch {
+    /* Hochstufung beim nächsten Durchlauf */
+  }
 }
 
-export type SignalKind = "trade" | "short" | "longterm";
+/** Marktlage aus den Tageskerzen von S&P 500 und NASDAQ 100 (nur Vergangenheit). */
+async function fetchMarketContext(): Promise<MarketContext> {
+  const idx = (yahooSymbol: string) => ({ kind: "stock" as const, symbol: yahooSymbol, name: yahooSymbol, yahooSymbol });
+  const [sp, nd] = await Promise.allSettled([api.candles(idx("^GSPC"), "1d", 15 * 60e3), api.candles(idx("^NDX"), "1d", 15 * 60e3)]);
+  return marketContext(sp.status === "fulfilled" ? sp.value.candles : null, nd.status === "fulfilled" ? nd.value.candles : null);
+}
+
+/** Signalart des aktuellen Einstiegs (Chancen-Filter: Alle · Blau · Grün) */
+export type SignalKind = "blau" | "gruen";
 
 /** Abstand vom Kurs bis zur Oberkante des Langfrist-Bereichs in % (0 = im Bereich) */
 export function longTermDistance(z: LongTermZone, price: number): number {
   return price <= z.zoneTop ? 0 : ((price - z.zoneTop) / price) * 100;
+}
+
+/** Abstand vom aktuellen Kurs bis zur Oberkante der Einstiegszone in % (0 = jetzt in der Zone) */
+export function bestDistance(e: ScanEntry): number {
+  const b = e.best;
+  const price = lastPrice(e);
+  if (b.zoneTop == null || price == null) return 1000;
+  return price <= b.zoneTop ? 0 : ((price - b.zoneTop) / price) * 100;
+}
+
+/** Letzter bekannter Kurs eines Eintrags */
+export function lastPrice(e: ScanEntry): number | undefined {
+  for (const h of ["short", "medium", "long"] as Horizon[]) if (e.horizons[h]) return e.horizons[h]!.res.price;
+  return e.ltCandles?.at(-1)?.close;
 }
 
 /** Abstand vom aktuellen Kurs bis zum Einstieg in % (0 = jetzt in der Zone) */
@@ -135,14 +204,4 @@ export function entryDistance(res: AnalysisResult): number {
   const p = res.plan;
   if (!p || p.orderType !== "limit") return 0;
   return (Math.abs(res.price - p.entry) / res.price) * 100;
-}
-
-/** Arten von Signalen, die ein Eintrag hat. */
-export function entryKinds(e: ScanEntry): SignalKind[] {
-  const out: SignalKind[] = [];
-  const active = Object.values(e.horizons).filter((h) => h && h.res.decision.level !== "neutral" && h.res.plan) as HorizonResult[];
-  if (active.some((h) => h.res.plan!.direction === "long")) out.push("trade");
-  if (active.some((h) => h.res.plan!.direction === "short")) out.push("short");
-  if (e.longterm && e.longterm.status !== "invalidiert") out.push("longterm");
-  return out;
 }

@@ -1,161 +1,125 @@
 "use client";
-// Analyse-Karte (Chancen, Watchlist, Übersicht):
-// Zeile 1 Name/Kurs · Zeile 2 Mini-Chart · Zeile 3 Einstieg/Stop/Ziel · Zeile 4 Score + Badge · max. 2 Buttons.
-import { useMemo, useRef, useState } from "react";
+// Analyse-Karte (Chancen, Watchlist): GENAU EIN aktueller Einstieg pro Wert – Blacktrader rechnet im Hintergrund.
+// Zeile 1 Name/Kurs · Zeile 2 Mini-Chart (alte Einstiege grau) · Zeile 3 Einstieg/Stop/Ziel · Grund · Verlauf · max. 2 Buttons.
+import { useState } from "react";
 import type { AnalysisResult } from "@/lib/analysis/analyze";
-import type { LongTermZone } from "@/lib/analysis/longterm";
+import type { BestEntry, HistEntry } from "@/lib/analysis/bestEntry";
 import { money } from "@/lib/analysis/persona";
 import { haptic } from "@/lib/client/alerts";
 import { hasOpenTrade, openPaperTrade } from "@/lib/client/autotrade";
 import { avgEntry, filledTranches, openLongTermTrade } from "@/lib/client/longterm";
 import type { LiveStatus } from "@/lib/client/market";
-import { actions, getData, useAppData } from "@/lib/store/store";
+import type { ScanEntry } from "@/lib/client/scanner";
+import { getData, useAppData } from "@/lib/store/store";
 import { HORIZON_LABEL, type Candle, type Horizon, type ResolvedAsset } from "@/lib/types";
 import { MiniChart } from "./MiniChart";
 import { waveCaption } from "./waveText";
 import { ConfirmSheet } from "./Sheet";
 import { StatusPill } from "./StatusPill";
 
-export interface HorizonView {
-  res: AnalysisResult | null;
-  candles: Candle[];
-}
-
-const HORIZONS: Horizon[] = ["short", "medium", "long"];
 const RISK_LIMIT = 15; // % Abstand Einstieg–Stop, ab dem "Hohes Risiko" angezeigt wird
 
 const pctStr = (a: number, b: number) => `${((Math.abs(b - a) / a) * 100).toFixed(1).replace(".", ",")} %`;
+const dateStr = (sec: number) => new Date(sec * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
 
-/**
- * Signalstärke 0–100 (nur Anzeige): je höher, desto stärker das Signal – für Kauf und Short gleich.
- * Kauf = Gesamtscore, Short = 100 − Gesamtscore (ein niedriger Score bedeutet ein starkes Short-Signal).
- */
+/** Signalstärke 0–100 (nur Anzeige, nur Kauf-Signale): Gesamtscore der Analyse. */
 export function signalStrength(res: AnalysisResult | null | undefined): number | null {
-  if (!res || !res.plan || res.decision.level === "neutral") return null;
-  return res.plan.direction === "long" ? res.total : 100 - res.total;
+  if (!res || !res.plan || res.decision.level === "neutral" || res.plan.direction !== "long") return null;
+  return res.total;
 }
 
-/** Erklärung, wenn die Zeiträume unterschiedliche Richtungen zeigen. */
-export function conflictText(views: Partial<Record<Horizon, HorizonView>>): string | null {
-  const dirs = HORIZONS.map((h) => {
-    const r = views[h]?.res;
-    return r && r.plan && r.decision.level !== "neutral" ? { h, dir: r.plan.direction } : null;
-  }).filter(Boolean) as { h: Horizon; dir: "long" | "short" }[];
-  if (!dirs.some((d) => d.dir === "long") || !dirs.some((d) => d.dir === "short")) return null;
-  const parts = dirs.map((d) => `${HORIZON_LABEL[d.h]} ${d.dir === "long" ? "Aufwärtstrend" : "Korrektur (fallend)"}`);
-  return `${parts.join(", ")}. Das ist kein Widerspruch: Kurze Rücksetzer gibt es oft auch in einem längeren Aufwärtstrend. Wer langfristig denkt, richtet sich nach dem längeren Zeitraum.`;
+export const COLOR_LABEL: Record<BestEntry["color"], string> = { blau: "Langfristig", gruen: "Trade", gelb: "Abwarten" };
+const BADGE: Record<BestEntry["color"], string> = { blau: "badge-core", gruen: "badge-trade", gelb: "badge-wait" };
+const EDGE: Record<BestEntry["color"], string> = { blau: "edge-core", gruen: "edge-trade", gelb: "edge-wait" };
+const PAST_LABEL = { erledigt: "erledigt", ungültig: "ungültig", abgelöst: "abgelöst" } as const;
+
+/** Kerzengröße des Zeitraums */
+const intervalFor = (h?: Horizon) => getData().settings.intervals[h ?? "long"];
+
+function viewCandles(e: ScanEntry): { candles: Candle[]; res: AnalysisResult | null } {
+  const b = e.best;
+  if (b.color === "gruen" && b.horizon) return { candles: e.horizons[b.horizon]?.candles ?? [], res: b.res ?? null };
+  if (b.color === "blau" && e.ltCandles?.length) return { candles: e.ltCandles, res: e.horizons[e.ltHorizon ?? "long"]?.res ?? null };
+  const h = (["medium", "long", "short"] as Horizon[]).find((x) => e.horizons[x]);
+  return { candles: h ? e.horizons[h]!.candles : e.ltCandles ?? [], res: h ? e.horizons[h]!.res : null };
 }
 
-/** Kerzengröße des Zeitraums, auf dem der Langfrist-Bereich berechnet wurde */
-function ltIntervalFor(h?: Horizon) {
-  const s = getData().settings.intervals;
-  return s[h ?? "long"];
+function PastRow({ p, cur }: { p: HistEntry; cur?: string }) {
+  return (
+    <li className="flex items-start justify-between gap-2 py-1.5 text-[13px] text-stone-400">
+      <span className="min-w-0">
+        <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-stone-500" />
+        {COLOR_LABEL[p.color]}
+        {p.horizon ? ` · ${HORIZON_LABEL[p.horizon]}` : ""} · {p.zoneTop != null ? `${money(p.zoneTop, cur)} – ${money(p.zoneBottom!, cur)}` : "–"}
+      </span>
+      <span className="shrink-0 text-right">
+        {dateStr(p.from)}–{p.to ? dateStr(p.to) : "heute"}
+        <br />
+        <span className={p.status === "erledigt" ? "text-emerald-300/80" : p.status === "ungültig" ? "text-red-300/80" : "text-stone-500"}>{p.status ? PAST_LABEL[p.status] : ""}</span>
+      </span>
+    </li>
+  );
 }
 
 export function AssetCard({
   asset,
-  views,
-  longterm,
-  ltCandles,
-  ltHorizon,
-  initial,
+  entry,
   price,
   changePct,
   status,
   source,
   onOpen,
   onRemove,
-  focus,
 }: {
   asset: ResolvedAsset;
-  views: Partial<Record<Horizon, HorizonView>>;
-  /** Langfristiger Einstiegsbereich (blau) */
-  longterm?: LongTermZone | null;
-  /** Kerzen, auf denen der Bereich berechnet wurde, und deren Zeitraum */
-  ltCandles?: Candle[];
-  ltHorizon?: Horizon;
-  initial?: Horizon;
+  /** Ergebnis von Blacktrader (fehlt, solange noch gerechnet wird) */
+  entry?: ScanEntry;
   price?: number;
   changePct?: number;
   status?: LiveStatus;
   source?: string;
   onOpen: (h: Horizon) => void;
   onRemove?: () => void;
-  /** "longterm" = nur den langfristigen Einstieg zeigen (Filter Langfristig) */
-  focus?: "longterm";
 }) {
-  const available = HORIZONS.filter((h) => views[h]);
-  const firstActive = available.find((h) => views[h]?.res?.plan && views[h]?.res?.decision.level !== "neutral");
-  const [h, setH] = useState<Horizon>(initial && views[initial] ? initial : firstActive ?? available[0] ?? "medium");
   const [confirm, setConfirm] = useState<null | "trade" | "longterm">(null);
-  const touch = useRef<number | null>(null);
+  const [showPast, setShowPast] = useState(false);
   const trades = useAppData((d) => d.trades);
   const expert = useAppData((d) => d.settings.expertMode);
-  const view = views[h];
-  const res = view?.res ?? null;
-  const coreFocus = focus === "longterm";
-  const plan = !coreFocus && res && res.decision.level !== "neutral" ? res.plan : null;
-  const strength = coreFocus ? null : signalStrength(res);
   const cur = asset.currency;
-  const myCore = trades.find((t) => t.status !== "closed" && (t.strategy === "longterm" || t.strategy === "core") && t.symbol === asset.symbol);
-  // Langfristiger Einstieg (blau): nur mit gültigem Bereich (Wellenstart 0, Welle 1, erwartete Welle 2 im Bereich)
-  const lt = longterm && longterm.status !== "invalidiert" ? longterm : null;
-  const coreActive = !!myCore || !!lt;
-  const isNachkauf = !!plan && plan.direction === "long" && coreActive;
+  const b = entry?.best;
+  const view = entry ? viewCandles(entry) : { candles: [], res: null };
+  const res = view.res;
+  const lastPrice = price ?? res?.price ?? entry?.ltCandles?.at(-1)?.close;
+  const plan = b?.color === "gruen" ? b.plan ?? null : null;
+  const lt = b?.color === "blau" ? b.lt ?? null : null;
+  const strength = plan ? signalStrength(b?.res) : null;
   const riskPct = plan ? (Math.abs(plan.entry - plan.stop) / plan.entry) * 100 : 0;
-  const lastPrice = price ?? res?.price;
-  const conflict = useMemo(() => conflictText(views), [views]);
-  const tradeOpen = res ? hasOpenTrade(asset.symbol, res.horizon) : false;
+  const myLong = trades.find((t) => t.status !== "closed" && (t.strategy === "longterm" || t.strategy === "core") && t.symbol === asset.symbol);
+  const myTrade = trades.find((t) => t.status !== "closed" && t.symbol === asset.symbol && t.strategy !== "core");
+  const tradeOpen = plan && b?.horizon ? hasOpenTrade(asset.symbol, b.horizon) : false;
+  const isNachkauf = !!plan && !!myLong;
+  const past = entry?.history.past ?? [];
+  const openHorizon: Horizon = b?.horizon ?? entry?.ltHorizon ?? "medium";
 
-  const edge = coreFocus && coreActive ? "edge-core" : plan ? (plan.direction === "long" ? "edge-trade" : "edge-short") : coreActive ? "edge-core" : "";
-  const badge = plan ? (
-    plan.direction === "long" ? (
-      <span className="badge-trade">{isNachkauf ? "Nachkauf" : "Trade"}</span>
-    ) : (
-      <span className="badge-short">Short</span>
-    )
-  ) : coreActive ? (
-    <span className="badge-core">Langfristig</span>
-  ) : (
-    <span className="badge-muted">Abwarten</span>
-  );
-
-  // Wischen zwischen Zeiträumen
-  const swipe = (dx: number) => {
-    const i = available.indexOf(h);
-    const next = dx < 0 ? available[i + 1] : available[i - 1];
-    if (next) setH(next);
-  };
-
-  const coreLine = (() => {
-    if (myCore) {
-      if (myCore.strategy === "core") return "Deine frühere Kernposition (vor dem Update) – schließen kannst du sie im Journal.";
-      const n = filledTranches(myCore).length;
-      const e = avgEntry(myCore);
-      const p = lastPrice && n ? ((lastPrice - e) / e) * 100 : null;
-      return n
-        ? `Deine Langfrist-Position: ${n} von 3 Teilen gekauft, Ø ${money(e, cur)}${p != null ? ` · ${p >= 0 ? "+" : ""}${p.toFixed(1).replace(".", ",")} %` : ""}${myCore.stop ? ` · Stop ${money(myCore.stop, cur)}` : " · kein Stop"}`
-        : "Deine Langfrist-Orders warten im Einstiegsbereich.";
-    }
-    if (!lt) return null;
-    return lt.status === "in-zone" ? "Kurs im langfristigen Einstiegsbereich." : `Langfristiger Einstieg ab ${money(lt.zoneTop, cur)} (noch ${pctStr(lastPrice ?? lt.zoneTop, lt.zoneTop)}).`;
-  })();
   const ltMini = lt ? { start: lt.start, high: lt.high, zoneTop: lt.zoneTop, zoneBottom: lt.zoneBottom, invalidation: lt.invalidation, target: lt.targets[0] } : null;
+  const wave = lt ? undefined : res?.elliott.best;
+
+  const myLine = (() => {
+    if (!myLong) return null;
+    if (myLong.strategy === "core") return "Deine frühere Kernposition (vor dem Update) – schließen kannst du sie im Journal.";
+    const n = filledTranches(myLong).length;
+    const e = avgEntry(myLong);
+    const p = lastPrice && n ? ((lastPrice - e) / e) * 100 : null;
+    return n
+      ? `Deine Langfrist-Position: ${n} von ${myLong.tranches?.length ?? 1} Teilen gekauft, Ø ${money(e, cur)}${p != null ? ` · ${p >= 0 ? "+" : ""}${p.toFixed(1).replace(".", ",")} %` : ""}${myLong.stop ? ` · Stop ${money(myLong.stop, cur)}` : " · kein Stop"}`
+      : "Deine Langfrist-Orders warten im Einstiegsbereich.";
+  })();
 
   return (
-    <article
-      className={`card space-y-3 p-4 ${edge}`}
-      onTouchStart={(e) => (touch.current = e.touches[0].clientX)}
-      onTouchEnd={(e) => {
-        if (touch.current == null) return;
-        const dx = e.changedTouches[0].clientX - touch.current;
-        if (Math.abs(dx) > 60) swipe(dx);
-        touch.current = null;
-      }}
-    >
+    <article className={`card space-y-3 p-4 ${b ? EDGE[b.color] : ""}`}>
       {/* Zeile 1 */}
       <div className="flex items-start justify-between gap-3">
-        <button className="min-w-0 text-left" onClick={() => onOpen(h)}>
+        <button className="min-w-0 text-left" onClick={() => onOpen(openHorizon)}>
           <div className="truncate text-[17px] font-semibold text-stone-50">{asset.name}</div>
           <div className="text-[13px] text-stone-400">{asset.symbol}</div>
         </button>
@@ -168,130 +132,136 @@ export function AssetCard({
         </div>
       </div>
 
-      {available.length > 1 && !coreFocus && (
-        <div className="seg w-full" role="tablist" aria-label="Zeitraum">
-          {available.map((x) => {
-            const r = views[x]?.res;
-            const dot = r?.plan && r.decision.level !== "neutral" ? (r.plan.direction === "long" ? "bg-emerald-400" : "bg-red-400") : "bg-stone-600";
-            return (
-              <button key={x} aria-pressed={x === h} onClick={() => setH(x)} className="flex flex-1 items-center justify-center gap-1.5">
-                <span className={`h-2 w-2 rounded-full ${dot}`} />
-                {HORIZON_LABEL[x]}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Zeile 2 */}
-      {(() => {
-        // Im Filter "Langfristig" (und bei blauer Karte ohne Trade) den Langfrist-Bereich mit Wellen 0–1–2 zeigen
-        const showLt = !!lt && (coreFocus || !plan) && !!ltCandles?.length;
-        const wave = showLt ? undefined : res?.elliott.best;
-        return (
-          <>
-            {view && <MiniChart candles={showLt ? ltCandles! : view?.candles ?? []} plan={showLt ? null : plan} best={wave} longterm={showLt ? ltMini : null} />}
-            {showLt ? (
-              <p className="-mt-1 text-[13px] text-sky-200">Welle 1 fertig – erwartet: Rücksetzer (Welle 2) in den blauen Bereich, danach Welle 3.{ltHorizon ? ` (${HORIZON_LABEL[ltHorizon]})` : ""}</p>
-            ) : (
-              waveCaption(wave) && <p className="-mt-1 text-[13px] text-stone-400">{waveCaption(wave)}</p>
-            )}
-          </>
-        );
-      })()}
-
-      {/* Zeile 3 */}
-      {plan ? (
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-xl bg-white/5 px-1 py-2">
-            <div className="label">{plan.orderType === "limit" ? "Einstieg (warten)" : "Einstieg"}</div>
-            <div className="num text-[17px] font-semibold text-stone-50">{money(plan.entry, cur)}</div>
-            {lastPrice != null && plan.orderType === "limit" && <div className="num text-[13px] text-amber-300">noch {pctStr(lastPrice, plan.entry)}</div>}
-          </div>
-          <div className="rounded-xl bg-white/5 px-1 py-2">
-            <div className="label">Stop</div>
-            <div className="num text-[17px] font-semibold text-red-300">{money(plan.stop, cur)}</div>
-            <div className="num text-[13px] text-red-300/80">−{pctStr(plan.entry, plan.stop)}</div>
-          </div>
-          <div className="rounded-xl bg-white/5 px-1 py-2">
-            <div className="label">Ziel</div>
-            <div className="num text-[17px] font-semibold text-emerald-300">{money(plan.targets[0], cur)}</div>
-            <div className="num text-[13px] text-emerald-300/80">+{pctStr(plan.entry, plan.targets[0])}</div>
-          </div>
-        </div>
-      ) : lt && (coreFocus || !plan) ? (
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-xl bg-sky-500/10 px-1 py-2">
-            <div className="label">Einstieg (3 Teile)</div>
-            <div className="num text-[15px] font-semibold text-sky-200">{money(lt.zoneTop, cur)}</div>
-            <div className="num text-[13px] text-sky-200/80">bis {money(lt.zoneBottom, cur)}</div>
-          </div>
-          <div className="rounded-xl bg-white/5 px-1 py-2">
-            <div className="label">Ungültig unter</div>
-            <div className="num text-[15px] font-semibold text-red-300">{money(lt.invalidation, cur)}</div>
-            <div className="text-[13px] text-stone-400">kein fester Stop</div>
-          </div>
-          <div className="rounded-xl bg-white/5 px-1 py-2">
-            <div className="label">Ziel</div>
-            <div className="num text-[15px] font-semibold text-emerald-300">{money(lt.targets[0], cur)}</div>
-            <div className="num text-[13px] text-emerald-300/80">dann {money(lt.targets[1], cur)}</div>
-          </div>
-        </div>
+      {!b ? (
+        <p className="text-[15px] text-stone-400">Blacktrader rechnet …</p>
       ) : (
-        <p className="text-[15px] text-stone-300">{res ? "Kein Einstieg – abwarten." : "Keine Daten für diesen Zeitraum."}</p>
-      )}
+        <>
+          {/* Zeile 2: Chart mit aktuellem Einstieg, alte Einstiege grau */}
+          <MiniChart candles={view.candles} plan={plan} best={wave} longterm={ltMini} past={past} />
+          {lt ? (
+            <p className="-mt-1 text-[13px] text-sky-200">Welle 1 fertig – erwartet: Rücksetzer (Welle 2) in den blauen Bereich, danach Welle 3.</p>
+          ) : (
+            waveCaption(wave) && <p className="-mt-1 text-[13px] text-stone-400">{waveCaption(wave)}</p>
+          )}
 
-      {expert && res && !coreFocus && (
-        <div className="rounded-xl border border-gold/20 bg-black/30 px-3 py-2 text-[13px] text-stone-300">
-          {res.elliott.best ? (
-            <div className="text-gold-light">
-              {res.elliott.best.patternLabel} · {res.elliott.best.phase} · Wahrscheinlichkeit {Math.round(res.elliott.best.probability * 100)} %
+          {/* Zeile 3 */}
+          {plan ? (
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-white/5 px-1 py-2">
+                <div className="label">{plan.orderType === "limit" ? "Einstieg (warten)" : "Einstieg"}</div>
+                <div className="num text-[17px] font-semibold text-stone-50">{money(plan.entry, cur)}</div>
+                {lastPrice != null && plan.orderType === "limit" && <div className="num text-[13px] text-amber-300">noch {pctStr(lastPrice, plan.entry)}</div>}
+              </div>
+              <div className="rounded-xl bg-white/5 px-1 py-2">
+                <div className="label">Stop</div>
+                <div className="num text-[17px] font-semibold text-red-300">{money(plan.stop, cur)}</div>
+                <div className="num text-[13px] text-red-300/80">−{pctStr(plan.entry, plan.stop)}</div>
+              </div>
+              <div className="rounded-xl bg-white/5 px-1 py-2">
+                <div className="label">Ziel</div>
+                <div className="num text-[17px] font-semibold text-emerald-300">{money(plan.targets[0], cur)}</div>
+                <div className="num text-[13px] text-emerald-300/80">+{pctStr(plan.entry, plan.targets[0])}</div>
+              </div>
+            </div>
+          ) : lt ? (
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-sky-500/10 px-1 py-2">
+                <div className="label">Einstieg (3 Teile)</div>
+                <div className="num text-[15px] font-semibold text-sky-200">{money(lt.zoneTop, cur)}</div>
+                <div className="num text-[13px] text-sky-200/80">bis {money(lt.zoneBottom, cur)}</div>
+              </div>
+              <div className="rounded-xl bg-white/5 px-1 py-2">
+                <div className="label">Ungültig unter</div>
+                <div className="num text-[15px] font-semibold text-red-300">{money(lt.invalidation, cur)}</div>
+                <div className="text-[13px] text-stone-400">kein fester Stop</div>
+              </div>
+              <div className="rounded-xl bg-white/5 px-1 py-2">
+                <div className="label">Ziel</div>
+                <div className="num text-[15px] font-semibold text-emerald-300">{money(lt.targets[0], cur)}</div>
+                <div className="num text-[13px] text-emerald-300/80">dann {money(lt.targets[1], cur)}</div>
+              </div>
             </div>
           ) : (
-            <div className="text-stone-400">Keine regelkonforme Wellenzählung</div>
+            <p className="rounded-xl bg-amber-500/10 px-3 py-2 text-[15px] text-amber-100">{b.waitFor ?? b.reason}</p>
           )}
-          <div className="num mt-0.5">
-            Elliott {res.elliott.score} · Fundamental {res.fundamental.score} · Volumen/RSI {res.volume.score} · Gesamt {res.total.toFixed(0)}
-          </div>
-        </div>
-      )}
 
-      {/* Zeile 4: Signalstärke – je höher, desto stärker (Kauf und Short gleich) */}
-      <div className="flex items-center gap-3">
-        {coreFocus ? (
-          <span className="flex-1 text-[14px] text-stone-400">{lt?.status === "in-zone" ? "Im Einstiegsbereich" : "Bereich zulaufend"} – ohne Punkte, sortiert nach Nähe.</span>
-        ) : (
-          <>
-            <span className="label shrink-0">Stärke</span>
-            <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-white/10" aria-label={`Signalstärke ${strength?.toFixed(0) ?? "–"} von 100`}>
-              <div className={`h-full rounded-full ${strength == null ? "bg-stone-600" : strength >= 65 ? "bg-emerald-400" : strength >= 55 ? "bg-gold" : "bg-stone-400"}`} style={{ width: `${Math.max(2, Math.min(100, strength ?? 0))}%` }} />
+          {b.color === "gruen" && <p className="text-[14px] text-stone-300">{b.reason}</p>}
+
+          {expert && res && (
+            <div className="rounded-xl border border-gold/20 bg-black/30 px-3 py-2 text-[13px] text-stone-300">
+              {res.elliott.best ? (
+                <div className="text-gold-light">
+                  {res.elliott.best.patternLabel} · {res.elliott.best.phase} · Wahrscheinlichkeit {Math.round(res.elliott.best.probability * 100)} %
+                </div>
+              ) : (
+                <div className="text-stone-400">Keine regelkonforme Wellenzählung</div>
+              )}
+              <div className="num mt-0.5">
+                Elliott {res.elliott.score} · Fundamental {res.fundamental.score} · Volumen/RSI {res.volume.score} · Gesamt {res.total.toFixed(0)}
+                {b.horizon ? ` · berechnet auf ${HORIZON_LABEL[b.horizon]}` : ""}
+              </div>
             </div>
-            <span className="num text-[15px] font-semibold text-stone-200">{strength != null ? strength.toFixed(0) : "–"}</span>
-          </>
-        )}
-        {coreFocus ? <span className="badge-core">Langfristig</span> : badge}
-        {plan && riskPct > RISK_LIMIT && <span className="badge-risk">Hohes Risiko</span>}
-      </div>
+          )}
 
-      {!coreFocus && (coreLine || isNachkauf || conflict) && (
-        <div className="space-y-1.5 text-[14px]">
-          {isNachkauf && <p className="text-sky-200">Nachkauf-Zone zur bestehenden Langfrist-Position.</p>}
-          {coreLine && <p className={myCore ? "text-sky-200" : "text-stone-400"}>{coreLine}</p>}
-          {conflict && <p className="text-stone-400">{conflict}</p>}
-          {plan && riskPct > RISK_LIMIT && <p className="text-red-300">Stop {pctStr(plan.entry, plan.stop)} entfernt – nur mit kleiner Positionsgröße.</p>}
-        </div>
+          {/* Zeile 4: Signalart + Stärke (nur grün) */}
+          <div className="flex items-center gap-3">
+            {plan ? (
+              <>
+                <span className="label shrink-0">Stärke</span>
+                <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-white/10" aria-label={`Signalstärke ${strength?.toFixed(0) ?? "–"} von 100`}>
+                  <div className={`h-full rounded-full ${strength == null ? "bg-stone-600" : strength >= 65 ? "bg-emerald-400" : strength >= 55 ? "bg-gold" : "bg-stone-400"}`} style={{ width: `${Math.max(2, Math.min(100, strength ?? 0))}%` }} />
+                </div>
+                <span className="num text-[15px] font-semibold text-stone-200">{strength != null ? strength.toFixed(0) : "–"}</span>
+              </>
+            ) : (
+              <span className="flex-1 text-[14px] text-stone-400">{lt ? (lt.status === "in-zone" ? "Kurs im Einstiegsbereich" : "Bereich zulaufend") : "Kein Einstieg"}</span>
+            )}
+            <span className={BADGE[b.color]}>{isNachkauf ? "Nachkauf" : COLOR_LABEL[b.color]}</span>
+            {plan && riskPct > RISK_LIMIT && <span className="badge-risk">Hohes Risiko</span>}
+          </div>
+
+          {(myLine || isNachkauf || myTrade?.promotedAt || (plan && riskPct > RISK_LIMIT)) && (
+            <div className="space-y-1.5 text-[14px]">
+              {isNachkauf && <p className="text-sky-200">Nachkauf-Zone zur bestehenden Langfrist-Position.</p>}
+              {myLine && <p className="text-sky-200">{myLine}</p>}
+              {myTrade?.promotedAt && (
+                <p className="text-sky-200">
+                  Hochgestuft zu Blau am {new Date(myTrade.promotedAt).toLocaleDateString("de-DE")}: {myTrade.promoteReason}
+                </p>
+              )}
+              {plan && riskPct > RISK_LIMIT && <p className="text-red-300">Stop {pctStr(plan.entry, plan.stop)} entfernt – nur mit kleiner Positionsgröße.</p>}
+            </div>
+          )}
+
+          {/* Verlauf: alte Einstiege (grau) */}
+          {past.length > 0 && (
+            <div className="rounded-xl bg-white/[0.03] px-3">
+              <button className="flex min-h-[44px] w-full items-center justify-between text-[14px] text-stone-300" onClick={() => setShowPast(!showPast)} aria-expanded={showPast}>
+                <span>Verlauf ({past.length})</span>
+                <span className="text-stone-500">{showPast ? "▲" : "▼"}</span>
+              </button>
+              {showPast && (
+                <ul className="divide-y divide-white/5 pb-2">
+                  {past.map((p) => (
+                    <PastRow key={`${p.key}-${p.from}`} p={p} cur={cur} />
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* Max. 2 Buttons */}
       <div className="flex gap-2">
-        <button className="btn flex-1" onClick={() => onOpen(h)}>
+        <button className="btn flex-1" onClick={() => onOpen(openHorizon)}>
           Analyse ansehen
         </button>
-        {plan && res && !tradeOpen ? (
+        {plan && b?.res && !tradeOpen ? (
           <button className="btn-primary flex-1" onClick={() => setConfirm("trade")}>
             {isNachkauf ? "Nachkauf übernehmen" : "Als Papier-Trade übernehmen"}
           </button>
-        ) : lt && (coreFocus || !plan) && !myCore ? (
+        ) : lt && !myLong ? (
           <button className="btn-primary flex-1" onClick={() => setConfirm("longterm")}>
             Langfristig übernehmen
           </button>
@@ -308,21 +278,19 @@ export function AssetCard({
         confirm={plan?.orderType === "limit" ? "Order legen" : "Trade eröffnen"}
         onClose={() => setConfirm(null)}
         onConfirm={() => {
-          if (res && openPaperTrade(asset, res)) {
+          if (b?.res && openPaperTrade(asset, b.res)) {
             if (getData().settings.haptics) haptic(30);
           }
         }}
         text={
           plan ? (
             <div className="space-y-2">
-              <p>
-                {asset.name} · {HORIZON_LABEL[h]}: {plan.direction === "long" ? "auf steigende Kurse" : "auf fallende Kurse"}.
-              </p>
+              <p>{asset.name}: Trade auf steigende Kurse.</p>
               <p className="num">
                 Einstieg {money(plan.entry, cur)} · Stop {money(plan.stop, cur)} · Ziel {money(plan.targets[0], cur)}
               </p>
               {plan.orderType === "limit" && <p className="text-amber-300">Wartende Order: Der Trade startet erst, wenn der Kurs {money(plan.entry, cur)} erreicht.</p>}
-              <p className="text-[13px] text-stone-400">Einstieg, Stop und Ziele kommen unverändert vom Analysten.</p>
+              <p className="text-[13px] text-stone-400">Einstieg, Stop und Ziele kommen unverändert von Blacktrader. Bestätigt der Wochenchart den Aufwärtstrend, wird der Trade zu Blau hochgestuft und der Stop nur nachgezogen.</p>
             </div>
           ) : null
         }
@@ -333,7 +301,7 @@ export function AssetCard({
         confirm="Orders legen"
         onClose={() => setConfirm(null)}
         onConfirm={() => {
-          if (lt && openLongTermTrade(asset, lt, ltHorizon ?? "long", ltIntervalFor(ltHorizon), lastPrice ?? lt.zoneTop)) {
+          if (lt && openLongTermTrade(asset, lt, entry?.ltHorizon ?? "long", intervalFor(entry?.ltHorizon), lastPrice ?? lt.zoneTop)) {
             if (getData().settings.haptics) haptic(30);
           }
         }}
@@ -341,11 +309,9 @@ export function AssetCard({
           lt ? (
             <div className="space-y-2">
               <p>{asset.name}: Einstieg in drei Teilen bei</p>
-              <p className="num text-sky-200">
-                {lt.tranches.map((t) => money(t, cur)).join(" · ")}
-              </p>
+              <p className="num text-sky-200">{lt.tranches.map((t) => money(t, cur)).join(" · ")}</p>
               <p className="text-stone-400">
-                Kein fester Stop. Ungültig, wenn ein Schlusskurs unter {money(lt.invalidation, cur)} liegt. Teilausstieg oder Stop gibt es nur, wenn sich die Wellenzählung ändert – du bekommst dann eine Nachricht.
+                Kein fester Stop. Ungültig, wenn ein Schlusskurs unter {money(lt.invalidation, cur)} liegt. Teilausstieg oder Stop gibt es nur, wenn sich die Wellenzählung ändert – du bekommst dann eine Nachricht von Blacktrader.
               </p>
             </div>
           ) : null
@@ -354,4 +320,3 @@ export function AssetCard({
     </article>
   );
 }
-

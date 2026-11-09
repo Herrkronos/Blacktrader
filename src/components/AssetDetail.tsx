@@ -3,7 +3,7 @@
 // Fibo-Zonen, Signal mit Teil-Scores, Langfristiger Einstieg, Begründung, Fundamentalzahlen, News.
 import { effectiveWeights, learnedParams, useTrainerVersion } from "@/lib/client/trainerParams";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { analyze } from "@/lib/analysis/analyze";
 import { findLongTermZone } from "@/lib/analysis/longterm";
 import { avgEntry, filledTranches, openLongTerm, openLongTermTrade } from "@/lib/client/longterm";
@@ -12,21 +12,27 @@ import { api } from "@/lib/client/api";
 import { binanceStream } from "@/lib/client/binanceWs";
 import { useLive } from "@/lib/client/market";
 import { SCAN_PRESETS } from "@/lib/client/presets";
+import { useScan } from "@/lib/client/scanner";
 import { actions, useAppData } from "@/lib/store/store";
-import { HORIZON_INTERVALS, HORIZON_LABEL, type Candle, type Fundamentals, type Horizon, type Interval, type NewsItem, type ResolvedAsset } from "@/lib/types";
+import { HORIZON_LABEL, type Candle, type Fundamentals, type Horizon, type Interval, type NewsItem, type ResolvedAsset } from "@/lib/types";
 import { Commentary, LongTermCard, FundamentalsPanel, NewsPanel, SignalCard, VolumePanel, WavePanel } from "./AnalysisPanels";
 import { PriceChart } from "./PriceChart";
 import { StatusPill } from "./StatusPill";
 import { TradeDialog } from "./TradeDialog";
 
 type DetailAsset = ResolvedAsset & { id?: string };
-const HORIZONS: Horizon[] = ["short", "medium", "long"];
-
+/**
+ * Kein Zeitraum-Umschalter mehr: Blacktrader zeigt den Zeitraum des aktuellen Einstiegs
+ * (Aktien und Krypto nie kurzfristig).
+ */
 export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset; initialHorizon?: Horizon }) {
   const settings = useAppData((d) => d.settings);
   const live = useLive(asset);
-  const [horizon, setHorizon] = useState<Horizon>(initialHorizon ?? settings.globalHorizon);
-  const [interval, setInterval_] = useState<Interval>(settings.intervals[initialHorizon ?? settings.globalHorizon]);
+  const scan = useScan();
+  const best = scan.entries.find((e) => e.asset.kind === asset.kind && e.asset.symbol === asset.symbol);
+  const wanted = initialHorizon ?? best?.best.horizon ?? best?.ltHorizon ?? "medium";
+  const horizon: Horizon = wanted === "short" && asset.kind !== "commodity" ? "medium" : wanted;
+  const interval: Interval = settings.intervals[horizon];
   const [candles, setCandles] = useState<Candle[]>([]);
   const [source, setSource] = useState("");
   const [fundamentals, setFundamentals] = useState<Fundamentals | null>(null);
@@ -35,11 +41,6 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [trade, setTrade] = useState(false);
-  const touch = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!HORIZON_INTERVALS[horizon].includes(interval)) setInterval_(settings.intervals[horizon]);
-  }, [horizon, interval, settings.intervals]);
 
   // Kerzen laden + periodisch aktualisieren
   useEffect(() => {
@@ -116,27 +117,8 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
     [asset.symbol, asset.name, asset.kind, chartCandles, horizon, interval, fundamentals, news, settings.weights, settings.weightsMode, currency, trainerV],
   );
 
-  const changeHorizon = (h: Horizon) => {
-    setHorizon(h);
-    setInterval_(settings.intervals[h]);
-    if (asset.id) actions.setItemHorizon(asset.id, h);
-  };
-
   return (
-    <div
-      className="space-y-4"
-      onTouchStart={(e) => (touch.current = e.touches[0].clientX)}
-      onTouchEnd={(e) => {
-        if (touch.current == null) return;
-        const dx = e.changedTouches[0].clientX - touch.current;
-        const i = HORIZONS.indexOf(horizon);
-        if (Math.abs(dx) > 80 && (e.target as HTMLElement).closest("canvas") == null) {
-          const next = dx < 0 ? HORIZONS[i + 1] : HORIZONS[i - 1];
-          if (next) changeHorizon(next);
-        }
-        touch.current = null;
-      }}
-    >
+    <div className="space-y-4">
       <div className="ls-hide flex items-start justify-between gap-3">
         <div>
           <div className="text-[13px] text-stone-400">
@@ -159,22 +141,9 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
         </span>
         <input type="checkbox" className="h-6 w-6 accent-[#C9A24A]" checked={settings.expertMode} onChange={(e) => actions.setSettings({ expertMode: e.target.checked })} />
       </label>
-      <div className="ls-row space-y-3">
-      <div className="seg w-full" role="tablist" aria-label="Zeitraum">
-        {HORIZONS.map((h) => (
-          <button key={h} aria-pressed={h === horizon} onClick={() => changeHorizon(h)} className="flex-1">
-            {HORIZON_LABEL[h]}
-          </button>
-        ))}
-      </div>
-      <div className="flex gap-1.5">
-        {HORIZON_INTERVALS[horizon].map((iv) => (
-          <button key={iv} onClick={() => setInterval_(iv)} className={`chip ${iv === interval ? "border-gold bg-gold/15 text-gold-light" : "border-white/15 text-stone-300"}`}>
-            {iv}
-          </button>
-        ))}
-      </div>
-      </div>
+      <p className="ls-hide text-[13px] text-stone-400">
+        Blacktrader zeigt den Zeitraum des aktuellen Einstiegs: {HORIZON_LABEL[horizon]} ({interval}).
+      </p>
 
       <div className="card chart-wrap overflow-hidden p-1">
         {error && <p className="p-3 text-[15px] text-red-300">Kursdaten nicht verfügbar: {error}</p>}

@@ -1,4 +1,4 @@
-// Regelbasierte Texterzeugung im Stil des Black-Ship-Analysten:
+// Regelbasierte Texterzeugung im Stil des Blacktrader (Black Ship Holding):
 // selbstbewusst im Ton, ehrlich in der Sache. Unsichere Setups werden als unsicher benannt.
 import type { ElliottResult, WaveCount } from "./elliott";
 import type { FundamentalResult } from "./fundamental";

@@ -15,6 +15,8 @@ export interface SeriesSpec {
 
 export const CELL_KEYS = (["stock", "crypto", "commodity"] as AssetKind[]).flatMap((k) => (["short", "medium", "long"] as Horizon[]).map((h) => `${k}:${h}` as const));
 export type CellKey = (typeof CELL_KEYS)[number];
+/** Blacktrader: Aktien und Krypto ohne kurzfristige Signale – diese Bereiche werden nicht mehr trainiert (alte Stände bleiben gespeichert). */
+export const ACTIVE_CELL_KEYS: CellKey[] = CELL_KEYS.filter((c) => c !== "stock:short" && c !== "crypto:short");
 
 const STOCKS = [
   "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "JPM", "V", "MA", "UNH", "HD", "PG", "KO", "PEP", "XOM", "CVX", "JNJ", "MRK", "ABBV",

@@ -2,14 +2,14 @@
 // Übersicht: Gesamtperformance, Top-3-Chancen, offene Trades (live), News zur Watchlist.
 import Link from "next/link";
 import { useEffect, useMemo } from "react";
-import { signalStrength } from "@/components/AssetCard";
+import { COLOR_LABEL, signalStrength } from "@/components/AssetCard";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { EquityChart } from "@/components/EquityChart";
 import { IconChevron } from "@/components/Icons";
 import { money } from "@/lib/analysis/persona";
 import { performance, tradeReturnPct } from "@/lib/analysis/stats";
 import { instrumentKey, useMarket } from "@/lib/client/market";
-import { entryDistance, runScan, useScan } from "@/lib/client/scanner";
+import { bestDistance, runScan, useScan } from "@/lib/client/scanner";
 import { useAppData } from "@/lib/store/store";
 import { HORIZON_LABEL, type NewsItem } from "@/lib/types";
 
@@ -54,13 +54,9 @@ export default function Uebersicht() {
     .filter((x): x is number => x != null);
 
   const top = useMemo(() => {
-    const items = scan.entries.flatMap((e) =>
-      Object.values(e.horizons)
-        .filter((h) => h && h.res.plan && h.res.decision.level !== "neutral")
-        .map((h) => ({ asset: e.asset, res: h!.res, d: entryDistance(h!.res) })),
-    );
-    // Stärkste Signale zuerst (Kauf: Score, Short: 100 − Score)
-    return items.sort((a, b) => (signalStrength(b.res) ?? 0) - (signalStrength(a.res) ?? 0) || a.d - b.d).slice(0, 3);
+    // Je Wert genau ein Einstieg (blau oder grün); zuerst die, deren Kurs schon in der Zone ist, dann das stärkere Signal
+    const items = scan.entries.filter((e) => e.best.color !== "gelb").map((e) => ({ e, d: bestDistance(e), s: signalStrength(e.best.res) ?? 0 }));
+    return items.sort((a, b) => a.d - b.d || b.s - a.s).slice(0, 3);
   }, [scan.entries]);
 
   const news = useMemo(() => {
@@ -91,23 +87,22 @@ export default function Uebersicht() {
       </section>
 
       <Section title="Top 3 Chancen heute" href="/chancen">
-        {scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Analyst sucht Chancen … {Math.round(scan.progress * 100)} %</div>}
+        {scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Blacktrader sucht Chancen … {Math.round(scan.progress * 100)} %</div>}
         {!scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Gerade keine sauberen Einstiege.</div>}
-        {top.map(({ asset, res, d }) => {
-          const p = res.plan!;
-          const long = p.direction === "long";
+        {top.map(({ e, d }) => {
+          const { asset, best: b } = e;
+          const blue = b.color === "blau";
           return (
-            <button key={`${asset.symbol}-${res.horizon}`} onClick={() => open(asset, res.horizon)} className={`card w-full p-3.5 text-left ${long ? "edge-trade" : "edge-short"}`}>
+            <button key={`${asset.kind}-${asset.symbol}`} onClick={() => open(asset, b.horizon ?? e.ltHorizon ?? "medium")} className={`card w-full p-3.5 text-left ${blue ? "edge-core" : "edge-trade"}`}>
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="truncate text-[16px] font-semibold text-stone-50">{asset.name}</div>
-                  <div className="text-[13px] text-stone-400">
-                    {asset.symbol} · {HORIZON_LABEL[res.horizon]}
-                  </div>
+                  <div className="text-[13px] text-stone-400">{asset.symbol}</div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <span className={long ? "badge-trade" : "badge-short"}>
-                    {long ? "Trade" : "Short"} · Stärke {signalStrength(res)?.toFixed(0)}
+                  <span className={blue ? "badge-core" : "badge-trade"}>
+                    {COLOR_LABEL[b.color]}
+                    {!blue && signalStrength(b.res) != null ? ` · Stärke ${signalStrength(b.res)!.toFixed(0)}` : ""}
                   </span>
                   <span className={d === 0 ? "text-[13px] text-emerald-300" : "text-[13px] text-amber-300"}>{d === 0 ? "jetzt in der Zone" : `noch ${d.toFixed(1).replace(".", ",")} %`}</span>
                 </div>
@@ -115,15 +110,15 @@ export default function Uebersicht() {
               <div className="num mt-2 grid grid-cols-3 gap-2 text-[14px]">
                 <span>
                   <span className="label block">Einstieg</span>
-                  {money(p.entry, asset.currency)}
+                  {money(b.zoneTop!, asset.currency)}
                 </span>
                 <span className="text-red-300">
-                  <span className="label block">Stop</span>
-                  {money(p.stop, asset.currency)}
+                  <span className="label block">{blue ? "Ungültig unter" : "Stop"}</span>
+                  {money((blue ? b.invalidation : b.stop)!, asset.currency)}
                 </span>
                 <span className="text-emerald-300">
                   <span className="label block">Ziel</span>
-                  {money(p.targets[0], asset.currency)}
+                  {b.targets?.[0] != null ? money(b.targets[0], asset.currency) : "–"}
                 </span>
               </div>
             </button>
@@ -139,12 +134,14 @@ export default function Uebersicht() {
             {openTrades.slice(0, 6).map((t) => {
               const p = live[instrumentKey(t)]?.price ?? t.lastPrice;
               const r = t.status === "open" && p ? tradeReturnPct(t.direction, t.entry, p) : null;
-              const edge = t.strategy === "core" ? "edge-core" : t.direction === "long" ? "edge-trade" : "edge-short";
+              const edge = t.strategy === "core" || t.strategy === "longterm" || t.promotedAt ? "edge-core" : t.direction === "long" ? "edge-trade" : "edge-short";
               return (
                 <div key={t.id} className={`flex min-h-[56px] items-center justify-between gap-3 rounded-none px-4 py-2.5 ${edge}`}>
                   <div className="min-w-0">
                     <div className="truncate text-[15px] font-medium text-stone-100">{t.name}</div>
-                    <div className="text-[13px] text-stone-400">{t.strategy === "longterm" || t.strategy === "core" ? "Langfristig" : t.direction === "long" ? "Trade" : "Short"} · {t.status === "pending" ? "wartet auf Einstieg" : "offen"}</div>
+                    <div className="text-[13px] text-stone-400">
+                      {t.promotedAt ? "Blau (hochgestuft)" : t.strategy === "longterm" || t.strategy === "core" ? "Langfristig" : t.direction === "long" ? "Trade" : "Short"} · {HORIZON_LABEL[t.horizon]} · {t.status === "pending" ? "wartet auf Einstieg" : "offen"}
+                    </div>
                   </div>
                   <div className={`num text-[18px] font-semibold ${r == null ? "text-amber-300" : r >= 0 ? "text-up" : "text-down"}`}>{r == null ? "wartet" : signed(r)}</div>
                 </div>

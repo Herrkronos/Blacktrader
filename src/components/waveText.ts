@@ -16,7 +16,7 @@ export function nextWave(c: WaveCount): { label: string; dir: 1 | -1 } {
   return { label: c.bias === 1 ? "neuer Anstieg" : "neuer Rückgang", dir: c.bias };
 }
 
-/** Ein Satz: "Analyst zählt: Welle 1 abwärts, Welle 2 aufwärts – als Nächstes Welle 3 abwärts erwartet." */
+/** Ein Satz: "Blacktrader zählt: Welle 1 abwärts, Welle 2 aufwärts – als Nächstes Welle 3 abwärts erwartet." */
 export function waveCaption(c: WaveCount | undefined): string | null {
   if (!c) return null;
   const parts = c.labels.map((l, i) => {
@@ -25,7 +25,7 @@ export function waveCaption(c: WaveCount | undefined): string | null {
   });
   const nx = nextWave(c);
   const next = /^[0-9A-Z]$/.test(nx.label) ? `Welle ${nx.label} ${dirWord(nx.dir)}` : nx.label.startsWith("neuer") ? nx.label : `${nx.label} ${dirWord(nx.dir)}`;
-  return `Analyst zählt: ${parts.join(", ")} – als Nächstes ${next} erwartet.`;
+  return `Blacktrader zählt: ${parts.join(", ")} – als Nächstes ${next} erwartet.`;
 }
 
 export { arrow };

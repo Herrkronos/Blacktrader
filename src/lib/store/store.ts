@@ -58,7 +58,7 @@ export interface Trade {
   partials?: { fraction: number; price: number; at: number; reason: string }[];
   /** Noch gehaltener Anteil der gekauften Position (1 = alles) */
   remaining?: number;
-  /** Letzte Meldung des Analysten zu dieser Position (wird nur einmal gesendet) */
+  /** Letzte Meldung von Blacktrader zu dieser Position (wird nur einmal gesendet) */
   lastActionKey?: string;
   lastActionText?: string;
   /** "manual" = vom Nutzer selbst übernommen (nur solche Trades gehören ins Journal) */
@@ -66,6 +66,9 @@ export interface Trade {
   /** Herkunft unklar (vor dem Update angelegt) – Nutzer entscheidet einmalig */
   unverified?: boolean;
   returnPct?: number;
+  /** Hochstufung GRÜN → BLAU (Blacktrader): Zeitpunkt und Grund */
+  promotedAt?: number;
+  promoteReason?: string;
 }
 
 export interface Settings {
@@ -183,7 +186,28 @@ function load() {
  * Trades mit unklarer Herkunft markieren (Nutzer entscheidet im Journal).
  */
 function migrate(rawBefore: string) {
-  if (data.migrations.includes("v2-manual-journal")) return;
+  const backedUp = migrateV2(rawBefore);
+  migrateV3(rawBefore, backedUp);
+}
+
+/**
+ * v3 (Blacktrader-Update): ein Einstieg pro Wert, keine Zeitraum-Umschalter mehr.
+ * Daten bleiben unverändert (offene Trades behalten ihren Zeitraum als Info-Label) – vorher JSON-Backup.
+ */
+function migrateV3(rawBefore: string, alreadyBackedUp: boolean) {
+  if (data.migrations.includes("v3-blacktrader")) return;
+  try {
+    // Ein Backup des Rohstands genügt (bei gleichzeitiger v2-Migration existiert es schon)
+    if (!alreadyBackedUp) window.localStorage.setItem(`${BACKUP_PREFIX}${new Date().toISOString()}-vor-blacktrader`, rawBefore);
+  } catch {
+    /* Speicher voll: Daten werden ohnehin nicht verändert */
+  }
+  data = { ...data, migrations: [...data.migrations, "v3-blacktrader"] };
+  persist();
+}
+
+function migrateV2(rawBefore: string): boolean {
+  if (data.migrations.includes("v2-manual-journal")) return false;
   const backupKey = `${BACKUP_PREFIX}${new Date().toISOString()}`;
   try {
     window.localStorage.setItem(backupKey, rawBefore);
@@ -201,6 +225,7 @@ function migrate(rawBefore: string) {
     migrationNotice: auto.length || unverified.length ? { removedAuto: auto.length, unverified: unverified.length, backupKey, at: Date.now() } : null,
   };
   persist();
+  return true;
 }
 
 export function listBackups(): { key: string; date: string }[] {
@@ -311,7 +336,7 @@ export const actions = {
     if (!raw) throw new Error("Backup nicht gefunden");
     const parsed = sanitize(JSON.parse(raw));
     // Wiederhergestellt: Trades gelten als selbst übernommen, Migration nicht erneut ausführen
-    update(() => ({ ...parsed, trades: parsed.trades.map((t) => ({ ...t, source: "manual" as const, unverified: false })), migrations: [...parsed.migrations, "v2-manual-journal"], migrationNotice: null }));
+    update(() => ({ ...parsed, trades: parsed.trades.map((t) => ({ ...t, source: "manual" as const, unverified: false })), migrations: [...new Set([...parsed.migrations, "v2-manual-journal", "v3-blacktrader"])], migrationNotice: null }));
   },
   removeTrade(id: string) {
     update((d) => ({ ...d, trades: d.trades.filter((t) => t.id !== id) }));

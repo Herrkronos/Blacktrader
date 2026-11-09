@@ -178,7 +178,7 @@ export default function SettingsPage() {
         </button>
       </Section>
 
-      <Section title="Zeithorizonte & Kerzen" hint="Die gesamte Analyse wird pro Horizont getrennt berechnet. Hier legst du die Standard-Kerzengröße je Horizont fest.">
+      <Section title="Zeithorizonte & Kerzen" hint="Blacktrader rechnet die Zeiträume im Hintergrund und zeigt je Wert nur den besten Einstieg. Hier legst du die Kerzengröße je Zeitraum fest (für Fortgeschrittene).">
         <div className="grid gap-3 sm:grid-cols-3">
           {(Object.keys(HORIZON_INTERVALS) as Horizon[]).map((h) => (
             <div key={h} className="text-sm">

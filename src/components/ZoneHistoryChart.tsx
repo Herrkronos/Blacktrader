@@ -1,5 +1,5 @@
 "use client";
-// Einfacher Rückblick-Chart: Kursverlauf mit den Zonen des Analysten (grün = Kauf, rot = Short, blau = Kernposition)
+// Einfacher Rückblick-Chart: Kursverlauf mit den Zonen von Blacktrader (grün = Kauf, rot = Short, blau = Kernposition)
 // und ✓ (Zone hat gehalten) bzw. ✗ (gescheitert).
 import type { EchoZone } from "@/lib/analysis/echoZones";
 import type { Candle } from "@/lib/types";

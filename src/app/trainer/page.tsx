@@ -1,5 +1,7 @@
 "use client";
-// Mehr → Trainer: Ziel, aktueller Stand je Anlageklasse (mit Aufschlüsselung nach Horizont), Training starten.
+// Mehr → Trainer: Ziel, aktueller Stand je Anlageklasse (Quote je Signalart: Blau · Grün), Training starten.
+// Grün = gemessene Zonen-Quote der Zeiträume, die Blacktrader für grüne Trades nutzt (Aktien/Krypto ohne kurzfristig).
+// Blau = erledigte vs. ungültige langfristige Einstiege aus dem Verlauf (Gelb zählt nicht).
 // Stände kommen je Klasse × Horizont getrennt aus Server + lokaler Kopie (jüngerer gewinnt) – ein Lauf für eine
 // Klasse kann die anderen nie überschreiben.
 import Link from "next/link";
@@ -12,9 +14,33 @@ import { classStanding, goalProgress, goalReached } from "@/lib/trainer/goal";
 import { DURATIONS } from "@/lib/trainer/session";
 import { CELL_KEYS, type CellKey } from "@/lib/trainer/universe";
 import { HORIZON_LABEL, KIND_LABEL, type AssetKind, type Horizon } from "@/lib/types";
+import { HORIZON_RANK } from "@/lib/analysis/bestEntry";
+import { allHistories } from "@/lib/client/entries";
 
 const KINDS: AssetKind[] = ["stock", "crypto", "commodity"];
-const HORIZONS: Horizon[] = ["short", "medium", "long"];
+/** Zeiträume, die Blacktrader im Hintergrund für eine Klasse rechnet (Aktien und Krypto ohne kurzfristig) */
+const horizonsOf = (k: AssetKind): Horizon[] => (["short", "medium", "long"] as Horizon[]).filter((h) => HORIZON_RANK[k].includes(h));
+/** Zellen, die trainiert werden */
+const trainCells = (k: AssetKind) => CELL_KEYS.filter((c) => c.startsWith(`${k}:`) && horizonsOf(k).includes(c.split(":")[1] as Horizon));
+
+/** Quote aus dem Einstiegs-Verlauf: erledigt / (erledigt + ungültig); abgelöste und gelbe zählen nicht */
+function historyRate(kind: AssetKind, color: "blau" | "gruen"): { rate: number | null; n: number } {
+  let ok = 0;
+  let n = 0;
+  try {
+    for (const [key, h] of Object.entries(allHistories())) {
+      if (!key.startsWith(`${kind}:`)) continue;
+      for (const p of h.past) {
+        if (p.color !== color || (p.status !== "erledigt" && p.status !== "ungültig")) continue;
+        n++;
+        if (p.status === "erledigt") ok++;
+      }
+    }
+  } catch {
+    /* ohne Speicher */
+  }
+  return { rate: n ? ok / n : null, n };
+}
 const pct = (x: number) => `${(x * 100).toFixed(1).replace(".", ",")} %`;
 const mins = (ms: number) => {
   const m = Math.max(0, Math.ceil(ms / 60e3));
@@ -53,14 +79,26 @@ export default function TrainerPage() {
   }, []);
 
   const target = TARGET_HIT_RATE;
-  const rows = useMemo(() => HORIZONS.map((h) => ({ h, rec: cells[`${kind}:${h}` as CellKey] })), [cells, kind]);
+  const rows = useMemo(() => horizonsOf(kind).map((h) => ({ h, rec: cells[`${kind}:${h}` as CellKey] })), [cells, kind]);
+  const [blue, setBlue] = useState<{ rate: number | null; n: number }>({ rate: null, n: 0 });
+  const [greenLive, setGreenLive] = useState<{ rate: number | null; n: number }>({ rate: null, n: 0 });
+  useEffect(() => {
+    setBlue(historyRate(kind, "blau"));
+    setGreenLive(historyRate(kind, "gruen"));
+  }, [kind]);
   const total = useMemo(() => classStanding(rows.map((r) => ({ cell: `${kind}:${r.h}`, status: r.rec?.current ? { oos: r.rec.current } : null })), kind), [rows, kind]);
   const prevTotal = useMemo(
     () => classStanding(rows.map((r) => ({ cell: `${kind}:${r.h}`, status: r.rec?.previous ?? r.rec?.current ? { oos: (r.rec?.previous ?? r.rec?.current)! } : null })), kind),
     [rows, kind],
   );
   const tradeTotal = useMemo(() => classStanding(rows.map((r) => ({ cell: `${kind}:${r.h}`, status: r.rec?.current ? { oos: r.rec.current } : null })), kind, { trade: true }), [rows, kind]);
-  const reached = total.hitRate != null && goalReached(total.hitRate, target);
+  // Gesamt = Grün (Testdaten) + Blau (Verlauf), gewichtet nach Anzahl
+  const overall = useMemo(() => {
+    const n = (total.hitRate != null ? total.trades : 0) + blue.n;
+    if (!n) return null;
+    return ((total.hitRate ?? 0) * (total.hitRate != null ? total.trades : 0) + (blue.rate ?? 0) * blue.n) / n;
+  }, [total, blue]);
+  const reached = overall != null && goalReached(overall, target);
 
   const st = t.session;
   const running = t.running;
@@ -77,10 +115,7 @@ export default function TrainerPage() {
         /* egal */
       }
     }
-    void startTraining(
-      dur,
-      CELL_KEYS.filter((c) => c.startsWith(`${kind}:`)),
-    );
+    void startTraining(dur, trainCells(kind));
   };
 
   return (
@@ -96,11 +131,11 @@ export default function TrainerPage() {
         <div className="text-center">
           <div className="text-[14px] text-stone-400">Ziel Zonen-Quote · {KIND_LABEL[kind]}</div>
           <div className="num text-[40px] font-semibold leading-tight text-gold">{Math.round(target * 100)} %</div>
-          <div className={`num text-[19px] ${reached ? "text-up" : "text-stone-100"}`}>Aktuell {total.hitRate != null ? pct(total.hitRate) : "–"}</div>
+          <div className={`num text-[19px] ${reached ? "text-up" : "text-stone-100"}`}>Aktuell {overall != null ? pct(overall) : "–"}</div>
         </div>
         <div>
           <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
-            <div className={`h-full rounded-full transition-all ${reached ? "bg-emerald-500" : "bg-gold"}`} style={{ width: `${goalProgress(total.hitRate, target)}%` }} />
+            <div className={`h-full rounded-full transition-all ${reached ? "bg-emerald-500" : "bg-gold"}`} style={{ width: `${goalProgress(overall, target)}%` }} />
           </div>
           <div className="mt-1 flex justify-between text-[12px] text-stone-500">
             <span>0 %</span>
@@ -116,25 +151,38 @@ export default function TrainerPage() {
                 <IconInfo className="h-4 w-4" />
               </button>
             </span>
-            <span className="num text-right font-medium text-stone-100">{total.hitRate != null ? pct(total.hitRate) : "–"}</span>
+            <span className="num text-right font-medium text-stone-100">{overall != null ? pct(overall) : "–"}</span>
+            <span className="num text-right text-[14px]" />
+          </div>
+          {info && (
+            <p className="pb-1 text-[13px] text-stone-400">
+              Zonen-Quote wie HKCM: Kurs taucht in die Zone ein, dreht vor der Unterkante und läuft oben heraus. Grün = gemessen auf Testdaten (Zeiträume im Hintergrund, gewichtet nach Anzahl der Zonen). Blau = deine langfristigen Einstiege im Verlauf: erledigt (oben heraus) gegen ungültig. Gelb (abwarten) zählt nicht.
+            </p>
+          )}
+          <div className="grid grid-cols-[1fr_auto_4.5rem] items-center gap-x-3 border-t border-white/5 py-1.5">
+            <span className="flex items-center gap-2 text-stone-300">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+              Grün · Trade
+            </span>
+            <span className="num text-right text-stone-200">{total.hitRate != null ? pct(total.hitRate) : "–"}</span>
             <span className="num text-right text-[14px]">
               <Delta now={total.hitRate} prev={prevTotal.hitRate} />
             </span>
           </div>
-          {info && (
-            <p className="pb-1 text-[13px] text-stone-400">
-              Zonen-Quote wie HKCM: Kurs taucht in die Zone ein, dreht vor der Unterkante und läuft oben heraus. Gesamt = Durchschnitt aller Horizonte, gewichtet nach Anzahl der Zonen.
+          <div className="grid grid-cols-[1fr_auto_4.5rem] items-center gap-x-3 border-t border-white/5 py-1.5">
+            <span className="flex items-center gap-2 text-stone-300">
+              <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+              Blau · Langfristig
+            </span>
+            <span className="num text-right text-stone-200">{blue.rate != null ? pct(blue.rate) : "–"}</span>
+            <span className="num text-right text-[13px] text-stone-500">{blue.n ? `${blue.n} Einst.` : "noch keine"}</span>
+          </div>
+          {greenLive.n > 0 && (
+            <p className="border-t border-white/5 py-1.5 text-[13px] text-stone-400">
+              Grün im Verlauf auf diesem Gerät: <span className="num text-stone-300">{pct(greenLive.rate!)}</span> ({greenLive.n} Einstiege)
             </p>
           )}
-          {rows.map(({ h, rec }) => (
-            <div key={h} className="grid grid-cols-[1fr_auto_4.5rem] items-center gap-x-3 border-t border-white/5 py-1.5">
-              <span className="text-stone-300">{HORIZON_LABEL[h]}</span>
-              <span className="num text-right text-stone-200">{rec?.current ? pct(primaryRate(rec.current)) : "–"}</span>
-              <span className="num text-right text-[14px]">
-                <Delta now={rec?.current ? primaryRate(rec.current) : null} prev={rec?.previous ? primaryRate(rec.previous) : null} />
-              </span>
-            </div>
-          ))}
+          <p className="border-t border-white/5 py-1.5 text-[12px] text-stone-500">Trainiert im Hintergrund: {rows.map((r) => HORIZON_LABEL[r.h]).join(", ")}</p>
         </div>
 
         <p className="text-center text-[13px] text-stone-400">

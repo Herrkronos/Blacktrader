@@ -9,7 +9,7 @@ import { money } from "@/lib/analysis/persona";
 import { performance, tradeReturnPct } from "@/lib/analysis/stats";
 import { instrumentKey, useMarket } from "@/lib/client/market";
 import { actions, useAppData, type Trade } from "@/lib/store/store";
-import { HORIZON_LABEL, type Horizon } from "@/lib/types";
+import { HORIZON_LABEL } from "@/lib/types";
 
 const signed = (x: number, d = 2) => `${x >= 0 ? "+" : ""}${x.toFixed(d).replace(".", ",")} %`;
 
@@ -36,9 +36,9 @@ function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction:
   const [dx, setDx] = useState(0);
   const start = useRef<number | null>(null);
   const [open, setOpen] = useState(false);
-  const isLt = t.strategy === "core" || t.strategy === "longterm";
+  const isLt = t.strategy === "core" || t.strategy === "longterm" || !!t.promotedAt;
   const edge = isLt ? "edge-core" : t.direction === "long" ? "edge-trade" : "edge-short";
-  const kind = t.strategy === "longterm" || t.strategy === "core" ? <span className="badge-core">Langfristig</span> : t.direction === "long" ? <span className="badge-trade">Trade</span> : <span className="badge-short">Short</span>;
+  const kind = t.promotedAt ? <span className="badge-core">Blau (hochgestuft)</span> : t.strategy === "longterm" || t.strategy === "core" ? <span className="badge-core">Langfristig</span> : t.direction === "long" ? <span className="badge-trade">Trade</span> : <span className="badge-short">Short</span>;
   const cur = t.status === "closed" ? t.exit : price ?? t.lastPrice;
   const ret = t.status === "closed" ? t.returnPct : t.status === "open" && cur ? tradeReturnPct(t.direction, t.entry, cur) : undefined;
   const st = statusText(t);
@@ -96,6 +96,12 @@ function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction:
           <div className="mt-3 space-y-2 border-t border-white/10 pt-3 text-[14px] text-stone-300">
             <p className="text-stone-400">Übernommen am {new Date(t.openedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</p>
             <p className="whitespace-pre-wrap">{t.reason}</p>
+            {t.promotedAt && (
+              <p className="rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
+                Hochgestuft zu Blau am {new Date(t.promotedAt).toLocaleDateString("de-DE")}: {t.promoteReason}
+                {t.initialStop != null && t.initialStop !== t.stop ? ` Stop von ${money(t.initialStop)} auf ${money(t.stop)} nachgezogen.` : ""}
+              </p>
+            )}
             {t.strategy === "longterm" && (
               <div className="space-y-1 rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
                 <p>Teile: {(t.tranches ?? []).map((x) => `${money(x.price)} ${x.filledAt ? "✓" : "wartet"}`).join(" · ") || "–"}</p>
@@ -127,17 +133,21 @@ export default function JournalPage() {
   const trades = useAppData((d) => d.trades);
   const notice = useAppData((d) => d.migrationNotice);
   const { live } = useMarket();
-  const [horizon, setHorizon] = useState<Horizon | "all">("all");
-  const [art, setArt] = useState<"all" | "trade" | "short" | "core">("all");
+  // Signalart statt Zeitraum: Blau (langfristig / hochgestuft) · Grün (Trade). Der Zeitraum steht nur noch als Info am Trade.
+  const [art, setArt] = useState<"all" | "blau" | "gruen">("all");
   const [action, setAction] = useState<Trade | null>(null);
   const [exitPrice, setExitPrice] = useState("");
 
   const filtered = useMemo(
     () =>
       trades
-        .filter((t) => (horizon === "all" || t.horizon === horizon) && (art === "all" || (art === "core" ? t.strategy === "core" || t.strategy === "longterm" : t.strategy !== "core" && t.strategy !== "longterm" && (art === "trade" ? t.direction === "long" : t.direction === "short"))))
+        .filter((t) => {
+          if (art === "all") return true;
+          const blue = t.strategy === "core" || t.strategy === "longterm" || !!t.promotedAt;
+          return art === "blau" ? blue : !blue && t.direction === "long";
+        })
         .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0) || b.openedAt - a.openedAt),
-    [trades, horizon, art],
+    [trades, art],
   );
   const closed = filtered.filter((t) => t.status === "closed" && t.returnPct != null);
   const stats = performance(closed.map((t) => ({ returnPct: t.returnPct!, closedAt: t.closedAt! })));
@@ -206,23 +216,14 @@ export default function JournalPage() {
         {(
           [
             ["all", "Alle"],
-            ["trade", "Trade"],
-            ["short", "Short"],
-            ["core", "Langfristig"],
+            ["blau", "Blau"],
+            ["gruen", "Grün"],
           ] as const
         ).map(([k, l]) => (
           <button key={k} onClick={() => setArt(k)} className={`chip shrink-0 ${art === k ? "border-gold bg-white/10 font-semibold text-gold-light" : "border-white/10 text-stone-400"}`}>
             {l}
           </button>
         ))}
-        <select className="chip shrink-0 border-white/10 bg-transparent text-stone-300" value={horizon} onChange={(e) => setHorizon(e.target.value as Horizon | "all")} aria-label="Zeitraum">
-          <option value="all">Alle Zeiträume</option>
-          {(["short", "medium", "long"] as Horizon[]).map((h) => (
-            <option key={h} value={h}>
-              {HORIZON_LABEL[h]}
-            </option>
-          ))}
-        </select>
       </div>
 
       {filtered.length === 0 ? (

@@ -54,7 +54,7 @@ async function send(rec: PushRecord, m: Pick<PushMessage, "title" | "body" | "ur
 export async function sendTest(endpoint: string): Promise<string> {
   const rec = await getJson<PushRecord>(`push:sub:${subId(endpoint)}`);
   if (!rec) return "Kein Abo gefunden – bitte Push neu einschalten.";
-  const r = await send(rec, { title: "Black Ship Trading Analyst", body: "Push-Nachrichten sind aktiv.", url: "/" });
+  const r = await send(rec, { title: "Blacktrader", body: "Push-Nachrichten sind aktiv.", url: "/" });
   return r === "ok" ? "Test-Nachricht gesendet." : r === "gone" ? "Abo ist abgelaufen – bitte Push neu einschalten." : "Senden fehlgeschlagen.";
 }
 
