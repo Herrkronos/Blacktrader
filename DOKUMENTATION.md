@@ -149,13 +149,17 @@ Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen sieben Anal
 | Ausbruchs-Bot | kauft beim 55-Tage-Hoch, verkauft beim 20-Tage-Tief (Turtle) |
 | KI-Bot | logistische Regression, lernt jedes Jahr nur mit bereits bekannten Ergebnissen |
 
-**Fair, ohne Tricks:** gleiche Werte (alle Aktien, Krypto, Rohstoffe), gleiches Zeitfenster (15 Jahre Tageskerzen), nur Kauf-Einstiege, Ein- und Ausstieg zum Eröffnungskurs der nächsten Kerze, jedes Signal kennt nur die Vergangenheit (Tests prüfen: abgeschnittene Zukunft ändert keine früheren Trades).
+**Fair, ohne Tricks:** gleiche Werte (alle Aktien, Krypto, Rohstoffe), gleiche Zeiträume, nur Kauf-Einstiege, Ein- und Ausstieg zum Eröffnungskurs der nächsten Kerze, jedes Signal kennt nur die Vergangenheit (Tests prüfen: abgeschnittene Zukunft ändert keine früheren Trades).
 
-**Ablauf je Durchgang:** 5.000 € Startkapital, 500 Trades, 500 € je Trade (bzw. Restgeld), 0,2 % Gebühren je Trade, 27,5 % KESt (Österreich) auf Gewinne (je ca. 55 Trades ≈ 1 Jahr). **50 Durchgänge**, abwechselnd bullisch, neutral, bärisch und gemischt (Marktlage wechselt in Phasen von 30–80 Trades). Die Marktlage eines Trades ist die des S&P 500 beim Einstieg. Alle Teilnehmer bekommen in Durchgang k dieselbe Szenario-Folge. Hat jemand in einer Marktlage keinen Trade, bleibt sein Geld liegen.
+**Ein Versuch = 5 Jahre echte Zeit:** 5.000 € Startkapital, 500 € je Trade (nur wenn genug Geld da ist; je Wert höchstens eine Position, also höchstens 10 Trades gleichzeitig), 0,2 % Gebühren je Trade, **27,5 % KESt** auf den Netto-Gewinn jedes Kalenderjahres (Verluste nur im selben Jahr verrechenbar). Offene Positionen werden am Ende zum Tageskurs bewertet und versteuert. **Wer kein Geld mehr für einen Trade hat und keine Position mehr hält, scheidet aus.**
 
-**Tempo:** Für jeden Teilnehmer wird geschätzt, wie lange 500 Trades im Schnitt dauern: Signale pro Jahr (über alle Werte), begrenzt durch das Geld (5.000 € / 500 € = höchstens 10 Trades gleichzeitig) und die durchschnittliche Haltedauer. Daraus auch die Rendite pro Jahr. Die KESt wird je Teilnehmer einmal pro (geschätztem) Jahr abgezogen.
+**50 Versuche** mit gleichmäßig verteilten Startzeitpunkten in den letzten 15 Jahren – für alle Teilnehmer dieselben. Jeder Zeitraum wird nach der Marktlage des S&P 500 eingeordnet: **bärisch** (≥ 15 % Bärentage, also mit Crash/Bärenmarkt 2015/16, 2018, 2020 oder 2022), **bullisch** (≥ 55 % Bullentage), **neutral** (< 45 % Bullentage), sonst **gemischt**.
 
-**Auswertung:** Rangliste nach Median-Endkapital (mit Spanne der schlechtesten/besten 10 %, Pleiten, Platz je Szenario). Blacktrader wird mit dem Stand **vor und nach** dem Training auf denselben Durchgängen gerechnet – daraus „wo hat er sich verbessert“ (je Szenario in €, Platz vorher → nachher), dazu die im Training verbesserten Bereiche und der Vergleich zur letzten Auswertung. Gespeichert auf dem Gerät und beim Server (`/api/trainer/report`, letzte 20), im JSON-Export enthalten.
+**Gewertet wird der Durchschnitt der 50 Versuche:** Rendite pro Jahr (danach die Rangliste), Anzahl Trades in 5 Jahren, Gewinn nach KESt, bezahlte KESt, Trefferquote, wie oft ausgeschieden – gesamt und je Szenario.
+
+**Blacktrader lernt dabei:** Das Turnier läuft in 5 Runden zu je 10 Versuchen (jede Runde mit gemischten Zeiträumen). Vor jeder Runde lernt Blacktrader ein Fünftel der eingestellten Zeit (bei 15 Min also 3 Min) – mit denselben Strenge-Regeln wie im Training; Verbesserungen werden **sofort gespeichert** und die nächste Runde wird mit dem neuesten Stand gespielt. Die Auswertung zeigt Runde 1 → Runde 5 und Blacktrader getrennt nach Blau und Grün. „Nur Turnier ohne Lernen“ spielt alle Runden mit dem aktuellen Stand.
+
+**Auswertung:** Rangliste, Blacktrader je Szenario, je Runde, nur Blau / nur Grün, im Lernen verbesserte Bereiche und Vergleich zur letzten Auswertung. Gespeichert auf dem Gerät und beim Server (`/api/trainer/report`, letzte 20), im JSON-Export enthalten.
 
 **Ehrlicher Hinweis:** Auch „bärische“ Phasen der letzten 15 Jahre wurden meist schnell wieder aufgeholt; Kauf-Strategien schneiden dort deshalb oft gut ab. Ergebnisse der Vergangenheit sind keine Garantie.
 
@@ -228,5 +232,5 @@ const entry = pickBestEntry({ symbol: "AAPL", kind: "stock", views, lt: findLong
 
 Chronologischer Test Sep 2022 – Nov 2026, 5.000 € Startkapital, nach 27,5 % KESt (Österreich): Blacktrader mit Sektor-Regel 9.859 € (+97,2 %), ohne Sektor-Regel 9.155 € (+83,1 %), Zufall 8.483 € (+69,7 %), S&P 500 Kaufen-und-Halten 8.103 € (+62,1 %), KI 7.725 € (+54,5 %), RSI 7.359 € (+47,2 %), Trendfolger 6.631 € (+32,6 %).
 
-Turnier (15 Jahre, 50 Durchgänge × 500 Trades, 27,5 % KESt, Standard-Einstellung): 1. Kaufen & Halten 29.725 € · **2. Blacktrader 28.722 €** (Spanne 17.326–41.863 €) · 3. Trendfolger 28.115 € · 4. Ausbruchs-Bot 16.154 € · 5. Zufalls-Bot 8.510 € · 6. RSI-Bot 8.378 € · 7. MACD-Bot 7.625 € · 8. KI-Bot 7.249 €. Niemand war pleite.
+Turnier (50 Versuche à 5 Jahre, 27,5 % KESt, Standard-Einstellung, Ø pro Jahr): 1. MACD-Bot +23,4 % · 2. Kaufen & Halten +20,3 % · **3. Blacktrader +20,0 %** (Ø 167 Trades, Ø Gewinn nach KESt 8.228 €) · 4. Ausbruchs-Bot +17,4 % · 5. Trendfolger +17,1 % · 6. Zufalls-Bot +10,9 % · 7. KI-Bot +9,1 % · 8. RSI-Bot +6,4 %. Niemand ist ausgeschieden. Blacktrader nur Grün: +22,6 % pro Jahr, nur Blau: +6,0 %.
 **Ehrlicher Hinweis:** überwiegend steigende Märkte; der Vorsprung vor Zufall ist im chronologischen Test klein. Bei Krypto ist der Gewinnfaktor trotz höherer Quote schwach.

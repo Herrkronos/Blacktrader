@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluate, formatDuration, OPPONENTS, pace, rank, regimeIndex, reportLines, RULES, simulate, type PoolTrade, type Series } from "../src/lib/trainer/tournament";
+import { cagr, makeWindows, OPPONENTS, rank, regimeIndex, reportLines, RULES, runWindow, summarizeRuns, type PoolTrade, type Series, type Window } from "../src/lib/trainer/tournament";
 import type { Candle } from "../src/lib/types";
 
 // Kursverlauf mit Auf und Ab (deterministisch)
@@ -17,34 +17,62 @@ function series(n: number, seed = 1, drift = 0.0004, wave = 0.01): Candle[] {
   return out;
 }
 
+const DAY = 86400;
+const W = (from: number, years = 5): Window => ({ from, to: from + years * 365.25 * DAY, scenario: "gemischt" });
+const T = (sym: string, d0: number, d1: number, r: number): PoolTrade => ({ sym, entry: 1_500_000_000 + d0 * DAY, exit: 1_500_000_000 + d1 * DAY, r, px: 100 });
+const flat = () => 100;
+
 describe("Turnier: Regeln", () => {
-  it("5.000 € Start, 500 Trades, 50 Durchgänge, 7 Gegner", () => {
-    expect(RULES).toMatchObject({ start: 5000, trades: 500, reps: 50 });
+  it("5.000 € Start, 5 Jahre, 50 Versuche, 7 Gegner, KESt 27,5 %", () => {
+    expect(RULES).toMatchObject({ start: 5000, years: 5, reps: 50, stake: 500, tax: 0.275 });
     expect(OPPONENTS).toHaveLength(7);
   });
-  it("gleicher Startwert → gleiches Ergebnis; ohne Trades bleibt das Geld liegen", () => {
-    const pool = { bullisch: [2, -1, 3], neutral: [1, -2], baerisch: [-1, 1] };
-    expect(simulate(pool, 3, "gemischt")).toEqual(simulate(pool, 3, "gemischt"));
-    expect(simulate({ bullisch: [], neutral: [], baerisch: [] }, 1, "bullisch").end).toBe(5000);
+  it("ohne Trades bleibt das Geld liegen", () => {
+    const r = runWindow([], W(1_500_000_000), flat);
+    expect(r.end).toBe(5000);
+    expect(r.trades).toBe(0);
   });
-  it("Gebühren und KESt: lauter +1-%-Trades bringen weniger als ohne Abzüge", () => {
-    const r = simulate({ bullisch: [1], neutral: [1], baerisch: [1] }, 1, "bullisch");
-    expect(r.end).toBeGreaterThan(5000);
-    expect(r.end).toBeLessThan(5000 + 500 * 500 * 0.01);
+  it("Gewinn wird nach Gebühren und 27,5 % KESt pro Kalenderjahr gerechnet", () => {
+    // ein Trade +10 % auf 500 €: 50 € Gewinn − 1 € Gebühr = 49 €, davon 27,5 % KESt
+    const r = runWindow([T("A", 10, 40, 10)], W(1_500_000_000), flat);
+    expect(r.trades).toBe(1);
+    expect(r.tax).toBeCloseTo(49 * 0.275, 6);
+    expect(r.profit).toBeCloseTo(49 * 0.725, 6);
   });
-  it("Pleite wird erkannt", () => {
-    const r = simulate({ bullisch: [-50], neutral: [-50], baerisch: [-50] }, 1, "baerisch");
-    expect(r.broke).not.toBeNull();
+  it("Verluste werden im selben Jahr verrechnet", () => {
+    const r = runWindow([T("A", 10, 40, 10), T("B", 50, 80, -10)], W(1_500_000_000), flat);
+    expect(r.tax).toBe(0);
   });
-  it("Rangliste nach Median-Endkapital, Platz je Szenario", () => {
-    const reg = (t: number) => (["bullisch", "neutral", "baerisch"] as const)[t % 3];
-    const good: PoolTrade[] = Array.from({ length: 50 }, (_, i) => ({ sym: "A", entry: i, exit: i + 1, r: 2 }));
-    const bad: PoolTrade[] = good.map((t) => ({ ...t, r: -1 }));
-    const list = rank([evaluate("b", "Schlecht", "", bad, reg), evaluate("blacktrader", "Blacktrader", "", good, reg)]);
+  it("nur 500 € je Trade und nur mit genug Geld: höchstens 10 Trades gleichzeitig", () => {
+    const many = Array.from({ length: 15 }, (_, i) => T(`S${i}`, 10, 100, 1));
+    expect(runWindow(many, W(1_500_000_000), flat).trades).toBe(10);
+  });
+  it("wer kein Geld mehr hat, scheidet aus", () => {
+    const crash = Array.from({ length: 30 }, (_, i) => T(`S${i % 10}`, 10 + i * 40, 30 + i * 40, -95));
+    expect(runWindow(crash, W(1_500_000_000), flat).broke).toBe(true);
+  });
+  it("offene Positionen werden am Ende zum Tageskurs bewertet", () => {
+    const r = runWindow([T("A", 10, 5000, 50)], W(1_500_000_000), () => 120);
+    expect(r.end).toBeCloseTo(5000 + (100 - 1) * 0.725, 6);
+  });
+  it("50 Zeiträume à 5 Jahre mit Marktlage", () => {
+    const spx = series(15 * 252, 3, 0.0004);
+    const ws = makeWindows(spx, spx[200].time);
+    expect(ws).toHaveLength(50);
+    expect(ws.every((w) => w.to - w.from > 4.9 * 365 * DAY)).toBe(true);
+    expect(ws.every((w) => ["bullisch", "neutral", "baerisch", "gemischt"].includes(w.scenario))).toBe(true);
+  });
+  it("Rangliste nach Ø Rendite pro Jahr; Auswertung nennt Trades und Gewinn nach KESt", () => {
+    const w = W(1_500_000_000);
+    const good = summarizeRuns("blacktrader", "Blacktrader", "", [{ w, r: runWindow([T("A", 10, 40, 20)], w, flat) }]);
+    const bad = summarizeRuns("x", "Schlecht", "", [{ w, r: runWindow([T("A", 10, 40, -20)], w, flat) }]);
+    const list = rank([bad, good]);
     expect(list[0].name).toBe("Blacktrader");
-    expect(list[0].rank).toBe(1);
-    expect(list[0].rankByScenario.bullisch).toBe(1);
-    expect(reportLines({ at: "x", rules: RULES, ranking: list })[0]).toContain("Platz 1 von 2");
+    expect(cagr(5000)).toBe(0);
+    const lines = reportLines({ v: 2, at: "x", rules: { ...RULES }, ranking: list, scenarioCount: {} });
+    expect(lines[0]).toContain("Platz 1 von 2");
+    expect(lines[0]).toContain("Trades in 5 Jahren");
+    expect(lines[0]).toContain("nach KESt");
   });
   it("Marktlage: steigender Index = bullisch, fallender = bärisch", () => {
     const up = series(400, 1, 0.003, 0);
@@ -52,26 +80,6 @@ describe("Turnier: Regeln", () => {
     expect(regimeIndex(up)(up[399].time)).toBe("bullisch");
     expect(regimeIndex(down)(down[399].time)).toBe("baerisch");
     expect(regimeIndex(up)(up[50].time)).toBeNull();
-  });
-});
-
-describe("Turnier: wie lange dauern 500 Trades?", () => {
-  it("Dauer verständlich: Monate, Jahre", () => {
-    expect(formatDuration(5 / 12)).toBe("5 Monate");
-    expect(formatDuration(1)).toBe("1 Jahr");
-    expect(formatDuration(4.25)).toBe("4 Jahre 3 Monate");
-    expect(formatDuration(null)).toBe("–");
-  });
-  it("wenige Signale → langsam; viele Signale werden durch das Geld begrenzt (max. 10 Trades gleichzeitig)", () => {
-    const day = 86400;
-    // 50 Signale in 10 Jahren, je 20 Tage gehalten → 5 pro Jahr → 100 Jahre für 500 Trades
-    const few = Array.from({ length: 50 }, (_, i) => ({ sym: "A", entry: i * 73 * day, exit: i * 73 * day + 20 * day, r: 1 }));
-    expect(pace(few, 10)!.years).toBeCloseTo(100, 0);
-    // 10.000 Signale in 10 Jahren, je 73 Tage gehalten → Geld reicht für 10 × 5 = 50 Trades pro Jahr → 10 Jahre
-    const many = Array.from({ length: 10000 }, (_, i) => ({ sym: "A", entry: i * day, exit: i * day + 73 * day, r: 1 }));
-    const p = pace(many, 10)!;
-    expect(p.tradesPerYear).toBeCloseTo(50, 0);
-    expect(p.years).toBeCloseTo(10, 0);
   });
 });
 

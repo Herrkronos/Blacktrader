@@ -219,7 +219,8 @@ export async function loadReports() {
     /* nur Gerät */
   }
   const map = new Map<string, TournamentReport>();
-  for (const x of [...local, ...server]) if (x && x.at && Array.isArray(x.ranking)) map.set(x.at, x);
+  // Nur Berichte im aktuellen Format (5-Jahres-Versuche); ältere (500 Trades) werden nicht mehr angezeigt
+  for (const x of [...local, ...server]) if (x && x.v === 2 && x.at && Array.isArray(x.ranking)) map.set(x.at, x);
   const reports = [...map.values()].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 20);
   emit({ reports });
 }

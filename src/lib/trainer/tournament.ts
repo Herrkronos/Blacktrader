@@ -1,14 +1,14 @@
 // Turnier: Blacktrader gegen 7 andere Analysten/Bots – fair und ohne Blick in die Zukunft.
 //
-// Jeder Teilnehmer erzeugt aus DENSELBEN Kursdaten (alle Werte: Aktien, Krypto, Rohstoffe) seine Kauf-Trades.
+// Jeder Teilnehmer erzeugt aus DENSELBEN Kursdaten (alle Werte: Aktien, Krypto, Rohstoffe, 15 Jahre) seine Kauf-Trades.
 // Jedes Signal kennt nur Kerzen bis zu seinem Tag; Einstieg und Ausstieg zum Eröffnungskurs der nächsten Kerze.
-// Jeder Trade bekommt die Marktlage beim Einstieg (S&P 500: bullisch / neutral / bärisch).
 //
-// Ein Durchgang: 5.000 € Startkapital, 500 Trades, 500 € je Trade (bzw. Restgeld), 0,2 % Gebühren je Trade,
-// 27,5 % KESt (Österreich, Kapitalerträge aus Aktien, Krypto, Derivaten) auf Gewinne (je ca. 55 Trades ≈ 1 Jahr, Verlustausgleich im selben Zeitraum).
-// 50 Durchgänge mit den Szenarien bullisch, neutral, bärisch und gemischt (Marktlage wechselt in Phasen).
-// Alle Teilnehmer bekommen in Durchgang k dieselbe Szenario-Folge (gleicher Zufalls-Startwert).
-// Hat ein Teilnehmer in einer Marktlage keinen Trade, bleibt das Geld liegen (nicht handeln ist erlaubt).
+// Ein Versuch = 5 Jahre ECHTE Zeit: 5.000 € Startkapital, 500 € je Trade (nur wenn genug Geld da ist, je Wert höchstens
+// eine Position), 0,2 % Gebühren je Trade, 27,5 % KESt (Österreich) auf den Netto-Gewinn jedes Kalenderjahres
+// (Verluste nur im selben Jahr verrechenbar). Offene Positionen werden am Ende zum Tageskurs bewertet und versteuert.
+// Wer kein Geld mehr für einen Trade hat und keine offene Position hält, scheidet aus.
+// 50 Versuche mit verschiedenen Startzeitpunkten – für alle Teilnehmer dieselben. Jeder Zeitraum wird nach der
+// Marktlage (S&P 500) als bullisch, neutral, bärisch oder gemischt eingeordnet. Gewertet wird der Durchschnitt.
 import { ema, rsi, sma } from "../analysis/indicators";
 import type { Candle } from "../types";
 
@@ -23,6 +23,10 @@ export interface PoolTrade {
   exit: number;
   /** Rendite in % (vor Gebühren) */
   r: number;
+  /** Einstiegskurs (für die Bewertung offener Positionen am Ende) */
+  px?: number;
+  /** Nur Blacktrader: blauer oder grüner Einstieg */
+  color?: "blau" | "gruen";
 }
 
 export interface Series {
@@ -30,7 +34,7 @@ export interface Series {
   candles: Candle[];
 }
 
-export const RULES = { start: 5000, trades: 500, reps: 50, stake: 500, fee: 0.002, tax: 0.275, tradesPerYear: 55 } as const;
+export const RULES = { start: 5000, years: 5, reps: 50, stake: 500, fee: 0.002, tax: 0.275, rounds: 5 } as const;
 
 // ---------------------------------------------------------------------------------------------
 // Marktlage aus dem S&P 500 (nur Vergangenheit)
@@ -59,7 +63,7 @@ export function regimeIndex(spx: Candle[]) {
 // ---------------------------------------------------------------------------------------------
 // Die 7 Gegner (Tageskerzen, nur Kauf-Einstiege)
 
-const trade = (sym: string, c: Candle[], i: number, j: number): PoolTrade | null => (j < c.length && i < j && c[i].open > 0 ? { sym, entry: c[i].time, exit: c[j].time, r: (c[j].open / c[i].open - 1) * 100 } : null);
+const trade = (sym: string, c: Candle[], i: number, j: number): PoolTrade | null => (j < c.length && i < j && c[i].open > 0 ? { sym, entry: c[i].time, exit: c[j].time, r: (c[j].open / c[i].open - 1) * 100, px: c[i].open } : null);
 
 /** Kleiner, reproduzierbarer Zufallsgenerator */
 export function rng(seed: number) {
@@ -271,206 +275,244 @@ export const OPPONENTS: Opponent[] = [
 ];
 
 // ---------------------------------------------------------------------------------------------
-// Simulation
+// Ein Versuch: 5 Jahre echte Zeit
+
+export interface Window {
+  from: number;
+  to: number;
+  scenario: Scenario;
+}
 
 export interface RunResult {
   end: number;
-  low: number;
-  /** Trade-Nummer, bei der das Geld aufgebraucht war */
-  broke: number | null;
-  taken: number;
+  /** Gewinn nach Gebühren und KESt */
+  profit: number;
+  tax: number;
+  trades: number;
   wins: number;
+  low: number;
+  /** ausgeschieden (kein Geld mehr) */
+  broke: boolean;
 }
 
-export function simulate(byRegime: Record<Regime, number[]>, seed: number, scenario: Scenario, tradesPerYear: number = RULES.tradesPerYear): RunResult {
-  const taxEvery = Math.max(1, Math.round(tradesPerYear));
-  const r = rng(seed * 7919 + 13);
-  let cap: number = RULES.start;
-  let low: number = cap;
-  let ypnl = 0;
+const YEAR = 365.25 * 86400;
+const yearOf = (t: number) => new Date(t * 1000).getUTCFullYear();
+
+/**
+ * Spielt die Trades eines Teilnehmers im Zeitraum chronologisch durch.
+ * `priceAt(sym, t)` liefert den letzten Schlusskurs bis t (für offene Positionen am Ende).
+ */
+export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t: number) => number | null): RunResult {
+  type Ev = { t: number; kind: 0 | 1; i: number };
+  const trades = pool.filter((p) => p.entry >= w.from && p.entry < w.to);
+  const ev: Ev[] = [];
+  trades.forEach((p, i) => {
+    ev.push({ t: p.entry, kind: 1, i });
+    if (p.exit <= w.to) ev.push({ t: p.exit, kind: 0, i });
+  });
+  // Ausstiege vor Einstiegen am selben Tag; sonst nach Zeit und Wert (eindeutig, für alle gleich)
+  ev.sort((a, b) => a.t - b.t || a.kind - b.kind || trades[a.i].sym.localeCompare(trades[b.i].sym));
+  let cash: number = RULES.start;
+  const open = new Map<number, number>(); // Trade-Index → Einsatz
+  const openSym = new Set<string>();
+  let year = yearOf(w.from);
+  let pnlYear = 0;
+  let tax = 0;
   let taken = 0;
   let wins = 0;
-  let done = 0;
-  const regimes: Regime[] = ["bullisch", "neutral", "baerisch"];
-  while (done < RULES.trades) {
-    const reg: Regime = scenario === "gemischt" ? regimes[Math.floor(r() * 3)] : scenario;
-    const len = scenario === "gemischt" ? 30 + Math.floor(r() * 51) : RULES.trades;
-    for (let k = 0; k < len && done < RULES.trades; k++) {
-      const pool = byRegime[reg];
-      const pick = pool.length ? pool[Math.floor(r() * pool.length)] : null;
-      done++;
-      if (pick != null) {
-        const stake = Math.min(RULES.stake, cap);
-        const g = (stake * pick) / 100 - stake * RULES.fee;
-        cap += g;
-        ypnl += g;
-        taken++;
-        if (pick > 0) wins++;
-      }
-      if (done % taxEvery === 0) {
-        cap -= Math.max(0, ypnl) * RULES.tax;
-        ypnl = 0;
-      }
-      low = Math.min(low, cap);
-      if (cap < 50) return { end: Math.max(0, cap), low, broke: done, taken, wins };
+  let low: number = cash;
+  let broke = false;
+  const settleYear = () => {
+    const t = Math.max(0, pnlYear) * RULES.tax;
+    cash -= t;
+    tax += t;
+    pnlYear = 0;
+  };
+  const close = (i: number, r: number) => {
+    const stake = open.get(i)!;
+    const g = (stake * r) / 100 - stake * RULES.fee;
+    cash += stake + g;
+    pnlYear += g;
+    if (g > 0) wins++;
+    open.delete(i);
+    openSym.delete(trades[i].sym);
+  };
+  for (const e of ev) {
+    while (yearOf(e.t) > year) {
+      settleYear();
+      year++;
     }
+    if (e.kind === 0) {
+      if (open.has(e.i)) close(e.i, trades[e.i].r);
+    } else if (!broke) {
+      const p = trades[e.i];
+      if (openSym.has(p.sym) || cash < RULES.stake) {
+        // ohne Geld und ohne offene Position: ausgeschieden
+        if (cash < RULES.stake && open.size === 0) broke = true;
+        continue;
+      }
+      cash -= RULES.stake;
+      open.set(e.i, RULES.stake);
+      openSym.add(p.sym);
+      taken++;
+    }
+    let eq = cash;
+    for (const v of open.values()) eq += v;
+    low = Math.min(low, eq);
   }
-  cap -= Math.max(0, ypnl) * RULES.tax;
-  return { end: cap, low, broke: null, taken, wins };
+  // Ende: offene Positionen zum Tageskurs bewerten und verkaufen, letztes Jahr versteuern
+  for (const i of [...open.keys()]) {
+    const p = trades[i];
+    const now = priceAt(p.sym, w.to);
+    close(i, now && p.px ? (now / p.px - 1) * 100 : 0);
+  }
+  while (yearOf(w.to) > year) {
+    settleYear();
+    year++;
+  }
+  settleYear();
+  if (cash < RULES.stake) broke = true;
+  return { end: cash, profit: cash - RULES.start, tax, trades: taken, wins, low: Math.min(low, cash), broke };
 }
 
-const median = (x: number[]) => {
-  if (!x.length) return 0;
-  const s = [...x].sort((a, b) => a - b);
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-};
-const quantile = (x: number[], q: number) => {
-  if (!x.length) return 0;
-  const s = [...x].sort((a, b) => a - b);
-  return s[Math.min(s.length - 1, Math.max(0, Math.floor(q * (s.length - 1))))];
-};
+/** 50 Zeiträume à 5 Jahre (gleichmäßig verteilte Startzeitpunkte) mit ihrer Marktlage. */
+export function makeWindows(spx: Candle[], from: number, reps: number = RULES.reps, years: number = RULES.years): Window[] {
+  const last = spx[spx.length - 1].time;
+  const lastStart = last - years * YEAR;
+  if (lastStart <= from) return [];
+  const regimeOf = regimeIndex(spx);
+  const out: Window[] = [];
+  for (let k = 0; k < reps; k++) {
+    const a = from + ((lastStart - from) * k) / Math.max(1, reps - 1);
+    const b = a + years * YEAR;
+    const cnt = { bullisch: 0, neutral: 0, baerisch: 0 };
+    let n = 0;
+    for (const c of spx) {
+      if (c.time < a || c.time > b) continue;
+      const g = regimeOf(c.time);
+      if (g) (cnt[g]++, n++);
+    }
+    const sh = (g: Regime) => (n ? cnt[g] / n : 0);
+    // Bärenmärkte dauern nur Monate (2015/16, 2018, 2020, 2022): ab 15 % Bärentagen zählt ein 5-Jahres-Zeitraum als
+    // bärisch (er enthält dann einen Crash bzw. Bärenmarkt), ab 55 % Bullentagen als bullisch, unter 45 % als neutral.
+    const scenario: Scenario = sh("baerisch") >= 0.15 ? "baerisch" : sh("bullisch") >= 0.55 ? "bullisch" : sh("bullisch") < 0.45 ? "neutral" : "gemischt";
+    out.push({ from: Math.round(a), to: Math.round(b), scenario });
+  }
+  return out;
+}
+
+const mean = (x: number[]) => (x.length ? x.reduce((a, b) => a + b, 0) / x.length : 0);
+export const cagr = (end: number) => (end > 0 ? Math.pow(end / RULES.start, 1 / RULES.years) - 1 : -1);
 
 export interface ContestantResult {
   id: string;
   name: string;
   desc: string;
-  /** Anzahl Trades im Pool */
-  pool: number;
-  median: number;
-  p10: number;
-  p90: number;
-  /** Pleiten von 50 Durchgängen */
-  broke: number;
+  /** Versuche */
+  runs: number;
+  /** Durchschnitt der Versuche */
+  avgEnd: number;
+  avgProfit: number;
+  avgTax: number;
+  avgTrades: number;
+  /** Ø Rendite pro Jahr (nach Gebühren und KESt) */
+  avgPerYear: number;
+  /** schlechtester / bester Versuch (Rendite pro Jahr) */
+  worstPerYear: number;
+  bestPerYear: number;
   winRate: number;
-  /** Median-Endkapital je Szenario */
-  byScenario: Record<Scenario, number>;
-  /** Rang je Szenario (1 = bester) */
-  rankByScenario: Record<Scenario, number>;
+  /** ausgeschieden (kein Geld mehr) in so vielen Versuchen */
+  broke: number;
+  byScenario: Partial<Record<Scenario, { n: number; avgPerYear: number }>>;
+  rankByScenario: Partial<Record<Scenario, number>>;
   rank: number;
-  /** Wie lange 500 Trades im Schnitt dauern (Jahre) – aus Signalen pro Jahr und Haltedauer */
-  years?: number | null;
-  /** Trades pro Jahr, die mit 5.000 € (höchstens 10 gleichzeitig) tatsächlich möglich sind */
-  tradesPerYear?: number | null;
-  /** Durchschnittliche Haltedauer in Tagen */
-  holdDays?: number | null;
 }
 
-/**
- * Tempo eines Teilnehmers: Signale pro Jahr (über alle Werte) – begrenzt durch das Geld: mit 5.000 € und 500 € je Trade
- * laufen höchstens 10 Trades gleichzeitig. Daraus: wie lange 500 Trades im Schnitt dauern.
- */
-export function pace(pool: PoolTrade[], spanYears: number): { years: number; tradesPerYear: number; holdDays: number } | null {
-  if (!pool.length || spanYears <= 0) return null;
-  const holdDays = Math.max(1, pool.reduce((a, t) => a + (t.exit - t.entry) / 86400, 0) / pool.length);
-  const signals = pool.length / spanYears;
-  const slots = RULES.start / RULES.stake;
-  const tradesPerYear = Math.min(signals, (slots * 365) / holdDays);
-  return { years: RULES.trades / tradesPerYear, tradesPerYear, holdDays };
-}
-
-/** Rendite pro Jahr (aus Median-Endkapital und Dauer der 500 Trades) */
-export function perYear(c: Pick<ContestantResult, "median" | "years">): number | null {
-  if (c.years == null || !(c.years > 0) || c.median <= 0) return null;
-  return Math.pow(c.median / RULES.start, 1 / c.years) - 1;
-}
-
-/** z. B. „5 Monate“, „1 Jahr“, „4 Jahre 3 Monate“ */
-export function formatDuration(years: number | null | undefined): string {
-  if (years == null || !Number.isFinite(years)) return "–";
-  const months = Math.max(1, Math.round(years * 12));
-  if (months < 12) return `${months} ${months === 1 ? "Monat" : "Monate"}`;
-  const y = Math.floor(months / 12);
-  const m = months % 12;
-  return `${y} ${y === 1 ? "Jahr" : "Jahre"}${m ? ` ${m} ${m === 1 ? "Monat" : "Monate"}` : ""}`;
-}
-
-export interface TournamentReport {
-  at: string;
-  rules: typeof RULES;
-  /** Teilnehmer, nach Rang sortiert */
-  ranking: ContestantResult[];
-  /** Blacktrader VOR dem Training (gleiche Durchgänge) – für „wo hat er sich verbessert“ */
-  before?: ContestantResult | null;
-  /** Bereiche, die das Training verbessert hat (Zonen-Quote alt → neu) */
-  improvedCells?: { cell: string; old: number | null; neu: number | null }[];
-  note?: string;
-}
-
-/** Wertet einen Teilnehmer über alle Durchgänge aus. */
-export function evaluate(id: string, name: string, desc: string, pool: PoolTrade[], regimeOf: (t: number) => Regime | null, reps = RULES.reps, spanYears = 0): ContestantResult {
-  // KESt einmal pro Jahr: nach so vielen Trades, wie dieser Teilnehmer in einem Jahr schafft
-  const pc = pace(pool, spanYears);
-  const byRegime: Record<Regime, number[]> = { bullisch: [], neutral: [], baerisch: [] };
-  for (const t of pool) {
-    const g = regimeOf(t.entry);
-    if (g) byRegime[g].push(t.r);
+/** Fasst die Versuche eines Teilnehmers zusammen. */
+export function summarizeRuns(id: string, name: string, desc: string, runs: { w: Window; r: RunResult }[]): ContestantResult {
+  const py = runs.map((x) => cagr(x.r.end));
+  const byScenario: ContestantResult["byScenario"] = {};
+  for (const s of SCENARIOS) {
+    const xs = runs.filter((x) => x.w.scenario === s);
+    if (xs.length) byScenario[s] = { n: xs.length, avgPerYear: mean(xs.map((x) => cagr(x.r.end))) };
   }
-  const ends: number[] = [];
-  const per: Record<Scenario, number[]> = { bullisch: [], neutral: [], baerisch: [], gemischt: [] };
-  let broke = 0;
-  let taken = 0;
-  let wins = 0;
-  for (let k = 0; k < reps; k++) {
-    const sc = SCENARIOS[k % SCENARIOS.length];
-    const res = simulate(byRegime, k + 1, sc, pc?.tradesPerYear ?? RULES.tradesPerYear);
-    ends.push(res.end);
-    per[sc].push(res.end);
-    if (res.broke != null) broke++;
-    taken += res.taken;
-    wins += res.wins;
-  }
-  const byScenario = Object.fromEntries(SCENARIOS.map((s) => [s, median(per[s])])) as Record<Scenario, number>;
-  return { id, name, desc, pool: pool.length, median: median(ends), p10: quantile(ends, 0.1), p90: quantile(ends, 0.9), broke, winRate: taken ? wins / taken : 0, byScenario, rankByScenario: { bullisch: 0, neutral: 0, baerisch: 0, gemischt: 0 }, rank: 0, years: pc?.years ?? null, tradesPerYear: pc?.tradesPerYear ?? null, holdDays: pc?.holdDays ?? null };
+  const trades = runs.reduce((a, x) => a + x.r.trades, 0);
+  const wins = runs.reduce((a, x) => a + x.r.wins, 0);
+  return {
+    id,
+    name,
+    desc,
+    runs: runs.length,
+    avgEnd: mean(runs.map((x) => x.r.end)),
+    avgProfit: mean(runs.map((x) => x.r.profit)),
+    avgTax: mean(runs.map((x) => x.r.tax)),
+    avgTrades: mean(runs.map((x) => x.r.trades)),
+    avgPerYear: mean(py),
+    worstPerYear: py.length ? Math.min(...py) : 0,
+    bestPerYear: py.length ? Math.max(...py) : 0,
+    winRate: trades ? wins / trades : 0,
+    broke: runs.filter((x) => x.r.broke).length,
+    byScenario,
+    rankByScenario: {},
+    rank: 0,
+  };
 }
 
-/** Rangliste: nach Median-Endkapital, je Szenario ebenso. */
+/** Rangliste nach Ø Rendite pro Jahr; je Szenario ebenso. */
 export function rank(list: ContestantResult[]): ContestantResult[] {
-  const out = [...list].sort((a, b) => b.median - a.median);
+  const out = [...list].sort((a, b) => b.avgPerYear - a.avgPerYear);
   out.forEach((c, i) => (c.rank = i + 1));
-  for (const s of SCENARIOS) [...out].sort((a, b) => b.byScenario[s] - a.byScenario[s]).forEach((c, i) => (c.rankByScenario[s] = i + 1));
+  for (const s of SCENARIOS)
+    out
+      .filter((c) => c.byScenario[s])
+      .sort((a, b) => b.byScenario[s]!.avgPerYear - a.byScenario[s]!.avgPerYear)
+      .forEach((c, i) => (c.rankByScenario[s] = i + 1));
   return out;
 }
 
-/** Rang, den ein Teilnehmer gegen die anderen hätte (für den Stand vor dem Training). */
-export function rankAgainst(c: ContestantResult, others: ContestantResult[]): ContestantResult {
-  const all = rank([...others.filter((o) => o.id !== c.id).map((o) => ({ ...o, rankByScenario: { ...o.rankByScenario } })), { ...c, rankByScenario: { ...c.rankByScenario } }]);
-  return all.find((x) => x.id === c.id)!;
+export interface TournamentReport {
+  /** Version des Berichts (2 = 5-Jahres-Versuche) */
+  v: 2;
+  at: string;
+  rules: typeof RULES;
+  ranking: ContestantResult[];
+  /** Zeiträume je Szenario */
+  scenarioCount: Partial<Record<Scenario, number>>;
+  /** Blacktrader je Runde (er lernt zwischen den Runden) */
+  rounds?: { round: number; avgPerYear: number; changed: boolean }[];
+  /** Blacktrader getrennt: nur blaue bzw. nur grüne Einstiege (mit dem Endstand) */
+  split?: { blau: ContestantResult | null; gruen: ContestantResult | null };
+  /** Bereiche, die das Lernen verbessert hat (Zonen-Quote alt → neu) */
+  improvedCells?: { cell: string; old: number | null; neu: number | null }[];
+  note?: string;
 }
 
 // ---------------------------------------------------------------------------------------------
 // Auswertung in Worten
 
-const pctY = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1).replace(".", ",")} % pro Jahr`;
+export const pct1 = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1).replace(".", ",")} %`;
+export const eur0 = (x: number) => `${x < 0 ? "−" : ""}${Math.round(Math.abs(x)).toLocaleString("de-DE")} €`;
 
 export function reportLines(rep: TournamentReport, previous?: TournamentReport | null): string[] {
   const bt = rep.ranking.find((c) => c.id === "blacktrader");
   if (!bt) return [];
-  const eur = (x: number) => `${Math.round(x).toLocaleString("de-DE")} €`;
   const lines: string[] = [];
-  lines.push(`Blacktrader belegt Platz ${bt.rank} von ${rep.ranking.length} (Median ${eur(bt.median)} aus 5.000 € nach KESt).`);
-  if (bt.years != null) {
-    const fastest = [...rep.ranking].filter((c) => c.years != null).sort((a, b) => a.years! - b.years!)[0];
-    lines.push(`Für 500 Trades brauchte Blacktrader im Schnitt ${formatDuration(bt.years)} (Ø ${Math.round(bt.holdDays ?? 0)} Tage je Trade).${fastest && fastest.id !== "blacktrader" ? ` Am schnellsten: ${fastest.name} mit ${formatDuration(fastest.years)}.` : ""}`);
-    const py = rep.ranking.map((c) => ({ c, y: perYear(c) })).filter((x) => x.y != null).sort((a, b) => b.y! - a.y!);
-    const me = py.findIndex((x) => x.c.id === "blacktrader");
-    if (me >= 0) lines.push(`Pro Jahr gerechnet: Blacktrader ${pctY(py[me].y!)} – Platz ${me + 1} von ${py.length}${me > 0 ? ` (bester: ${py[0].c.name} ${pctY(py[0].y!)})` : ""}.`);
-  }
+  lines.push(`Blacktrader belegt Platz ${bt.rank} von ${rep.ranking.length}: Ø ${pct1(bt.avgPerYear)} pro Jahr, Ø ${Math.round(bt.avgTrades)} Trades in 5 Jahren, Ø Gewinn nach KESt ${eur0(bt.avgProfit)} (KESt Ø ${eur0(bt.avgTax)}).`);
+  const top = rep.ranking[0];
+  if (top.id !== "blacktrader") lines.push(`Bester: ${top.name} mit Ø ${pct1(top.avgPerYear)} pro Jahr.`);
   const best = SCENARIOS.filter((s) => bt.rankByScenario[s] === 1).map((s) => SCENARIO_LABEL[s]);
-  if (best.length) lines.push(`Platz 1 im Szenario ${best.join(", ")}.`);
-  const weak = SCENARIOS.filter((s) => bt.rankByScenario[s] > 3).map((s) => `${SCENARIO_LABEL[s]} (Platz ${bt.rankByScenario[s]})`);
-  if (weak.length) lines.push(`Schwächer: ${weak.join(", ")}.`);
-  if (bt.broke) lines.push(`In ${bt.broke} von ${rep.rules.reps} Durchgängen war das Geld aufgebraucht.`);
-  if (rep.before) {
-    const d = bt.median - rep.before.median;
-    if (Math.abs(d) < 1) lines.push("Das Training hat am Turnier-Ergebnis nichts geändert.");
-    else lines.push(`Durch das Training ${d > 0 ? "verbessert" : "verschlechtert"}: ${eur(rep.before.median)} → ${eur(bt.median)} (Platz ${rep.before.rank} → ${bt.rank}).`);
-    const better = SCENARIOS.filter((s) => bt.byScenario[s] - rep.before!.byScenario[s] > 1).map((s) => `${SCENARIO_LABEL[s]} +${eur(bt.byScenario[s] - rep.before!.byScenario[s])}`);
-    if (better.length) lines.push(`Verbessert in: ${better.join(", ")}.`);
+  if (best.length) lines.push(`Platz 1 in: ${best.join(", ")}.`);
+  if (bt.broke) lines.push(`In ${bt.broke} von ${bt.runs} Versuchen ist Blacktrader ausgeschieden (kein Geld mehr).`);
+  if (rep.rounds && rep.rounds.length > 1) {
+    const a = rep.rounds[0];
+    const z = rep.rounds[rep.rounds.length - 1];
+    const changed = rep.rounds.filter((r) => r.changed).length;
+    lines.push(changed ? `Während des Turniers verbessert: Runde 1 ${pct1(a.avgPerYear)} → Runde ${z.round} ${pct1(z.avgPerYear)} pro Jahr (${changed}× neuer Stand gespeichert).` : "Während des Turniers wurde kein besserer Stand gefunden – alter Stand bleibt.");
   }
+  if (rep.split?.blau && rep.split?.gruen) lines.push(`Nur Blau: Ø ${pct1(rep.split.blau.avgPerYear)} pro Jahr · nur Grün: Ø ${pct1(rep.split.gruen.avgPerYear)} pro Jahr.`);
   if (previous) {
     const pb = previous.ranking.find((c) => c.id === "blacktrader");
-    if (pb) lines.push(`Gegenüber der letzten Auswertung: Platz ${pb.rank} → ${bt.rank}, Median ${eur(pb.median)} → ${eur(bt.median)}.`);
+    if (pb) lines.push(`Gegenüber der letzten Auswertung: Platz ${pb.rank} → ${bt.rank}, ${pct1(pb.avgPerYear)} → ${pct1(bt.avgPerYear)} pro Jahr.`);
   }
   return lines;
 }

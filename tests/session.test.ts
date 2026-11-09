@@ -24,6 +24,22 @@ describe("Trainingssitzung", () => {
     expect(JSON.stringify(cp).length).toBeLessThan(200_000);
   }, 120_000);
 
+  it("Turnier-Runden: Lernen pausiert bei der Rundengrenze und läuft danach weiter", async () => {
+    let t = 0;
+    const now = () => (t += 5);
+    const cfg = { id: "r", durationMs: 4000, cells: ["commodity:medium" as const, "commodity:long" as const], baseVersion: 1, paramSet: {}, extra: [], baseParams: {} };
+    const st = newSession(cfg);
+    const done: CellOutcome[] = [];
+    const io = { load, now, onProgress: () => {}, onCellDone: (o: CellOutcome) => void done.push(o), shouldStop: () => false, chunkMs: 50 };
+    await runSession(st, { ...io, pauseAtMs: 100 });
+    expect(st.status).toBe("running"); // nur pausiert
+    expect(st.elapsedMs).toBeGreaterThanOrEqual(100);
+    expect(st.elapsedMs).toBeLessThan(4000);
+    await runSession(st, io); // nächste Runde: weiterlernen bis zum Ende
+    expect(st.status).toBe("done");
+    expect(done).toHaveLength(2);
+  }, 120_000);
+
   it("Stopp wertet den laufenden Bereich noch aus", async () => {
     const cfg = { id: "y", durationMs: 3_600_000, cells: ["commodity:medium" as const, "commodity:long" as const], baseVersion: 1, paramSet: {}, extra: [], baseParams: {} };
     const st = newSession(cfg);

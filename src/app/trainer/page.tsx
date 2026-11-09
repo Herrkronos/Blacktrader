@@ -13,11 +13,10 @@ import { loadReports, startTraining, stopTraining, TOKEN_KEY, useTraining } from
 import { primaryCount, primaryRate, TARGET_HIT_RATE } from "@/lib/trainer/engine";
 import { goalProgress, goalReached } from "@/lib/trainer/goal";
 import { DURATIONS } from "@/lib/trainer/session";
-import { formatDuration, OPPONENTS, perYear, reportLines, RULES, SCENARIO_LABEL, SCENARIOS, type TournamentReport } from "@/lib/trainer/tournament";
+import { eur0, OPPONENTS, pct1, reportLines, RULES, SCENARIO_LABEL, SCENARIOS, type TournamentReport } from "@/lib/trainer/tournament";
 import { ACTIVE_CELL_KEYS, type CellKey } from "@/lib/trainer/universe";
 import { HORIZON_LABEL, KIND_LABEL, type AssetKind, type Horizon } from "@/lib/types";
 
-const SHORT = { bullisch: "Bulle", neutral: "Neutral", baerisch: "Bär", gemischt: "Mix" } as const;
 const pct = (x: number) => `${(x * 100).toFixed(1).replace(".", ",")} %`;
 const eur = (x: number) => `${Math.round(x).toLocaleString("de-DE")} €`;
 const mins = (ms: number) => {
@@ -57,8 +56,8 @@ function Ranking({ rep }: { rep: TournamentReport }) {
     <div className="overflow-hidden rounded-xl bg-white/5">
       <div className="grid grid-cols-[2rem_1fr_auto] gap-x-2 px-3 py-1.5 text-[12px] text-stone-500">
         <span>Platz</span>
-        <span>Teilnehmer</span>
-        <span className="text-right">Median Endkapital</span>
+        <span>Teilnehmer (Ø von {rep.ranking[0]?.runs ?? 50} Versuchen à 5 Jahre)</span>
+        <span className="text-right">pro Jahr</span>
       </div>
       {rep.ranking.map((c) => {
         const me = c.id === "blacktrader";
@@ -67,23 +66,14 @@ function Ranking({ rep }: { rep: TournamentReport }) {
             <span className={`num text-[17px] font-semibold ${c.rank === 1 ? "text-gold" : "text-stone-300"}`}>{c.rank}.</span>
             <span className="min-w-0">
               <span className={`block truncate text-[15px] ${me ? "font-semibold text-gold-light" : "text-stone-100"}`}>{c.name}</span>
-              <span className="block truncate text-[12px] text-stone-500">
-                {SCENARIOS.map((s) => `${SHORT[s]} ${c.rankByScenario[s]}.`).join(" · ")}
-                {c.broke ? ` · ${c.broke}× pleite` : ""}
+              <span className="num block text-[12px] text-stone-400">
+                {Math.round(c.avgTrades)} Trades · Gewinn nach KESt {eur0(c.avgProfit)}
               </span>
-              {c.years != null && (
-                <span className="block truncate text-[12px] text-stone-400">
-                  500 Trades in ≈ {formatDuration(c.years)}
-                  {perYear(c) != null ? ` · ${(perYear(c)! * 100).toFixed(1).replace(".", ",")} % pro Jahr` : ""}
-                </span>
-              )}
-            </span>
-            <span className="text-right">
-              <span className={`num block text-[15px] ${c.median >= RULES.start ? "text-up" : "text-down"}`}>{eur(c.median)}</span>
               <span className="num block text-[12px] text-stone-500">
-                {eur(c.p10)} – {eur(c.p90)}
+                KESt {eur0(c.avgTax)} · Treffer {Math.round(c.winRate * 100)} %{c.broke ? ` · ${c.broke}× ausgeschieden` : ""}
               </span>
             </span>
+            <span className={`num text-right text-[16px] font-semibold ${c.avgPerYear >= 0 ? "text-up" : "text-down"}`}>{pct1(c.avgPerYear)}</span>
           </div>
         );
       })}
@@ -94,26 +84,22 @@ function Ranking({ rep }: { rep: TournamentReport }) {
 function ScenarioTable({ rep }: { rep: TournamentReport }) {
   const bt = rep.ranking.find((c) => c.id === "blacktrader");
   if (!bt) return null;
-  const b = rep.before;
   return (
     <div className="rounded-xl bg-white/5 px-3 py-1.5 text-[14px]">
       <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 py-1 text-[12px] text-stone-500">
         <span>Szenario</span>
-        <span className="text-right">Median</span>
+        <span className="text-right">Versuche</span>
+        <span className="text-right">pro Jahr</span>
         <span className="text-right">Platz</span>
-        <span className="text-right">vs. vorher</span>
       </div>
-      {SCENARIOS.map((s) => {
-        const d = b ? bt.byScenario[s] - b.byScenario[s] : 0;
-        return (
-          <div key={s} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-3 border-t border-white/5 py-1.5">
-            <span className="text-stone-300">{SCENARIO_LABEL[s]}</span>
-            <span className="num text-right text-stone-100">{eur(bt.byScenario[s])}</span>
-            <span className="num text-right text-stone-300">{bt.rankByScenario[s]}.</span>
-            <span className={`num text-right ${!b || Math.abs(d) < 1 ? "text-stone-500" : d > 0 ? "text-up" : "text-down"}`}>{!b || Math.abs(d) < 1 ? "–" : `${d > 0 ? "+" : "−"}${eur(Math.abs(d))}`}</span>
-          </div>
-        );
-      })}
+      {SCENARIOS.filter((s) => bt.byScenario[s]).map((s) => (
+        <div key={s} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-3 border-t border-white/5 py-1.5">
+          <span className="text-stone-300">{SCENARIO_LABEL[s]}</span>
+          <span className="num text-right text-stone-400">{bt.byScenario[s]!.n}</span>
+          <span className={`num text-right ${bt.byScenario[s]!.avgPerYear >= 0 ? "text-up" : "text-down"}`}>{pct1(bt.byScenario[s]!.avgPerYear)}</span>
+          <span className="num text-right text-stone-300">{bt.rankByScenario[s]}.</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -167,8 +153,9 @@ export default function TrainerPage() {
   const running = t.running;
   const inTournament = !!st?.tournament && !st.tournament.done;
   const trainProgress = st ? (st.cfg.durationMs ? Math.min(100, (st.elapsedMs / st.cfg.durationMs) * 100) : 100) : 0;
-  const progress = inTournament ? Math.round((st!.tournament!.progress ?? 0) * 100) : trainProgress;
-  const curCell = st && running && !inTournament && st.cellIdx < st.cfg.cells.length ? st.cfg.cells[st.cellIdx] : null;
+  const progress = st?.tournament ? Math.round((st.tournament.progress ?? 0) * 100) : trainProgress;
+  const learning = !!st?.tournament?.text.includes("lernt");
+  const curCell = st && running && (learning || !st.tournament) && st.cellIdx < st.cfg.cells.length ? st.cfg.cells[st.cellIdx] : null;
   const saves = st ? t.messages[st.cfg.id] ?? [] : [];
   const latest = t.reports[0] ?? null;
   const lines = latest ? reportLines(latest, t.reports[1] ?? null) : [];
@@ -232,7 +219,7 @@ export default function TrainerPage() {
       <section className="card space-y-2 p-4">
         <h2 className="text-[17px] text-gold-light">Turnier: Blacktrader gegen 7 Gegner</h2>
         <p className="text-[14px] text-stone-400">
-          Nach jedem Training: {eur(RULES.start)} Startkapital, {RULES.trades} Trades, {RULES.reps} Durchgänge – bullisch, neutral, bärisch und gemischt. Nach Gebühren und 27,5 % KESt. Alle Werte, gleiche Daten, kein Blick in die Zukunft.
+          {RULES.reps} Versuche à {RULES.years} Jahre echte Zeit: {eur(RULES.start)} Startkapital, {eur(RULES.stake)} je Trade, Gebühren und 27,5 % KESt pro Jahr. Wer kein Geld mehr hat, scheidet aus. Zeiträume bullisch, neutral, bärisch und gemischt; gewertet wird der Durchschnitt. Blacktrader spielt in {RULES.rounds} Runden und lernt dazwischen – Verbesserungen werden sofort gespeichert. Alle Werte, gleiche Daten, kein Blick in die Zukunft.
         </p>
         <ul className="space-y-1 text-[14px]">
           {OPPONENTS.map((o) => (
@@ -257,10 +244,10 @@ export default function TrainerPage() {
             </div>
             {adminRequired && !hasToken && <input className="input" type="password" placeholder="Zugangscode" value={token} onChange={(e) => setToken(e.target.value)} />}
             <button className="btn btn-primary min-h-[48px] w-full" onClick={() => start(dur)}>
-              Training + Turnier starten
+              Turnier starten (lernt dabei {DURATIONS.find((d) => d.ms === dur)?.label})
             </button>
             <button className="w-full py-1 text-center text-[14px] text-stone-400 underline-offset-4 active:underline" onClick={() => start(0)}>
-              Nur Turnier ohne Training (ca. 3–8 Min.)
+              Nur Turnier ohne Lernen (ca. 3–8 Min.)
             </button>
           </>
         ) : (
@@ -272,8 +259,7 @@ export default function TrainerPage() {
           <div className="space-y-1">
             {curCell && (
               <p className="text-[14px] text-stone-300">
-                Trainiert gerade: <span className="text-stone-100">{cellLabel(curCell)}</span>
-                {st.focus ? <> · {st.focus}</> : null}
+                Lernt gerade: <span className="text-stone-100">{cellLabel(curCell)}</span>
               </p>
             )}
             {inTournament && <p className="text-[14px] text-stone-300">Turnier: {st.tournament!.text}</p>}
@@ -282,7 +268,7 @@ export default function TrainerPage() {
             </div>
             <div className="flex justify-between text-[14px] text-stone-300">
               <span className="num">{progress.toFixed(0)} %</span>
-              <span>{running ? (inTournament ? "Turnier läuft" : mins(st.cfg.durationMs - st.elapsedMs)) : st.status === "stopped" ? "gestoppt" : "fertig"}</span>
+              <span>{running ? (learning ? `Lernzeit ${mins(st.cfg.durationMs - st.elapsedMs)}` : inTournament ? "Turnier läuft" : mins(st.cfg.durationMs - st.elapsedMs)) : st.status === "stopped" ? "gestoppt" : "fertig"}</span>
             </div>
             {st.tournament?.failed && <p className="text-[14px] text-amber-300">{st.tournament.failed}</p>}
           </div>
@@ -336,7 +322,7 @@ export default function TrainerPage() {
                     return (
                       <li key={r.at} className="flex justify-between py-1.5 text-stone-400">
                         <span>{new Date(r.at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</span>
-                        <span className="num">{b ? `Platz ${b.rank} · ${eur(b.median)}` : "–"}</span>
+                        <span className="num">{b ? `Platz ${b.rank} · ${pct1(b.avgPerYear)} pro Jahr` : "–"}</span>
                       </li>
                     );
                   })}
