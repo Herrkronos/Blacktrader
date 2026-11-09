@@ -151,7 +151,19 @@ export async function blacktraderPool(prep: Prepared, params: Params, io: Tourna
       if (a.daily.length > 300) for (const t of backtestSeries({ name: a.symbol, kind: a.kind, horizon: "medium", interval: "1d", candles: a.daily }, params(a.kind, "medium"), { step: 1 }).trades) green(t);
       if (a.weekly && a.weekly.length > 200) {
         for (const t of backtestSeries({ name: a.symbol, kind: a.kind, horizon: "long", interval: "1w", candles: a.weekly }, params(a.kind, "long"), { step: 1 }).trades) green(t);
-        for (const t of runLongTermEcho(a.weekly, undefined, 1).trades) if (t.result !== "offen" && t.entryTime >= from) out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, color: "blau" });
+        for (const t of runLongTermEcho(a.weekly, undefined, 1).trades)
+          if (t.result !== "offen" && t.entryTime >= from)
+            out.push({
+              sym: a.symbol,
+              entry: t.entryTime,
+              exit: t.exitTime,
+              r: t.returnPct,
+              px: t.entry,
+              color: "blau",
+              // für die Blau-Regel der Chancen (Ungültig-Grenze und Chance, gemessen ab der Oberkante des Bereichs)
+              riskPct: t.invalidation != null && t.zoneTop ? ((t.zoneTop - t.invalidation) / t.zoneTop) * 100 : undefined,
+              chancePct: t.target != null && t.zoneTop ? ((t.target - t.zoneTop) / t.zoneTop) * 100 : undefined,
+            });
       }
     } catch {
       /* Wert überspringen */

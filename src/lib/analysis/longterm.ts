@@ -202,7 +202,7 @@ export interface LongTermEcho {
   verpasst: number;
   /** erfolgreich / (erfolgreich + invalidiert) */
   quote: number;
-  trades: { entry: number; exit: number; returnPct: number; entryTime: number; exitTime: number; result: "erfolgreich" | "invalidiert" | "offen" }[];
+  trades: { entry: number; exit: number; returnPct: number; entryTime: number; exitTime: number; result: "erfolgreich" | "invalidiert" | "offen"; invalidation?: number; target?: number; zoneTop?: number }[];
 }
 
 /**
@@ -251,7 +251,7 @@ export function runLongTermEcho(candles: Candle[], o: LongTermOptions = DEFAULT_
     }
     out[result]++;
     const entry = fills.reduce((s, x) => s + x, 0) / fills.length;
-    out.trades.push({ entry, exit, returnPct: ((exit - entry) / entry) * 100, entryTime: firstTime, exitTime, result });
+    out.trades.push({ entry, exit, returnPct: ((exit - entry) / entry) * 100, entryTime: firstTime, exitTime, result, invalidation: z.invalidation, target: z.targets[0], zoneTop: z.zoneTop });
   }
   const done = out.erfolgreich + out.invalidiert;
   out.quote = done ? out.erfolgreich / done : 0;
