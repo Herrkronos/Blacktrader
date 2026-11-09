@@ -158,3 +158,26 @@ describe("Chancen: der Markt (rund 190 Werte), ohne reine Watchlist-Werte", () =
     expect(new Set(MARKET_ASSETS.map((a) => `${a.kind}:${a.symbol}`)).size).toBe(MARKET_ASSETS.length); // keine Doppelten
   });
 });
+
+describe("Chancen: nur die mit der höchsten Chance (höchstens 20, gern weniger)", () => {
+  const entry = (best: Partial<BestEntry>, price: number) =>
+    ({ asset: { kind: "stock", symbol: "AAPL", name: "Apple" }, horizons: { medium: { res: { price }, candles: [] } }, longterm: null, history: { past: [] }, best: { key: "k", reason: "", ...best } }) as never;
+  const green = (strength: number, stop: number, price = 100) => entry({ color: "gruen", zoneTop: 100, zoneBottom: 95, stop, targets: [140], res: { total: strength, plan: { direction: "long" }, decision: { level: "buy" } } as never }, price);
+  it("starker grüner Trade nah an der Zone mit engem Stop → dabei", async () => {
+    const { isTopChance } = await import("../src/lib/client/scanner");
+    expect(isTopChance(green(60, 85))).toBe(true);
+  });
+  it("schwaches Signal, weiter Stop oder weit weg → nicht dabei", async () => {
+    const { isTopChance } = await import("../src/lib/client/scanner");
+    expect(isTopChance(green(45, 85))).toBe(false); // Stärke unter 55
+    expect(isTopChance(green(60, 60))).toBe(false); // Stop 40 % entfernt
+    expect(isTopChance(green(60, 85, 130))).toBe(false); // Kurs 23 % über der Zone
+  });
+  it("Blau nur im Bereich und mit begrenzter Ungültig-Grenze", async () => {
+    const { isTopChance } = await import("../src/lib/client/scanner");
+    const blue = (inv: number, price: number) => entry({ color: "blau", zoneTop: 100, zoneBottom: 80, invalidation: inv, targets: [160] }, price);
+    expect(isTopChance(blue(70, 95))).toBe(true);
+    expect(isTopChance(blue(20, 95))).toBe(false); // Ungültig 80 % entfernt
+    expect(isTopChance(blue(70, 110))).toBe(false); // noch nicht im Bereich
+  });
+});

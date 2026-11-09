@@ -10,7 +10,7 @@ import { money } from "@/lib/analysis/persona";
 import { performance } from "@/lib/analysis/stats";
 import { tradeReturnEur } from "@/lib/client/eur";
 import { instrumentKey, useMarket } from "@/lib/client/market";
-import { isChance, potential, runScan, useScan } from "@/lib/client/scanner";
+import { isChance, isTopChance, potential, runScan, useScan } from "@/lib/client/scanner";
 import { useAppData } from "@/lib/store/store";
 import { HORIZON_LABEL, type NewsItem } from "@/lib/types";
 
@@ -57,7 +57,7 @@ export default function Uebersicht() {
   const top = useMemo(() => {
     // Wie bei den Chancen: aus den Trainings-Werten die 3 mit dem größten Potenzial
     return scan.entries
-      .filter((e) => isChance(e) && e.best.color !== "gelb")
+      .filter((e) => isChance(e) && isTopChance(e))
       .map((e) => ({ e, p: potential(e) }))
       .filter((x) => x.p != null)
       .sort((a, b) => b.p!.score - a.p!.score)

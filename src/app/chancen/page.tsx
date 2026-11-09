@@ -10,7 +10,7 @@ import { Legend } from "@/components/Legend";
 import { ConfirmSheet } from "@/components/Sheet";
 import { haptic } from "@/lib/client/alerts";
 import { openPaperTrade } from "@/lib/client/autotrade";
-import { isChance, potential, runScan, useScan, type SignalKind } from "@/lib/client/scanner";
+import { isChance, isTopChance, potential, runScan, useScan, type SignalKind } from "@/lib/client/scanner";
 import { MARKET_GROUPS } from "@/lib/client/marketList";
 import { getData } from "@/lib/store/store";
 import type { AssetKind } from "@/lib/types";
@@ -23,7 +23,7 @@ const KIND_FILTERS: { k: KindFilter; label: string; cls: string }[] = [
   { k: "rot", label: "Rot", cls: "border-red-400/60 text-red-300" },
 ];
 
-/** Es werden nur die Einstiege mit dem größten Potenzial gezeigt */
+/** Nur Einstiege, die die Mindestanforderungen erfüllen – davon höchstens 20 (gern weniger) */
 const TOP = 20;
 
 export default function ChancenPage() {
@@ -40,7 +40,7 @@ export default function ChancenPage() {
   const list = useMemo(
     () =>
       scan.entries
-        .filter((e) => isChance(e) && (group === "all" || e.asset.kind === group) && e.best.color !== "gelb" && (kind === "all" || e.best.color === kind))
+        .filter((e) => isChance(e) && isTopChance(e) && (group === "all" || e.asset.kind === group) && (kind === "all" || e.best.color === kind))
         .map((e) => ({ e, p: potential(e) }))
         .filter((x) => x.p != null)
         .sort((a, b) => b.p!.score - a.p!.score)
@@ -51,7 +51,7 @@ export default function ChancenPage() {
   const counts = useMemo(() => {
     const c: Record<KindFilter, number> = { all: 0, blau: 0, gruen: 0, rot: 0 };
     for (const e of scan.entries) {
-      if (!isChance(e) || (group !== "all" && e.asset.kind !== group)) continue;
+      if (!isChance(e) || !isTopChance(e) || (group !== "all" && e.asset.kind !== group)) continue;
       if (e.best.color === "gelb") continue;
       c.all++;
       c[e.best.color]++;
@@ -73,7 +73,7 @@ export default function ChancenPage() {
       <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none]">
         {KIND_FILTERS.map((f) => (
           <button key={f.k} onClick={() => setKind(f.k)} className={`chip shrink-0 ${kind === f.k ? `${f.cls} bg-white/10 font-semibold` : "border-white/10 text-stone-400"}`}>
-            {f.label} {scan.at ? `(${counts[f.k]})` : ""}
+            {f.label} {scan.at ? `(${Math.min(TOP, counts[f.k])})` : ""}
           </button>
         ))}
       </div>

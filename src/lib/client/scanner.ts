@@ -271,6 +271,31 @@ export function potential(e: ScanEntry): { score: number; chancePct: number; ris
   return { score: Math.min(60, chancePct) * (crv / 2) * (strength / 60) * near * weight, chancePct, riskPct };
 }
 
+/**
+ * Mindestanforderungen für die Chancen – nur die mit der höchsten Chance (höchstens 20, gern weniger):
+ *  Grün/Rot: Kurs höchstens 8 % von der Zone, Stärke mindestens 55, Stop höchstens 25 % entfernt.
+ *  Blau: Kurs schon im Bereich, Ungültig-Grenze höchstens 40 % entfernt, Chance mindestens 40 %.
+ *  Alle: Chance bis zum Ziel mindestens 15 %.
+ */
+export const CHANCE_RULES = {
+  trade: { maxDistancePct: 8, minStrength: 55, maxRiskPct: 25 },
+  blau: { maxRiskPct: 40, minChancePct: 40 },
+  minChancePct: 15,
+} as const;
+
+/** Erfüllt der Einstieg die Mindestanforderungen für die Chancen? */
+export function isTopChance(e: ScanEntry): boolean {
+  const p = potential(e);
+  if (!p || p.chancePct < CHANCE_RULES.minChancePct) return false;
+  const b = e.best;
+  const d = bestDistance(e);
+  if (b.color === "blau") return d === 0 && p.riskPct <= CHANCE_RULES.blau.maxRiskPct && p.chancePct >= CHANCE_RULES.blau.minChancePct;
+  const r = CHANCE_RULES.trade;
+  return d <= r.maxDistancePct && (signalStrength(b.res) ?? 0) >= r.minStrength && p.riskPct <= r.maxRiskPct;
+}
+
+const signalStrength = (res: AnalysisResult | null | undefined) => (!res?.plan || res.decision.level === "neutral" ? null : res.plan.direction === "long" ? res.total : 100 - res.total);
+
 /** Letzter bekannter Kurs eines Eintrags */
 export function lastPrice(e: ScanEntry): number | undefined {
   for (const h of ["short", "medium", "long"] as Horizon[]) if (e.horizons[h]) return e.horizons[h]!.res.price;
