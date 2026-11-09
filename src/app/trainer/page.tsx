@@ -229,7 +229,7 @@ export default function TrainerPage() {
       <section className="card space-y-2 p-4">
         <h2 className="text-[17px] text-gold-light">Turnier: Blacktrader gegen 9 Gegner</h2>
         <p className="text-[14px] text-stone-400">
-          {RULES.reps} Versuche à {RULES.years} Jahre echte Zeit: {eur(RULES.start)} Startkapital, {eur(RULES.stake)} je Trade, 7,90 € Gebühr je Order (flatex) und 27,5 % KESt. Gehandelt wird nur die obere Hälfte der Signale nach Potenzial (wie in den Chancen). Wer kein Geld mehr hat, scheidet aus. Zeiträume bullisch, neutral, bärisch und gemischt; gewertet wird der Durchschnitt. Blacktrader spielt in {RULES.rounds} Runden und lernt dazwischen – Verbesserungen werden sofort gespeichert. Alle Werte, gleiche Daten, kein Blick in die Zukunft.
+          {RULES.reps} Versuche à {RULES.years} Jahre echte Zeit: {eur(RULES.start)} Startkapital, {eur(RULES.stake)} je Trade, 7,90 € Gebühr je Order (flatex) und 27,5 % KESt. Gehandelt wird nur die obere Hälfte der Signale nach Potenzial und mit Blau-Regel – genau wie in den Chancen (zur Kontrolle wird jedes Mal auch ohne Blau-Regel gerechnet). Wer kein Geld mehr hat, scheidet aus. Zeiträume bullisch, neutral, bärisch und gemischt; gewertet wird der Durchschnitt. Blacktrader spielt in {RULES.rounds} Runden und lernt dazwischen – Verbesserungen werden sofort gespeichert. Alle Werte, gleiche Daten, kein Blick in die Zukunft.
         </p>
         <ul className="space-y-1 text-[14px]">
           {OPPONENTS.map((o) => (

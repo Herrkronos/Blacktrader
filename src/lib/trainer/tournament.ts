@@ -34,6 +34,8 @@ export interface PoolTrade {
   /** Abstand Einstieg–Stop bzw. Einstieg–Ziel in % (nur Blacktrader, für die Chancen-Regeln) */
   riskPct?: number;
   chancePct?: number;
+  /** Nur Blacktrader: von der Blau-Regel ausgeschlossen (wird nur zur Kontrolle „ohne Blau-Regel“ gespielt) */
+  blueRuleOut?: boolean;
 }
 
 export interface Series {
@@ -571,6 +573,8 @@ export interface TournamentReport {
   split?: { blau: ContestantResult | null; gruen: ContestantResult | null; rot?: ContestantResult | null };
   /** Vergleich (handelt nicht mit, nicht in der Rangliste): echter S&P-500-ETF, alles kaufen und liegen lassen */
   benchmark?: ContestantResult | null;
+  /** Kontrolle der Blau-Regel: Blacktrader mit und ohne Regel (Ø pro Jahr) */
+  blueRule?: { on: number; off: number } | null;
   /** Bereiche, die das Lernen verbessert hat (Zonen-Quote alt → neu) */
   improvedCells?: { cell: string; old: number | null; neu: number | null }[];
   note?: string;
@@ -594,6 +598,14 @@ export function reportLines(rep: TournamentReport, previous?: TournamentReport |
   if (rep.benchmark) {
     const d = bt.avgPerYear - rep.benchmark.avgPerYear;
     lines.push(`Vergleich ${rep.benchmark.name}: Ø ${pct1(rep.benchmark.avgPerYear)} pro Jahr – Blacktrader liegt ${Math.abs(d) < 0.0005 ? "gleichauf" : d > 0 ? `${pct1(d).replace("+", "")} pro Jahr vorne` : `${pct1(-d).replace("+", "")} pro Jahr dahinter`}.`);
+  }
+  if (rep.blueRule) {
+    const { on, off } = rep.blueRule;
+    lines.push(
+      off - on >= 0.005
+        ? `Achtung Blau-Regel: ohne sie wäre Blacktrader besser (${pct1(off)} statt ${pct1(on)} pro Jahr) – prüfen, ob sie wieder entfernt werden soll.`
+        : `Blau-Regel geprüft: mit ${pct1(on)}, ohne ${pct1(off)} pro Jahr – sie bleibt.`,
+    );
   }
   if (bt.broke) lines.push(`In ${bt.broke} von ${bt.runs} Versuchen ist Blacktrader ausgeschieden (kein Geld mehr).`);
   if (rep.rounds && rep.rounds.length > 1) {

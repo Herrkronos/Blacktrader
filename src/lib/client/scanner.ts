@@ -2,7 +2,7 @@
 // Chancen-Scanner (geteilt von Übersicht, Chancen und Watchlist): Blacktrader rechnet die Zeiträume im Hintergrund
 // und wählt GENAU EINEN aktuellen Einstieg pro Wert (blau / grün / rot / gelb). Shorts nur bei bärischem Gesamtmarkt, Aktien und Krypto ohne
 // kurzfristige Signale, Rohstoffe kurzfristig nur bei bullischem Gesamtmarkt (S&P 500).
-import { basePotential, MIN_POTENTIAL, type PotentialColor } from "../analysis/potential";
+import { basePotential, BLUE_RULE, MIN_POTENTIAL, passesBlueRule, type PotentialColor } from "../analysis/potential";
 import { effectiveWeights, learnedParams, refreshTrainerParams } from "./trainerParams";
 import { useSyncExternalStore } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
@@ -275,7 +275,7 @@ export function potential(e: ScanEntry): { score: number; base: number; chancePc
  */
 export const CHANCE_RULES = {
   trade: { maxDistancePct: 8 },
-  blau: { maxRiskPct: 40, minChancePct: 40 },
+  blau: { maxRiskPct: BLUE_RULE.maxRiskPct, minChancePct: BLUE_RULE.minChancePct },
   minChancePct: 15,
 } as const;
 
@@ -285,7 +285,7 @@ export function isTopChance(e: ScanEntry): boolean {
   if (!p || p.chancePct < CHANCE_RULES.minChancePct || p.base < MIN_POTENTIAL) return false;
   const b = e.best;
   const d = bestDistance(e);
-  if (b.color === "blau") return d === 0 && p.riskPct <= CHANCE_RULES.blau.maxRiskPct && p.chancePct >= CHANCE_RULES.blau.minChancePct;
+  if (b.color === "blau") return d === 0 && passesBlueRule(p.chancePct, p.riskPct);
   return d <= CHANCE_RULES.trade.maxDistancePct;
 }
 

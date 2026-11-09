@@ -18,3 +18,17 @@ export function basePotential(chancePct: number | null | undefined, riskPct: num
   const crv = Math.min(4, chancePct / Math.max(0.5, riskPct));
   return Math.min(60, chancePct) * (crv / 2) * COLOR_WEIGHT[color];
 }
+
+/**
+ * Blau-Regel (Chancen, Turnier und Training gleich): ein blauer Langfrist-Einstieg zählt nur, wenn die Ungültig-Grenze
+ * höchstens 40 % unter der Oberkante liegt und die Chance bis zum Ziel mindestens 40 % beträgt (in den Chancen außerdem:
+ * Kurs schon im Bereich). Getestet: neutral (+4,9 % mit und ohne, 1963–2026). Eingebaut auf Wunsch, damit Chancen und
+ * Turnier gleich handeln. WIEDER ENTFERNBAR: `enabled: false` – das Turnier rechnet zur Kontrolle jedes Mal auch ohne
+ * die Regel und meldet, wenn Blacktrader ohne sie besser abschneidet.
+ */
+export const BLUE_RULE = { enabled: true, maxRiskPct: 40, minChancePct: 40 } as const;
+
+export function passesBlueRule(chancePct: number | null | undefined, riskPct: number | null | undefined): boolean {
+  if (!BLUE_RULE.enabled) return true;
+  return riskPct != null && riskPct <= BLUE_RULE.maxRiskPct && chancePct != null && chancePct >= BLUE_RULE.minChancePct;
+}

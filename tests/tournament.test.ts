@@ -124,3 +124,25 @@ describe("Vergleich: echter ETF", () => {
     expect(down.end).toBeCloseTo((RULES.start - RULES.fee) * (100 / 130) - RULES.fee, 6);
   });
 });
+
+describe("Blau-Regel (wieder entfernbar)", () => {
+  it("gilt für Chancen und Turnier gleich: Ungültig höchstens 40 %, Chance mindestens 40 %", async () => {
+    const { passesBlueRule, BLUE_RULE } = await import("../src/lib/analysis/potential");
+    expect(BLUE_RULE.enabled).toBe(true);
+    expect(passesBlueRule(60, 20)).toBe(true);
+    expect(passesBlueRule(30, 20)).toBe(false);
+    expect(passesBlueRule(60, 50)).toBe(false);
+    expect(passesBlueRule(undefined, 20)).toBe(false);
+  });
+  it("ausgeschlossene blaue Trades werden nicht gehandelt; die Auswertung meldet, wenn es ohne Regel besser wäre", async () => {
+    const { activePool } = await import("../src/lib/trainer/tournamentRun");
+    const pool: PoolTrade[] = [T("A", 10, 40, 10), { ...T("B", 10, 40, 30), color: "blau", blueRuleOut: true }];
+    expect(activePool(pool).map((t) => t.sym)).toEqual(["A"]);
+    const w = W(1_500_000_000);
+    const bt = rank([summarizeRuns("blacktrader", "Blacktrader", "", [{ w, r: runWindow(activePool(pool), w, flat) }])]);
+    const warn = reportLines({ v: 2, at: "x", rules: { ...RULES }, ranking: bt, scenarioCount: {}, blueRule: { on: 0.05, off: 0.07 } });
+    expect(warn.join(" ")).toContain("ohne sie wäre Blacktrader besser");
+    const ok = reportLines({ v: 2, at: "x", rules: { ...RULES }, ranking: bt, scenarioCount: {}, blueRule: { on: 0.07, off: 0.068 } });
+    expect(ok.join(" ")).toContain("sie bleibt");
+  });
+});

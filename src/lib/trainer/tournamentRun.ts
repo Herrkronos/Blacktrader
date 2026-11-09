@@ -6,7 +6,7 @@ import { runLongTermEcho } from "../analysis/longterm";
 import type { LearnableParams } from "../analysis/params";
 import type { AssetKind, Candle, Horizon } from "../types";
 import { backtestSeries } from "./engine";
-import { basePotential, MIN_POTENTIAL } from "../analysis/potential";
+import { basePotential, MIN_POTENTIAL, passesBlueRule } from "../analysis/potential";
 import { benchmarkRun, makeWindows, OPPONENTS, regimeIndex, rank, RULES, runWindow, SCENARIOS, summarizeRuns, type ContestantResult, type PoolTrade, type RunResult, type Scenario, type Series, type TournamentReport, type Window } from "./tournament";
 import { universe, type CellKey, type SeriesSpec } from "./universe";
 
@@ -166,7 +166,7 @@ export async function blacktraderPool(prep: Prepared, params: Params, io: Tourna
           const riskPct = t.invalidation != null && t.zoneTop ? ((t.zoneTop - t.invalidation) / t.zoneTop) * 100 : undefined;
           const chancePct = t.target != null && t.zoneTop ? ((t.target - t.zoneTop) / t.zoneTop) * 100 : undefined;
           if (basePotential(chancePct, riskPct, "blau") < MIN_POTENTIAL) continue; // nur die obere Hälfte (wie in den Chancen)
-          out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, color: "blau", riskPct, chancePct });
+          out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, color: "blau", riskPct, chancePct, ...(passesBlueRule(chancePct, riskPct) ? {} : { blueRuleOut: true }) });
         }
       }
     } catch {
@@ -180,18 +180,31 @@ export async function blacktraderPool(prep: Prepared, params: Params, io: Tourna
 /** Versuche einer Runde (Runde b spielt die Zeiträume b, b+5, b+10, … – so ist jede Runde gemischt). */
 export const roundWindows = (prep: Prepared, round: number) => prep.windows.map((w, i) => ({ w, i })).filter((x) => x.i % RULES.rounds === round);
 
+/** Die Trades, die Blacktrader wirklich macht (ohne die von der Blau-Regel ausgeschlossenen) */
+export const activePool = (pool: PoolTrade[]) => pool.filter((t) => !t.blueRuleOut);
+
 export function playRound(prep: Prepared, pool: PoolTrade[], round: number): { w: Window; r: RunResult }[] {
-  return roundWindows(prep, round).map(({ w }) => ({ w, r: runWindow(pool, w, prep.priceAt) }));
+  const active = activePool(pool);
+  return roundWindows(prep, round).map(({ w }) => ({ w, r: runWindow(active, w, prep.priceAt) }));
 }
 
 export function buildReport(prep: Prepared, btRuns: { w: Window; r: RunResult }[], rounds: TournamentReport["rounds"], finalPool: PoolTrade[], improvedCells: TournamentReport["improvedCells"]): TournamentReport {
   const bt = summarizeRuns("blacktrader", "Blacktrader", DESC, btRuns);
   const ranking = rank([bt, ...prep.bots.map((b) => ({ ...b, rankByScenario: {} }))]);
+  const active = activePool(finalPool);
   const only = (c: "blau" | "gruen" | "rot") => {
-    const p = finalPool.filter((t) => t.color === c);
+    const p = active.filter((t) => t.color === c);
     return p.length ? summarizeRuns(`bt-${c}`, `Blacktrader nur ${c === "blau" ? "Blau" : c === "gruen" ? "Grün" : "Rot"}`, "", prep.windows.map((w) => ({ w, r: runWindow(p, w, prep.priceAt) }))) : null;
   };
   const scenarioCount: Partial<Record<Scenario, number>> = {};
   for (const w of prep.windows) scenarioCount[w.scenario] = (scenarioCount[w.scenario] ?? 0) + 1;
-  return { v: 2, at: new Date().toISOString(), rules: { ...RULES }, ranking, scenarioCount, rounds, split: { blau: only("blau"), gruen: only("gruen"), rot: only("rot") }, benchmark: prep.benchmark ?? null, improvedCells, note: prep.note };
+  return { v: 2, at: new Date().toISOString(), rules: { ...RULES }, ranking, scenarioCount, rounds, split: { blau: only("blau"), gruen: only("gruen"), rot: only("rot") }, benchmark: prep.benchmark ?? null, blueRule: blueRuleCheck(prep, finalPool), improvedCells, note: prep.note };
+}
+
+/** Kontrolle: derselbe Stand mit und ohne Blau-Regel über alle Zeiträume – zeigt, ob die Regel noch hilft. */
+function blueRuleCheck(prep: Prepared, pool: PoolTrade[]): { on: number; off: number } | null {
+  if (!pool.some((t) => t.blueRuleOut)) return null;
+  const all = pool.map((t) => (t.blueRuleOut ? { ...t, blueRuleOut: undefined } : t));
+  const avg = (p: PoolTrade[]) => summarizeRuns("x", "", "", prep.windows.map((w) => ({ w, r: runWindow(p, w, prep.priceAt) }))).avgPerYear;
+  return { on: avg(activePool(pool)), off: avg(all) };
 }

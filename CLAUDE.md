@@ -1,0 +1,9 @@
+# Hinweise für Claude (Blacktrader)
+
+- Oberfläche auf Deutsch, einsteigerfreundlich. Feste Regeln nicht ändern: Elliott ≥ 60 %, Risiko-Logik, 500 € je Trade, 5.000 € Start.
+- Der Nutzer handelt bei flatex Österreich (Euro, Tradegate/gettex): 7,90 € je Order, 27,5 % KESt.
+- Neue Regeln erst ausgiebig testen und den Nutzer fragen, bevor sie eingebaut werden.
+- **Blau-Regel** (`BLUE_RULE` in `src/lib/analysis/potential.ts`): auf Wunsch des Nutzers in Chancen UND Turnier aktiv, obwohl
+  im Test neutral. Sie soll **wieder entfernt werden, wenn sie schlechter wird** – das Turnier meldet das automatisch
+  („Achtung Blau-Regel …“ in der Auswertung). Dann dem Nutzer vorschlagen, `enabled: false` zu setzen.
+- Kein ETF im System – der S&P-500-ETF (SXR8) dient nur als Vergleich im Turnier.
