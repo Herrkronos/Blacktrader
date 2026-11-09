@@ -3,16 +3,16 @@
 // Zeile 1 Name/Kurs · Zeile 2 Mini-Chart · Zeile 3 Einstieg/Stop/Ziel · Zeile 4 Score + Badge · max. 2 Buttons.
 import { useMemo, useRef, useState } from "react";
 import type { AnalysisResult } from "@/lib/analysis/analyze";
-import type { CoreStatus } from "@/lib/analysis/core";
+import type { LongTermZone } from "@/lib/analysis/longterm";
 import { money } from "@/lib/analysis/persona";
 import { haptic } from "@/lib/client/alerts";
-import { hasOpenTrade, openCoreTrade, openManualCoreTrade, openPaperTrade } from "@/lib/client/autotrade";
+import { hasOpenTrade, openPaperTrade } from "@/lib/client/autotrade";
+import { avgEntry, filledTranches, openLongTermTrade } from "@/lib/client/longterm";
 import type { LiveStatus } from "@/lib/client/market";
 import { actions, getData, useAppData } from "@/lib/store/store";
 import { HORIZON_LABEL, type Candle, type Horizon, type ResolvedAsset } from "@/lib/types";
 import { MiniChart } from "./MiniChart";
 import { waveCaption } from "./waveText";
-import { bullishCount } from "@/lib/client/bullish";
 import { ConfirmSheet } from "./Sheet";
 import { StatusPill } from "./StatusPill";
 
@@ -46,10 +46,18 @@ export function conflictText(views: Partial<Record<Horizon, HorizonView>>): stri
   return `${parts.join(", ")}. Das ist kein Widerspruch: Kurze Rücksetzer gibt es oft auch in einem längeren Aufwärtstrend. Wer langfristig denkt, richtet sich nach dem längeren Zeitraum.`;
 }
 
+/** Kerzengröße des Zeitraums, auf dem der Langfrist-Bereich berechnet wurde */
+function ltIntervalFor(h?: Horizon) {
+  const s = getData().settings.intervals;
+  return s[h ?? "long"];
+}
+
 export function AssetCard({
   asset,
   views,
-  core,
+  longterm,
+  ltCandles,
+  ltHorizon,
   initial,
   price,
   changePct,
@@ -61,7 +69,11 @@ export function AssetCard({
 }: {
   asset: ResolvedAsset;
   views: Partial<Record<Horizon, HorizonView>>;
-  core?: CoreStatus | null;
+  /** Langfristiger Einstiegsbereich (blau) */
+  longterm?: LongTermZone | null;
+  /** Kerzen, auf denen der Bereich berechnet wurde, und deren Zeitraum */
+  ltCandles?: Candle[];
+  ltHorizon?: Horizon;
   initial?: Horizon;
   price?: number;
   changePct?: number;
@@ -69,26 +81,26 @@ export function AssetCard({
   source?: string;
   onOpen: (h: Horizon) => void;
   onRemove?: () => void;
-  /** "core" = nur die Kernposition zeigen (Filter Kernposition) */
-  focus?: "core";
+  /** "longterm" = nur den langfristigen Einstieg zeigen (Filter Langfristig) */
+  focus?: "longterm";
 }) {
   const available = HORIZONS.filter((h) => views[h]);
   const firstActive = available.find((h) => views[h]?.res?.plan && views[h]?.res?.decision.level !== "neutral");
   const [h, setH] = useState<Horizon>(initial && views[initial] ? initial : firstActive ?? available[0] ?? "medium");
-  const [confirm, setConfirm] = useState<null | "trade" | "core">(null);
+  const [confirm, setConfirm] = useState<null | "trade" | "longterm">(null);
   const touch = useRef<number | null>(null);
   const trades = useAppData((d) => d.trades);
   const expert = useAppData((d) => d.settings.expertMode);
   const view = views[h];
   const res = view?.res ?? null;
-  const coreFocus = focus === "core";
+  const coreFocus = focus === "longterm";
   const plan = !coreFocus && res && res.decision.level !== "neutral" ? res.plan : null;
   const strength = coreFocus ? null : signalStrength(res);
   const cur = asset.currency;
-  const myCore = trades.find((t) => t.status === "open" && t.strategy === "core" && t.symbol === asset.symbol);
-  // Kernposition (blau) nur mit bullischer Wellenzählung – die wird dann auch eingezeichnet
-  const coreCount = bullishCount(views.medium?.res) ?? bullishCount(views.long?.res) ?? bullishCount(res);
-  const coreActive = !!myCore || (core?.state === "hold" && !!coreCount);
+  const myCore = trades.find((t) => t.status !== "closed" && (t.strategy === "longterm" || t.strategy === "core") && t.symbol === asset.symbol);
+  // Langfristiger Einstieg (blau): nur mit gültigem Bereich (Wellenstart 0, Welle 1, erwartete Welle 2 im Bereich)
+  const lt = longterm && longterm.status !== "invalidiert" ? longterm : null;
+  const coreActive = !!myCore || !!lt;
   const isNachkauf = !!plan && plan.direction === "long" && coreActive;
   const riskPct = plan ? (Math.abs(plan.entry - plan.stop) / plan.entry) * 100 : 0;
   const lastPrice = price ?? res?.price;
@@ -103,7 +115,7 @@ export function AssetCard({
       <span className="badge-short">Short</span>
     )
   ) : coreActive ? (
-    <span className="badge-core">Kernposition</span>
+    <span className="badge-core">Langfristig</span>
   ) : (
     <span className="badge-muted">Abwarten</span>
   );
@@ -117,18 +129,18 @@ export function AssetCard({
 
   const coreLine = (() => {
     if (myCore) {
-      const p = lastPrice ? ((lastPrice - myCore.entry) / myCore.entry) * 100 : null;
-      return `Deine Kernposition: gekauft am ${new Date(myCore.openedAt).toLocaleDateString("de-DE")} bei ${money(myCore.entry, cur)}${p != null ? ` · ${p >= 0 ? "+" : ""}${p.toFixed(1).replace(".", ",")} %` : ""}`;
+      if (myCore.strategy === "core") return "Deine frühere Kernposition (vor dem Update) – schließen kannst du sie im Journal.";
+      const n = filledTranches(myCore).length;
+      const e = avgEntry(myCore);
+      const p = lastPrice && n ? ((lastPrice - e) / e) * 100 : null;
+      return n
+        ? `Deine Langfrist-Position: ${n} von 3 Teilen gekauft, Ø ${money(e, cur)}${p != null ? ` · ${p >= 0 ? "+" : ""}${p.toFixed(1).replace(".", ",")} %` : ""}${myCore.stop ? ` · Stop ${money(myCore.stop, cur)}` : " · kein Stop"}`
+        : "Deine Langfrist-Orders warten im Einstiegsbereich.";
     }
-    if (!core) return null;
-    const d = core.last ? new Date(core.last.time * 1000).toLocaleDateString("de-DE") : null;
-    if (core.state === "hold")
-      return coreCount
-        ? `Kernpositions-Signal${d ? ` seit ${d}` : ""} (historisch) – Aufwärtstrend intakt`
-        : "Großer Trend aufwärts, aber keine bullische Wellenzählung – daher keine Kernposition.";
-    if (core.state === "wait-bottom") return `Gewinnmitnahme-Signal${d ? ` am ${d}` : ""} (historisch) – warten auf Boden`;
-    return null;
+    if (!lt) return null;
+    return lt.status === "in-zone" ? "Kurs im langfristigen Einstiegsbereich." : `Langfristiger Einstieg ab ${money(lt.zoneTop, cur)} (noch ${pctStr(lastPrice ?? lt.zoneTop, lt.zoneTop)}).`;
   })();
+  const ltMini = lt ? { start: lt.start, high: lt.high, zoneTop: lt.zoneTop, zoneBottom: lt.zoneBottom, invalidation: lt.invalidation, target: lt.targets[0] } : null;
 
   return (
     <article
@@ -173,14 +185,17 @@ export function AssetCard({
 
       {/* Zeile 2 */}
       {(() => {
-        // Im Kernpositions-Filter (und bei blauer Karte ohne Trade) die bullische Zählung zeigen
-        const showCore = coreFocus || (!plan && coreActive && !!coreCount);
-        const wave = showCore ? coreCount : res?.elliott.best;
-        const candlesForWave = showCore && coreCount && views.medium?.res && bullishCount(views.medium.res) === coreCount ? views.medium.candles : view?.candles ?? [];
+        // Im Filter "Langfristig" (und bei blauer Karte ohne Trade) den Langfrist-Bereich mit Wellen 0–1–2 zeigen
+        const showLt = !!lt && (coreFocus || !plan) && !!ltCandles?.length;
+        const wave = showLt ? undefined : res?.elliott.best;
         return (
           <>
-            {view && <MiniChart candles={candlesForWave} plan={plan} best={wave} />}
-            {waveCaption(wave) && <p className={`-mt-1 text-[13px] ${showCore ? "text-sky-200" : "text-stone-400"}`}>{waveCaption(wave)}</p>}
+            {view && <MiniChart candles={showLt ? ltCandles! : view?.candles ?? []} plan={showLt ? null : plan} best={wave} longterm={showLt ? ltMini : null} />}
+            {showLt ? (
+              <p className="-mt-1 text-[13px] text-sky-200">Welle 1 fertig – erwartet: Rücksetzer (Welle 2) in den blauen Bereich, danach Welle 3.{ltHorizon ? ` (${HORIZON_LABEL[ltHorizon]})` : ""}</p>
+            ) : (
+              waveCaption(wave) && <p className="-mt-1 text-[13px] text-stone-400">{waveCaption(wave)}</p>
+            )}
           </>
         );
       })()}
@@ -204,23 +219,22 @@ export function AssetCard({
             <div className="num text-[13px] text-emerald-300/80">+{pctStr(plan.entry, plan.targets[0])}</div>
           </div>
         </div>
-      ) : coreFocus && core ? (
-        <div className="grid grid-cols-2 gap-2 text-center">
+      ) : lt && (coreFocus || !plan) ? (
+        <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-xl bg-sky-500/10 px-1 py-2">
-            <div className="label">{core.state === "hold" ? "Signal seit" : "Letztes Signal"}</div>
-            <div className="num text-[17px] font-semibold text-sky-200">{core.last ? new Date(core.last.time * 1000).toLocaleDateString("de-DE") : "–"}</div>
-            {core.last && <div className="num text-[13px] text-stone-400">bei {money(core.last.price, cur)}</div>}
+            <div className="label">Einstieg (3 Teile)</div>
+            <div className="num text-[15px] font-semibold text-sky-200">{money(lt.zoneTop, cur)}</div>
+            <div className="num text-[13px] text-sky-200/80">bis {money(lt.zoneBottom, cur)}</div>
           </div>
-          <div className="rounded-xl bg-sky-500/10 px-1 py-2">
-            <div className="label">Seitdem</div>
-            {core.last && lastPrice != null ? (
-              <div className={`num text-[17px] font-semibold ${lastPrice >= core.last.price ? "text-up" : "text-down"}`}>
-                {`${lastPrice >= core.last.price ? "+" : "−"}${pctStr(core.last.price, lastPrice)}`}
-              </div>
-            ) : (
-              <div className="num text-[17px] font-semibold text-stone-400">–</div>
-            )}
-            <div className="text-[13px] text-stone-400">Verkauf: Welle 5 / Trendbruch</div>
+          <div className="rounded-xl bg-white/5 px-1 py-2">
+            <div className="label">Ungültig unter</div>
+            <div className="num text-[15px] font-semibold text-red-300">{money(lt.invalidation, cur)}</div>
+            <div className="text-[13px] text-stone-400">kein fester Stop</div>
+          </div>
+          <div className="rounded-xl bg-white/5 px-1 py-2">
+            <div className="label">Ziel</div>
+            <div className="num text-[15px] font-semibold text-emerald-300">{money(lt.targets[0], cur)}</div>
+            <div className="num text-[13px] text-emerald-300/80">dann {money(lt.targets[1], cur)}</div>
           </div>
         </div>
       ) : (
@@ -245,7 +259,7 @@ export function AssetCard({
       {/* Zeile 4: Signalstärke – je höher, desto stärker (Kauf und Short gleich) */}
       <div className="flex items-center gap-3">
         {coreFocus ? (
-          <span className="flex-1 text-[14px] text-stone-400">Langfristig halten – ohne Punkte, solange der Trend intakt ist.</span>
+          <span className="flex-1 text-[14px] text-stone-400">{lt?.status === "in-zone" ? "Im Einstiegsbereich" : "Bereich zulaufend"} – ohne Punkte, sortiert nach Nähe.</span>
         ) : (
           <>
             <span className="label shrink-0">Stärke</span>
@@ -255,13 +269,13 @@ export function AssetCard({
             <span className="num text-[15px] font-semibold text-stone-200">{strength != null ? strength.toFixed(0) : "–"}</span>
           </>
         )}
-        {coreFocus ? <span className="badge-core">Kernposition</span> : badge}
+        {coreFocus ? <span className="badge-core">Langfristig</span> : badge}
         {plan && riskPct > RISK_LIMIT && <span className="badge-risk">Hohes Risiko</span>}
       </div>
 
       {!coreFocus && (coreLine || isNachkauf || conflict) && (
         <div className="space-y-1.5 text-[14px]">
-          {isNachkauf && <p className="text-sky-200">Nachkauf-Zone zur bestehenden Kernposition.</p>}
+          {isNachkauf && <p className="text-sky-200">Nachkauf-Zone zur bestehenden Langfrist-Position.</p>}
           {coreLine && <p className={myCore ? "text-sky-200" : "text-stone-400"}>{coreLine}</p>}
           {conflict && <p className="text-stone-400">{conflict}</p>}
           {plan && riskPct > RISK_LIMIT && <p className="text-red-300">Stop {pctStr(plan.entry, plan.stop)} entfernt – nur mit kleiner Positionsgröße.</p>}
@@ -277,9 +291,9 @@ export function AssetCard({
           <button className="btn-primary flex-1" onClick={() => setConfirm("trade")}>
             {isNachkauf ? "Nachkauf übernehmen" : "Als Papier-Trade übernehmen"}
           </button>
-        ) : !plan && core?.state === "hold" && coreCount && !myCore && view?.res ? (
-          <button className="btn-primary flex-1" onClick={() => setConfirm("core")}>
-            Kernposition übernehmen
+        ) : lt && (coreFocus || !plan) && !myCore ? (
+          <button className="btn-primary flex-1" onClick={() => setConfirm("longterm")}>
+            Langfristig übernehmen
           </button>
         ) : onRemove ? (
           <button className="btn flex-1" onClick={onRemove}>
@@ -314,29 +328,30 @@ export function AssetCard({
         }
       />
       <ConfirmSheet
-        open={confirm === "core"}
-        title="Kernposition übernehmen"
-        confirm="Übernehmen"
+        open={confirm === "longterm"}
+        title="Langfristig übernehmen"
+        confirm="Orders legen"
         onClose={() => setConfirm(null)}
         onConfirm={() => {
-          const r = views.medium?.res ?? view?.res;
-          if (r && openManualCoreTrade(asset, r, "Kernposition selbst übernommen")) {
-            // Wert überwachen, damit die Position bei Welle 5 / Trendbruch geschlossen werden kann
-            actions.addWatch(asset);
+          if (lt && openLongTermTrade(asset, lt, ltHorizon ?? "long", ltIntervalFor(ltHorizon), lastPrice ?? lt.zoneTop)) {
             if (getData().settings.haptics) haptic(30);
           }
         }}
         text={
-          <div className="space-y-2">
-            <p>
-              Langfristig halten: {asset.name} zum aktuellen Kurs {lastPrice != null ? money(lastPrice, cur) : ""}.
-            </p>
-            <p className="text-stone-400">Geschlossen wird, wenn der Analyst das Ende der 5. Welle erkennt oder der große Aufwärtstrend bricht. Der Wert wird dazu in deine Watchlist aufgenommen.</p>
-          </div>
+          lt ? (
+            <div className="space-y-2">
+              <p>{asset.name}: Einstieg in drei Teilen bei</p>
+              <p className="num text-sky-200">
+                {lt.tranches.map((t) => money(t, cur)).join(" · ")}
+              </p>
+              <p className="text-stone-400">
+                Kein fester Stop. Ungültig, wenn ein Schlusskurs unter {money(lt.invalidation, cur)} liegt. Teilausstieg oder Stop gibt es nur, wenn sich die Wellenzählung ändert – du bekommst dann eine Nachricht.
+              </p>
+            </div>
+          ) : null
         }
       />
     </article>
   );
 }
 
-export { openCoreTrade };

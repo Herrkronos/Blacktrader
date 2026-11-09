@@ -36,8 +36,9 @@ function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction:
   const [dx, setDx] = useState(0);
   const start = useRef<number | null>(null);
   const [open, setOpen] = useState(false);
-  const edge = t.strategy === "core" ? "edge-core" : t.direction === "long" ? "edge-trade" : "edge-short";
-  const kind = t.strategy === "core" ? <span className="badge-core">Kernposition</span> : t.direction === "long" ? <span className="badge-trade">Trade</span> : <span className="badge-short">Short</span>;
+  const isLt = t.strategy === "core" || t.strategy === "longterm";
+  const edge = isLt ? "edge-core" : t.direction === "long" ? "edge-trade" : "edge-short";
+  const kind = t.strategy === "longterm" || t.strategy === "core" ? <span className="badge-core">Langfristig</span> : t.direction === "long" ? <span className="badge-trade">Trade</span> : <span className="badge-short">Short</span>;
   const cur = t.status === "closed" ? t.exit : price ?? t.lastPrice;
   const ret = t.status === "closed" ? t.returnPct : t.status === "open" && cur ? tradeReturnPct(t.direction, t.entry, cur) : undefined;
   const st = statusText(t);
@@ -87,14 +88,25 @@ function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction:
             {cur != null ? money(cur) : "–"}
           </span>
           <span>
-            <span className="label block">{t.strategy === "core" ? "Bis" : "Stop / Ziel"}</span>
-            {t.strategy === "core" ? "Welle 5" : `${money(t.stop)} / ${t.targets[0] != null ? money(t.targets[0]) : "–"}`}
+            <span className="label block">Stop / Ziel</span>
+            {isLt ? `${t.stop ? money(t.stop) : "kein Stop"} / ${t.targets[0] != null ? money(t.targets[0]) : "–"}` : `${money(t.stop)} / ${t.targets[0] != null ? money(t.targets[0]) : "–"}`}
           </span>
         </div>
         {open && (
           <div className="mt-3 space-y-2 border-t border-white/10 pt-3 text-[14px] text-stone-300">
             <p className="text-stone-400">Übernommen am {new Date(t.openedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</p>
             <p className="whitespace-pre-wrap">{t.reason}</p>
+            {t.strategy === "longterm" && (
+              <div className="space-y-1 rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
+                <p>Teile: {(t.tranches ?? []).map((x) => `${money(x.price)} ${x.filledAt ? "✓" : "wartet"}`).join(" · ") || "–"}</p>
+                {(t.partials ?? []).map((p, i) => (
+                  <p key={i}>
+                    Teilausstieg {Math.round(p.fraction * 100)} % bei {money(p.price)} ({new Date(p.at).toLocaleDateString("de-DE")})
+                  </p>
+                ))}
+                {t.lastActionText && <p className="text-sky-200">Letzte Meldung: {t.lastActionText}</p>}
+              </div>
+            )}
             <button
               className="btn w-full"
               onClick={(e) => {
@@ -123,7 +135,7 @@ export default function JournalPage() {
   const filtered = useMemo(
     () =>
       trades
-        .filter((t) => (horizon === "all" || t.horizon === horizon) && (art === "all" || (art === "core" ? t.strategy === "core" : t.strategy !== "core" && (art === "trade" ? t.direction === "long" : t.direction === "short"))))
+        .filter((t) => (horizon === "all" || t.horizon === horizon) && (art === "all" || (art === "core" ? t.strategy === "core" || t.strategy === "longterm" : t.strategy !== "core" && t.strategy !== "longterm" && (art === "trade" ? t.direction === "long" : t.direction === "short"))))
         .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0) || b.openedAt - a.openedAt),
     [trades, horizon, art],
   );
@@ -196,7 +208,7 @@ export default function JournalPage() {
             ["all", "Alle"],
             ["trade", "Trade"],
             ["short", "Short"],
-            ["core", "Kernposition"],
+            ["core", "Langfristig"],
           ] as const
         ).map(([k, l]) => (
           <button key={k} onClick={() => setArt(k)} className={`chip shrink-0 ${art === k ? "border-gold bg-white/10 font-semibold text-gold-light" : "border-white/10 text-stone-400"}`}>

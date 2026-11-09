@@ -7,7 +7,7 @@ import { runZoneBacktestAsync } from "@/lib/analysis/zoneBacktest";
 import { DEFAULT_PARAMS } from "@/lib/analysis/params";
 import { learnedParams } from "@/lib/client/trainerParams";
 import { signalFromAnalysis } from "@/lib/trainer/engine";
-import { runCoreBacktestAsync, type CoreResult } from "@/lib/analysis/core";
+import { runLongTermEcho, type LongTermEcho } from "@/lib/analysis/longterm";
 import { fmtPrice } from "@/lib/analysis/persona";
 import { LOOKBACKS, loadHistory, planHistory } from "@/lib/client/history";
 import { SCAN_GROUPS } from "@/lib/client/presets";
@@ -26,7 +26,7 @@ export default function EchoChartPage() {
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<{ label: string; p: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [core, setCore] = useState<CoreResult | null>(null);
+  const [core, setCore] = useState<LongTermEcho | null>(null);
   const [result, setResult] = useState<(BacktestResult & { symbol: string; bars: number; from: number; to: number; note?: string; interval: Interval }) | null>(null);
 
   // Auswahl: Watchlist + feste Gruppen (Aktien, Krypto, Rohstoffe)
@@ -56,7 +56,9 @@ export default function EchoChartPage() {
       const learned = JSON.stringify(params) !== JSON.stringify(DEFAULT_PARAMS);
       const opts = learned ? { warmup: 200, signalAt: (h: Candle[]) => signalFromAnalysis(h, { kind: asset.kind, horizon: horizon, interval }, params) } : { warmup: 200 };
       const r = await runZoneBacktestAsync(candles, opts, (p) => setPhase({ label: "Zonen-Trades werden durchgespielt", p }));
-      const c = candles.length >= 260 ? await runCoreBacktestAsync(candles, {}, (p) => setPhase({ label: "Kernposition (Welle 5 / Boden) wird durchgespielt", p })) : null;
+      setPhase({ label: "Langfristige Einstiegsbereiche werden durchgespielt", p: 0.95 });
+      await new Promise((r) => setTimeout(r, 0));
+      const c = candles.length >= 260 ? runLongTermEcho(candles, undefined, Math.max(1, Math.ceil(candles.length / 3000))) : null;
       setCore(c);
       setResult({ ...r, symbol: asset.name, bars: candles.length, from: candles[0].time, to: candles[candles.length - 1].time, note: plan.note, interval });
     } catch (e) {
@@ -179,15 +181,14 @@ export default function EchoChartPage() {
           <div className="panel-title">Vergleich</div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {core ? (
-            <Stat
-              accent="core"
-              label="Kernposition (Welle 5 / Boden)"
-              value={`${core.stats.totalReturn >= 0 ? "+" : ""}${core.stats.totalReturn.toFixed(1)} %`}
-              tone={core.stats.totalReturn >= 0 ? "up" : "down"}
-              hint={`${core.segments.length} Phasen · ${(core.exposure * 100).toFixed(0)} % der Zeit investiert · größter Rückgang ${core.maxDrawdown.toFixed(1)} %`}
-            />
+              <Stat
+                accent="core"
+                label="Langfristige Einstiege (blau)"
+                value={core.erfolgreich + core.invalidiert ? `${(core.quote * 100).toFixed(0)} % erfolgreich` : "–"}
+                hint={`${core.zones} Bereiche · ${core.erfolgreich} erfolgreich · ${core.invalidiert} ungültig · ${core.offen} offen`}
+              />
             ) : (
-              <Stat accent="core" label="Kernposition (Welle 5 / Boden)" value="–" hint="Zu wenig Kerzen – längeren Zeitraum wählen" />
+              <Stat accent="core" label="Langfristige Einstiege (blau)" value="–" hint="Zu wenig Kerzen – längeren Zeitraum wählen" />
             )}
             <Stat
               accent="trade"
@@ -198,34 +199,29 @@ export default function EchoChartPage() {
             />
             <Stat
               label="Einfach gehalten"
-              value={`${(core?.buyAndHold ?? result.buyAndHold) >= 0 ? "+" : ""}${(core?.buyAndHold ?? result.buyAndHold).toFixed(1)} %`}
-              hint={core ? `größter Rückgang ${core.holdMaxDrawdown.toFixed(1)} %` : undefined}
+              value={`${result.buyAndHold >= 0 ? "+" : ""}${result.buyAndHold.toFixed(1)} %`}
             />
           </div>
           {result.trades.length > 0 && result.trades.length < 10 && <p className="text-xs text-amber-300">Weniger als 10 Zonen-Trades – statistisch nicht belastbar.</p>}
-          {core && (
-          <>
-          <div className="text-xs text-stone-400">Kernposition – Gewinnkurve (gestrichelt: einfach gehalten)</div>
-          <EquityChart data={core.curve} compare={core.buyAndHold} />
-          <details className="text-sm">
-            <summary className="cursor-pointer text-sky-300">Alle {core.segments.length} Phasen der Kernposition anzeigen</summary>
-            <table className="mt-2 w-full text-xs">
-              <tbody>
-                {[...core.segments].reverse().map((sg) => (
-                  <tr key={sg.entryTime} className="core-row">
-                    <td className="px-2 py-1">{new Date(sg.entryTime * 1000).toLocaleDateString("de-DE")} – {new Date(sg.exitTime * 1000).toLocaleDateString("de-DE")}</td>
-                    <td className="num px-2 py-1 text-right">{fmtPrice(sg.entry)} → {fmtPrice(sg.exit)}</td>
-                    <td className="px-2 py-1">{sg.reason === "welle5" ? "Welle 5 – Gewinn mitgenommen" : sg.reason === "trendbruch" ? "Trendbruch" : "läuft noch"}</td>
-                    <td className={`num px-2 py-1 text-right ${sg.returnPct >= 0 ? "text-up" : "text-down"}`}>{`${sg.returnPct >= 0 ? "+" : ""}${sg.returnPct.toFixed(2)} %`}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </details>
-          </>
+          {core && core.trades.length > 0 && (
+            <details className="text-sm">
+              <summary className="cursor-pointer text-sky-300">Alle {core.trades.length} langfristigen Einstiege anzeigen</summary>
+              <table className="mt-2 w-full text-xs">
+                <tbody>
+                  {[...core.trades].reverse().map((t) => (
+                    <tr key={t.entryTime} className="core-row">
+                      <td className="px-2 py-1">{new Date(t.entryTime * 1000).toLocaleDateString("de-DE")} – {new Date(t.exitTime * 1000).toLocaleDateString("de-DE")}</td>
+                      <td className="num px-2 py-1 text-right">{fmtPrice(t.entry)} → {fmtPrice(t.exit)}</td>
+                      <td className="px-2 py-1">{t.result === "erfolgreich" ? "Ziel erreicht" : t.result === "invalidiert" ? "ungültig" : "läuft noch"}</td>
+                      <td className={`num px-2 py-1 text-right ${t.returnPct >= 0 ? "text-up" : "text-down"}`}>{`${t.returnPct >= 0 ? "+" : ""}${t.returnPct.toFixed(2)} %`}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
           )}
           <p className="text-[13px] text-stone-500">
-            Kernposition: im Aufwärtstrend halten, nach erkannter 5. Welle Gewinne mitnehmen, nach einem Boden (abgeschlossene Korrektur) wieder einsteigen. „Größter Rückgang“ = stärkster Verlust vom Höchststand zwischendurch.
+            Langfristig: Einstieg in drei Teilen im blauen Bereich. Erfolgreich = altes Hoch (Ziel 1) wieder erreicht, ungültig = Schlusskurs unter dem Wellenstart. Nur Kerzen bis zum jeweiligen Zeitpunkt werden verwendet.
           </p>
         </div>
       )}

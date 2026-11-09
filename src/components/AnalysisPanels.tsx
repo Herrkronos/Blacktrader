@@ -5,7 +5,7 @@ import type { AnalysisResult } from "@/lib/analysis/analyze";
 import type { WaveCount } from "@/lib/analysis/elliott";
 import { compactNumber } from "@/lib/analysis/fundamental";
 import { fmtPrice, money } from "@/lib/analysis/persona";
-import type { CoreStatus } from "@/lib/analysis/core";
+import { longTermText, type LongTermZone } from "@/lib/analysis/longterm";
 import { SIGNAL_LABEL } from "@/lib/analysis/score";
 import { api } from "@/lib/client/api";
 import { useAppData } from "@/lib/store/store";
@@ -369,40 +369,27 @@ export function VolumePanel({ a }: { a: AnalysisResult }) {
   );
 }
 
-const CORE_EVENT_TEXT: Record<string, string> = {
-  einstieg: "Aufwärtstrend bestätigt – eingestiegen",
-  welle5: "Welle 5 beendet – Gewinne mitgenommen",
-  trendbruch: "Aufwärtstrend gebrochen – verkauft",
-  boden: "Boden gefunden – wieder eingestiegen",
-  "neues-hoch": "Neues Hoch – wieder eingestiegen",
-};
-
-export function CoreCard({ core, currency }: { core: CoreStatus | null | undefined; currency?: string }) {
-  if (!core) return null;
-  const title =
-    core.state === "hold" ? "Halten" : core.state === "wait-bottom" ? "Gewinne mitgenommen – warten auf Boden" : "Nicht investiert – kein Aufwärtstrend";
-  const text =
-    core.state === "hold"
-      ? "Der große Aufwärtstrend läuft und die 5. Welle ist noch nicht beendet. Die Kernposition wird gehalten."
-      : core.state === "wait-bottom"
-        ? `Der Analyst hat das Ende der 5. Welle erkannt${core.wave5Top ? ` (Hoch bei ${money(core.wave5Top, currency)})` : ""}. Wieder eingestiegen wird, sobald nach der Korrektur ein Boden gefunden ist${core.wave5Top ? ` oder der Kurs über ${money(core.wave5Top, currency)} steigt` : ""}.`
-        : "Gekauft wird erst wieder, wenn der große Trend nach oben dreht.";
-  const tone = core.state === "hold" ? "border-emerald-500/40 text-emerald-300" : core.state === "wait-bottom" ? "border-sky-500/40 text-sky-300" : "border-stone-600 text-stone-300";
+/** Langfristiger Einstieg (blau): Bereich, Invalidierung, Ziele und ggf. die eigene Position. */
+export function LongTermCard({ zone, currency, onTake, position }: { zone: LongTermZone | null | undefined; currency?: string; onTake?: () => void; position?: string | null }) {
+  if (!zone || zone.status === "invalidiert") return null;
+  const fmt = (n: number) => money(n, currency);
   return (
-    <div className={`panel space-y-2 p-4 ${core.state === "hold" ? "core-bg" : ""}`}>
+    <div className="panel core-bg space-y-2 p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="panel-title">
-          Kernposition <span className="core-tag ml-1 align-middle">langfristig</span>
+          Langfristiger Einstieg <span className="core-tag ml-1 align-middle">blau</span>
         </span>
-        <span className={`chip ${tone}`}>{title}</span>
+        <span className="chip border-sky-500/40 text-sky-300">{zone.status === "in-zone" ? "Im Bereich" : "Zulaufend"}</span>
       </div>
-      <p className="text-sm text-stone-200">{text}</p>
-      {core.last && (
-        <p className="text-xs text-stone-400">
-          Letztes Ereignis: {CORE_EVENT_TEXT[core.last.type]} am {new Date(core.last.time * 1000).toLocaleDateString("de-DE")} bei {money(core.last.price, currency)}.
-        </p>
+      <p className="text-[15px] text-stone-200">{longTermText(zone, fmt)}</p>
+      <p className="num text-[14px] text-sky-200">Teile: {zone.tranches.map(fmt).join(" · ")}</p>
+      {position && <p className="text-[14px] text-sky-100">{position}</p>}
+      <p className="text-[13px] text-stone-500">Kein fester Stop. Teilausstieg oder Stop gibt es nur, wenn sich die Wellenzählung ändert oder das Alternativszenario wahrscheinlicher wird – dann kommt eine Nachricht.</p>
+      {onTake && (
+        <button className="btn-primary w-full" onClick={onTake}>
+          Langfristig übernehmen
+        </button>
       )}
-      <p className="text-[13px] text-stone-500">Kernposition = im Aufwärtstrend halten, nach der 5. Welle Gewinne mitnehmen, nach einem Boden wieder einsteigen. Läuft zusätzlich zu den Zonen-Trades.</p>
     </div>
   );
 }

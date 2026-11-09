@@ -57,7 +57,7 @@ export default function Uebersicht() {
     const items = scan.entries.flatMap((e) =>
       Object.values(e.horizons)
         .filter((h) => h && h.res.plan && h.res.decision.level !== "neutral")
-        .map((h) => ({ asset: e.asset, res: h!.res, d: entryDistance(h!.res), core: e.core?.state === "hold" })),
+        .map((h) => ({ asset: e.asset, res: h!.res, d: entryDistance(h!.res) })),
     );
     // Stärkste Signale zuerst (Kauf: Score, Short: 100 − Score)
     return items.sort((a, b) => (signalStrength(b.res) ?? 0) - (signalStrength(a.res) ?? 0) || a.d - b.d).slice(0, 3);
@@ -93,7 +93,7 @@ export default function Uebersicht() {
       <Section title="Top 3 Chancen heute" href="/chancen">
         {scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Analyst sucht Chancen … {Math.round(scan.progress * 100)} %</div>}
         {!scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Gerade keine sauberen Einstiege.</div>}
-        {top.map(({ asset, res, d, core }) => {
+        {top.map(({ asset, res, d }) => {
           const p = res.plan!;
           const long = p.direction === "long";
           return (
@@ -107,7 +107,7 @@ export default function Uebersicht() {
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span className={long ? "badge-trade" : "badge-short"}>
-                    {long ? (core ? "Nachkauf" : "Trade") : "Short"} · Stärke {signalStrength(res)?.toFixed(0)}
+                    {long ? "Trade" : "Short"} · Stärke {signalStrength(res)?.toFixed(0)}
                   </span>
                   <span className={d === 0 ? "text-[13px] text-emerald-300" : "text-[13px] text-amber-300"}>{d === 0 ? "jetzt in der Zone" : `noch ${d.toFixed(1).replace(".", ",")} %`}</span>
                 </div>
@@ -144,7 +144,7 @@ export default function Uebersicht() {
                 <div key={t.id} className={`flex min-h-[56px] items-center justify-between gap-3 rounded-none px-4 py-2.5 ${edge}`}>
                   <div className="min-w-0">
                     <div className="truncate text-[15px] font-medium text-stone-100">{t.name}</div>
-                    <div className="text-[13px] text-stone-400">{t.strategy === "core" ? "Kernposition" : t.direction === "long" ? "Trade" : "Short"} · {t.status === "pending" ? "wartet auf Einstieg" : "offen"}</div>
+                    <div className="text-[13px] text-stone-400">{t.strategy === "longterm" || t.strategy === "core" ? "Langfristig" : t.direction === "long" ? "Trade" : "Short"} · {t.status === "pending" ? "wartet auf Einstieg" : "offen"}</div>
                   </div>
                   <div className={`num text-[18px] font-semibold ${r == null ? "text-amber-300" : r >= 0 ? "text-up" : "text-down"}`}>{r == null ? "wartet" : signed(r)}</div>
                 </div>

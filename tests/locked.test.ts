@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { LOCKED } from "../src/lib/analysis/locked-config";
 import { DEFAULT_WEIGHTS, MIN_RISK_REWARD } from "../src/lib/analysis/score";
 import { DEFAULT_ZONE_OPTIONS } from "../src/lib/analysis/zones";
-import { DEFAULT_CORE_OPTIONS } from "../src/lib/analysis/core";
+import { DEFAULT_LONGTERM } from "../src/lib/analysis/longterm";
 import { DEFAULT_PARAMS, LEARNABLE_KEYS, validateParams } from "../src/lib/analysis/params";
 
 /** Erwarteter, unveränderlicher Stand. Jede Änderung hier muss bewusst und manuell erfolgen. */
@@ -15,10 +15,10 @@ const EXPECTED = {
   minRiskReward: 1.5,
   zone: { entryRetrace: 0.618, zoneDeep: 0.786, stopBufferAtr: 0.25, minWaveAtr: 4, target1Ext: 0.272, trendFilter: true },
   trade: { exitMode: "trail", trailAtr: 4, maxWaitBars: 60, maxHoldBars: 200 },
-  core: { minQuality: 0.55, degrees: ["grob"] },
+  longterm: { atrMult: 6, minMoveAtr: 8, zoneTop: 0.618, zoneBottom: 0.886, tranches: 3 },
   riskBadgePct: 15,
   horizons: { short: ["5m", "15m", "1h"], medium: ["4h", "1d"], long: ["1w", "1M"] },
-  signalKinds: { trade: "grün", short: "rot", core: "blau" },
+  signalKinds: { trade: "grün", short: "rot", longterm: "blau" },
 };
 
 describe("Feste Werte (locked-config)", () => {
@@ -44,7 +44,8 @@ describe("Feste Werte (locked-config)", () => {
     expect(DEFAULT_WEIGHTS).toEqual(LOCKED.weights);
     expect(MIN_RISK_REWARD).toBe(LOCKED.minRiskReward);
     for (const k of Object.keys(LOCKED.zone) as (keyof typeof LOCKED.zone)[]) expect(DEFAULT_ZONE_OPTIONS[k]).toBe(LOCKED.zone[k]);
-    expect(DEFAULT_CORE_OPTIONS.minQuality).toBe(LOCKED.core.minQuality);
+    expect(DEFAULT_LONGTERM.zoneTop).toBe(LOCKED.longterm.zoneTop);
+    expect(DEFAULT_LONGTERM.zoneBottom).toBe(LOCKED.longterm.zoneBottom);
   });
   it("lernbare Werte überschneiden sich nicht mit festen Werten", () => {
     const lockedKeys = ["weightBounds", "acceptance", "minRiskReward", "entryRetrace", "zoneDeep", "stopBufferAtr", "minWaveAtr", "target1Ext", "trendFilter", "trailAtr", "exitMode", "maxWaitBars", "maxHoldBars", "minQuality", "riskBadgePct"];

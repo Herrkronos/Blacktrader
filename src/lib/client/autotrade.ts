@@ -1,7 +1,6 @@
 "use client";
 // Papier-Trades aus einem Analyse-Ergebnis anlegen (manuell oder automatisch).
 import type { AnalysisResult } from "../analysis/analyze";
-import type { CoreStatus } from "../analysis/core";
 import { plainSetup } from "../analysis/persona";
 import { tradeReturnPct } from "../analysis/stats";
 import { actions, getData } from "../store/store";
@@ -46,53 +45,6 @@ export function openPaperTrade(asset: Asset, res: AnalysisResult): boolean {
     score: res.total,
     signal: res.decision.level,
     pattern: plainSetup(res.elliott.best),
-    lastPrice: res.price,
-  });
-  return true;
-}
-
-/** Offene Kernposition für Wert + Horizont */
-export function openCoreTrade(symbol: string, horizon: AnalysisResult["horizon"]) {
-  return getData().trades.find((t) => t.status === "open" && t.strategy === "core" && t.symbol === symbol && t.horizon === horizon);
-}
-
-const CORE_EXIT_TEXT = { welle5: "Welle 5 beendet – Gewinne mitgenommen", trendbruch: "Aufwärtstrend gebrochen – verkauft" } as const;
-
-/**
- * Schließt eine SELBST übernommene Kernposition, wenn der Analyst das Ende der 5. Welle erkennt oder der Trend bricht.
- * Es werden niemals automatisch Positionen eröffnet.
- */
-export function syncCoreTrade(asset: Asset, res: AnalysisResult, status: CoreStatus): string | null {
-  const open = openCoreTrade(asset.symbol, res.horizon);
-  if (status.state !== "hold" && open) {
-    const reason = status.state === "wait-bottom" ? "welle5" : "trendbruch";
-    actions.updateTrade(open.id, { status: "closed", exit: res.price, closedAt: Date.now(), closeReason: reason, returnPct: tradeReturnPct("long", open.entry, res.price), lastPrice: res.price });
-    return `${CORE_EXIT_TEXT[reason]} (${tradeReturnPct("long", open.entry, res.price) >= 0 ? "+" : ""}${tradeReturnPct("long", open.entry, res.price).toFixed(2)} %)`;
-  }
-  return null;
-}
-
-/** Kernposition selbst übernehmen (über Chancen oder Watchlist). */
-export function openManualCoreTrade(asset: Asset, res: Pick<AnalysisResult, "horizon" | "interval" | "price" | "total">, note: string): boolean {
-  if (openCoreTrade(asset.symbol, res.horizon)) return false;
-  actions.addTrade({
-    strategy: "core",
-    symbol: asset.symbol,
-    name: asset.name,
-    kind: asset.kind,
-    binanceSymbol: asset.binanceSymbol,
-    yahooSymbol: asset.yahooSymbol,
-    direction: "long",
-    horizon: res.horizon,
-    interval: res.interval,
-    entry: res.price,
-    stop: 0,
-    targets: [],
-    openedAt: Date.now(),
-    reason: `Kernposition: ${note}. Gehalten wird, bis der Analyst das Ende der 5. Welle erkennt oder der Aufwärtstrend bricht.`,
-    score: res.total,
-    signal: "buy",
-    pattern: note,
     lastPrice: res.price,
   });
   return true;

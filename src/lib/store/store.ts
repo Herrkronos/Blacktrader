@@ -47,9 +47,20 @@ export interface Trade {
   lastPrice?: number;
   exit?: number;
   closedAt?: number;
-  closeReason?: "target" | "stop" | "manual" | "cancelled" | "welle5" | "trendbruch";
-  /** "core" = Kernposition (Welle 5 / Boden), sonst Zonen-Trade */
-  strategy?: "zone" | "core";
+  closeReason?: "target" | "stop" | "manual" | "cancelled" | "welle5" | "trendbruch" | "invalidiert" | "zaehlung";
+  /** "longterm" = Langfristiger Einstieg (blau); "core" = alte Kernposition (vor dem Update); sonst Zonen-Trade */
+  strategy?: "zone" | "core" | "longterm";
+  /** Langfrist-Bereich (nur strategy "longterm") */
+  lt?: { zoneTop: number; zoneBottom: number; invalidation: number; targets: number[]; key: string };
+  /** Einstieg in Teilen (Langfrist): Preis und Zeitpunkt der Ausführung */
+  tranches?: { price: number; filledAt?: number }[];
+  /** Teilausstiege (Anteil der Position, Kurs, Zeitpunkt, Grund) */
+  partials?: { fraction: number; price: number; at: number; reason: string }[];
+  /** Noch gehaltener Anteil der gekauften Position (1 = alles) */
+  remaining?: number;
+  /** Letzte Meldung des Analysten zu dieser Position (wird nur einmal gesendet) */
+  lastActionKey?: string;
+  lastActionText?: string;
   /** "manual" = vom Nutzer selbst übernommen (nur solche Trades gehören ins Journal) */
   source?: "manual";
   /** Herkunft unklar (vor dem Update angelegt) – Nutzer entscheidet einmalig */

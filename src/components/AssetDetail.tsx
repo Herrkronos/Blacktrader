@@ -1,11 +1,12 @@
 "use client";
 // Detailansicht eines Werts (als Bottom-Sheet oder eigene Seite): großer Chart mit Wellenzählung und
-// Fibo-Zonen, Signal mit Teil-Scores, Kernposition, Begründung, Fundamentalzahlen, News.
+// Fibo-Zonen, Signal mit Teil-Scores, Langfristiger Einstieg, Begründung, Fundamentalzahlen, News.
 import { effectiveWeights, learnedParams, useTrainerVersion } from "@/lib/client/trainerParams";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { analyze } from "@/lib/analysis/analyze";
-import { coreStatus } from "@/lib/analysis/core";
+import { findLongTermZone } from "@/lib/analysis/longterm";
+import { avgEntry, filledTranches, openLongTerm, openLongTermTrade } from "@/lib/client/longterm";
 import { money } from "@/lib/analysis/persona";
 import { api } from "@/lib/client/api";
 import { binanceStream } from "@/lib/client/binanceWs";
@@ -13,7 +14,7 @@ import { useLive } from "@/lib/client/market";
 import { SCAN_PRESETS } from "@/lib/client/presets";
 import { actions, useAppData } from "@/lib/store/store";
 import { HORIZON_INTERVALS, HORIZON_LABEL, type Candle, type Fundamentals, type Horizon, type Interval, type NewsItem, type ResolvedAsset } from "@/lib/types";
-import { Commentary, CoreCard, FundamentalsPanel, NewsPanel, SignalCard, VolumePanel, WavePanel } from "./AnalysisPanels";
+import { Commentary, LongTermCard, FundamentalsPanel, NewsPanel, SignalCard, VolumePanel, WavePanel } from "./AnalysisPanels";
 import { PriceChart } from "./PriceChart";
 import { StatusPill } from "./StatusPill";
 import { TradeDialog } from "./TradeDialog";
@@ -102,7 +103,8 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
     return [...candles.slice(0, -1), { ...last, close: live.price, high: Math.max(last.high, live.price), low: Math.min(last.low, live.price) }];
   }, [candles, live?.price, source]);
 
-  const core = useMemo(() => (candles.length >= 120 ? coreStatus(candles) : null), [candles]);
+  const ltZone = useMemo(() => (candles.length >= 150 ? findLongTermZone(candles) : null), [candles]);
+  const myLt = useAppData((d) => d.trades.find((t) => t.strategy === "longterm" && t.status !== "closed" && t.symbol === asset.symbol));
   const currency = live?.currency ?? asset.currency;
   const trainerV = useTrainerVersion();
   const analysis = useMemo(
@@ -186,13 +188,13 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
             showAlternative={settings.expertMode}
             simple={!settings.expertMode}
             height={typeof window !== "undefined" && window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches ? Math.max(240, window.innerHeight - 110) : 360}
-            coreEntry={core?.state === "hold" ? core.last?.price : undefined}
+            longterm={ltZone && ltZone.status !== "invalidiert" ? ltZone : null}
           />
         )}
         <p className="px-2 pb-1.5 text-[13px] text-stone-400">
           {settings.expertMode
-            ? "Experte: Gold = Primärzählung mit Wellen-Labels, gestrichelt = Alternativzählung, Linien = Fibonacci-Ziele/-Retracements, Rot = Invalidierung, Blau = Kernposition."
-            : "Grün = Einstieg und Ziele · Rot = Stop · Blau = Kernposition."}{" "}
+            ? "Experte: Gold = Primärzählung mit Wellen-Labels, gestrichelt = Alternativzählung, Linien = Fibonacci-Ziele/-Retracements, Rot = Invalidierung, Blau = Langfristiger Einstiegsbereich."
+            : "Grün = Einstieg und Ziele · Rot = Stop · Blau = Langfristiger Einstieg."}{" "}
           Zoomen mit zwei Fingern, Antippen zeigt den Kurs.
         </p>
       </div>
@@ -200,7 +202,12 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
       {analysis ? (
         <>
           <SignalCard a={analysis} onTrade={() => setTrade(true)} />
-          <CoreCard core={core} currency={currency} />
+          <LongTermCard
+            zone={ltZone}
+            currency={currency}
+            position={myLt ? (filledTranches(myLt).length ? `Deine Position: ${filledTranches(myLt).length} von 3 Teilen, Ø ${avgEntry(myLt).toFixed(2)}${myLt.stop ? `, Stop ${myLt.stop.toFixed(2)}` : ", kein Stop"}.` : "Deine Teil-Orders warten im Bereich.") : null}
+            onTake={ltZone && !myLt && !openLongTerm(asset.symbol) ? () => openLongTermTrade(asset, ltZone, horizon, interval, chartCandles[chartCandles.length - 1]?.close ?? ltZone.zoneTop) : undefined}
+          />
           <Commentary a={analysis} item={asset} />
           <FundamentalsPanel a={analysis} f={fundamentals} note={fundNote} kind={asset.kind} />
           <NewsPanel news={news} score={analysis.fundamental.newsScore} />

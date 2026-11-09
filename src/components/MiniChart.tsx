@@ -5,14 +5,25 @@ import type { TradePlan } from "@/lib/analysis/score";
 import type { Candle } from "@/lib/types";
 import { arrow, nextWave } from "./waveText";
 
-export function MiniChart({ candles, plan, best, height = 92, showWaves = true }: { candles: Candle[]; plan?: TradePlan | null; best?: WaveCount; height?: number; showWaves?: boolean }) {
-  const data = candles.slice(-90);
+/** Langfrist-Bereich (blau): Wellenstart (0), Hoch (1), Einstiegsbereich für Welle 2, Invalidierung, Ziel */
+export interface MiniLongTerm {
+  start: { time: number; price: number };
+  high: { time: number; price: number };
+  zoneTop: number;
+  zoneBottom: number;
+  invalidation: number;
+  target: number;
+}
+
+export function MiniChart({ candles, plan, best, height = 92, showWaves = true, longterm }: { candles: Candle[]; plan?: TradePlan | null; best?: WaveCount; height?: number; showWaves?: boolean; longterm?: MiniLongTerm | null }) {
+  const data = candles.slice(longterm ? -150 : -90);
   if (data.length < 5) return <div style={{ height }} className="rounded-xl bg-white/5" />;
   const W = 320;
   const H = height;
   const pad = 6;
   const levels = [...data.map((c) => c.high), ...data.map((c) => c.low)];
   if (plan) levels.push(plan.stop, plan.targets[0], plan.zoneStart ?? plan.entry, plan.zoneEnd ?? plan.entry);
+  if (longterm) levels.push(longterm.invalidation, longterm.zoneBottom, longterm.target);
   const lo = Math.min(...levels);
   const hi = Math.max(...levels);
   const y = (p: number) => pad + (1 - (p - lo) / (hi - lo || 1)) * (H - 2 * pad);
@@ -34,6 +45,26 @@ export function MiniChart({ candles, plan, best, height = 92, showWaves = true }
           <line x1={lastX - 70} x2={W} y1={y(plan.targets[0])} y2={y(plan.targets[0])} stroke="#34d399" strokeWidth="1.5" strokeDasharray="4 3" />
         </>
       )}
+      {longterm && (() => {
+        const xs = Math.max(0, xt(longterm.high.time));
+        const pts = [longterm.start, longterm.high].filter((p) => p.time >= t0);
+        return (
+          <>
+            <rect x={xs} width={W - xs} y={y(longterm.zoneTop)} height={Math.max(3, y(longterm.zoneBottom) - y(longterm.zoneTop))} fill="rgba(56,189,248,0.28)" stroke="rgba(56,189,248,0.7)" strokeWidth="1" rx="2" />
+            <line x1={xs} x2={W} y1={y(longterm.invalidation)} y2={y(longterm.invalidation)} stroke="#f87171" strokeWidth="1.5" strokeDasharray="4 3" />
+            <line x1={xs} x2={W} y1={y(longterm.target)} y2={y(longterm.target)} stroke="#34d399" strokeWidth="1.5" strokeDasharray="4 3" />
+            {pts.length === 2 && <line x1={xt(pts[0].time)} y1={y(pts[0].price)} x2={xt(pts[1].time)} y2={y(pts[1].price)} stroke="#38bdf8" strokeWidth="1.2" opacity="0.8" />}
+            {pts.map((p) => (
+              <text key={p.time} x={Math.max(6, xt(p.time))} y={p === longterm.high ? Math.max(11, y(p.price) - 4) : Math.min(H - 2, y(p.price) + 12)} fontSize="11" fill="#7dd3fc" textAnchor="middle" fontFamily="Inter, sans-serif">
+                {p === longterm.high ? "1" : "0"}
+              </text>
+            ))}
+            <text x={W - 4} y={Math.min(H - 4, y(longterm.zoneBottom) + 12)} fontSize="12" fontWeight="600" fill="#7dd3fc" textAnchor="end" fontFamily="Inter, sans-serif">
+              2 ↓
+            </text>
+          </>
+        );
+      })()}
       <path d={path} fill="none" stroke={up ? "#d6c08a" : "#bfb6a3"} strokeWidth="1.6" />
       {pivots.length > 1 && (
         <polyline points={pivots.map((p) => `${xt(p.time).toFixed(1)},${y(p.price).toFixed(1)}`).join(" ")} fill="none" stroke="#C9A24A" strokeWidth="1" opacity="0.7" />

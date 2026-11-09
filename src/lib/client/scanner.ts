@@ -1,13 +1,12 @@
 "use client";
-// Chancen-Scanner (geteilt von Übersicht und Chancen): je Wert alle drei Zeithorizonte + Kernposition.
+// Chancen-Scanner (geteilt von Übersicht und Chancen): je Wert alle drei Zeithorizonte + Langfristiger Einstieg.
 import { effectiveWeights, learnedParams, refreshTrainerParams } from "./trainerParams";
 import { useSyncExternalStore } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
-import { coreStatus, type CoreStatus } from "../analysis/core";
+import { findLongTermZone, type LongTermZone } from "../analysis/longterm";
 import { getData } from "../store/store";
 import type { Candle, Horizon, ResolvedAsset } from "../types";
 import { api } from "./api";
-import { bullishCount } from "./bullish";
 import { SCAN_PRESETS } from "./presets";
 
 export interface HorizonResult {
@@ -18,9 +17,11 @@ export interface HorizonResult {
 export interface ScanEntry {
   asset: ResolvedAsset;
   horizons: Partial<Record<Horizon, HorizonResult>>;
-  core: CoreStatus | null;
-  /** Kerzen, auf denen die Kernposition berechnet wurde */
-  coreCandles?: Candle[];
+  /** Langfristiger Einstiegsbereich (blau), berechnet auf dem langfristigen (sonst mittelfristigen) Zeitraum */
+  longterm: LongTermZone | null;
+  ltHorizon?: Horizon;
+  /** Kerzen, auf denen der Bereich berechnet wurde (zum Einzeichnen) */
+  ltCandles?: Candle[];
 }
 
 export interface ScanState {
@@ -79,7 +80,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   await Promise.race([refreshTrainerParams(), new Promise((r) => setTimeout(r, 3000))]);
   await pool(jobs, 4, async ({ asset, horizon }) => {
     const key = `${asset.kind}:${asset.symbol}`;
-    const entry = byAsset.get(key) ?? { asset, horizons: {}, core: null };
+    const entry = byAsset.get(key) ?? { asset, horizons: {}, longterm: null };
     byAsset.set(key, entry);
     try {
       const interval = settings.intervals[horizon];
@@ -104,10 +105,14 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
         });
       }
       if (res) entry.horizons[horizon] = { res, candles: candles.slice(-150) };
-      // Kernposition: langfristige Betrachtung auf dem mittelfristigen Kerzenintervall
-      if (horizon === "medium" && candles.length >= 120) {
-        entry.core = coreStatus(candles);
-        entry.coreCandles = candles.slice(-150);
+      // Langfristiger Einstieg: auf dem langfristigen Zeitraum, sonst auf dem mittelfristigen
+      if ((horizon === "long" || (horizon === "medium" && entry.ltHorizon !== "long")) && candles.length >= 150) {
+        const z = findLongTermZone(candles);
+        if (z && z.status !== "invalidiert") {
+          entry.longterm = z;
+          entry.ltHorizon = horizon;
+          entry.ltCandles = candles.slice(-150);
+        }
       }
     } catch {
       failed++;
@@ -118,11 +123,11 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   emit({ busy: false, at: Date.now(), entries: [...byAsset.values()], checked: jobs.length, failed });
 }
 
-export type SignalKind = "trade" | "short" | "core";
+export type SignalKind = "trade" | "short" | "longterm";
 
-/** Bullische Zählung für die Kernposition (mittlerer Zeitraum, sonst langfristig). */
-export function coreWaveCount(e: ScanEntry) {
-  return bullishCount(e.horizons.medium?.res) ?? bullishCount(e.horizons.long?.res);
+/** Abstand vom Kurs bis zur Oberkante des Langfrist-Bereichs in % (0 = im Bereich) */
+export function longTermDistance(z: LongTermZone, price: number): number {
+  return price <= z.zoneTop ? 0 : ((price - z.zoneTop) / price) * 100;
 }
 
 /** Abstand vom aktuellen Kurs bis zum Einstieg in % (0 = jetzt in der Zone) */
@@ -138,6 +143,6 @@ export function entryKinds(e: ScanEntry): SignalKind[] {
   const active = Object.values(e.horizons).filter((h) => h && h.res.decision.level !== "neutral" && h.res.plan) as HorizonResult[];
   if (active.some((h) => h.res.plan!.direction === "long")) out.push("trade");
   if (active.some((h) => h.res.plan!.direction === "short")) out.push("short");
-  if (e.core?.state === "hold" && coreWaveCount(e)) out.push("core");
+  if (e.longterm && e.longterm.status !== "invalidiert") out.push("longterm");
   return out;
 }

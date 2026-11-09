@@ -29,14 +29,14 @@ interface Props {
   height?: number;
   /** Einfache Ansicht: nur Einstieg, Stop und Ziele – keine Wellen-Nummern */
   simple?: boolean;
-  /** Einstiegskurs der laufenden Kernposition (blaue Linie) */
-  coreEntry?: number;
+  /** Langfristiger Einstiegsbereich (blau) mit Invalidierung (rot) */
+  longterm?: { zoneTop: number; zoneBottom: number; invalidation: number } | null;
 }
 
 const GOLD = "#C9A24A";
 const WINE = "#a32234";
 
-export function PriceChart({ candles, best, alternative, plan, showAlternative = true, height = 460, simple = false, coreEntry }: Props) {
+export function PriceChart({ candles, best, alternative, plan, showAlternative = true, height = 460, simple = false, longterm }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<{ candle: ISeriesApi<"Candlestick">; volume: ISeriesApi<"Histogram">; rsi: ISeriesApi<"Line">; wave: ISeriesApi<"Line">; alt: ISeriesApi<"Line"> } | null>(null);
@@ -150,10 +150,12 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
         );
       }
     }
-    if (coreEntry) {
-      linesRef.current.push(s.candle.createPriceLine({ price: coreEntry, color: "#38bdf8", lineStyle: LineStyle.Solid, lineWidth: 2, axisLabelVisible: true, title: "Kernposition" }));
+    if (longterm) {
+      linesRef.current.push(s.candle.createPriceLine({ price: longterm.zoneTop, color: "#38bdf8", lineStyle: LineStyle.Solid, lineWidth: 2, axisLabelVisible: true, title: "Langfrist oben" }));
+      linesRef.current.push(s.candle.createPriceLine({ price: longterm.zoneBottom, color: "#38bdf8", lineStyle: LineStyle.Solid, lineWidth: 2, axisLabelVisible: true, title: "Langfrist unten" }));
+      linesRef.current.push(s.candle.createPriceLine({ price: longterm.invalidation, color: "#f87171", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: true, title: "Ungültig" }));
     }
-  }, [best, alternative, plan, showAlternative, simple, coreEntry]);
+  }, [best, alternative, plan, showAlternative, simple, longterm]);
 
   return <div ref={ref} style={{ height }} className="w-full" />;
 }

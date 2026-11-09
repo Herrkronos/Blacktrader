@@ -80,23 +80,36 @@ Stand der Messung auf Prüfdaten (letzte 40 %, vom Analysten nie gesehen):
 Zielzonen (`src/lib/analysis/zones.ts`): im Trend die letzte Welle A→B, Limit-Einstieg bei 61,8 % Korrektur
 (Zone bis 78,6 %), Stop jenseits von A, Ziel 1 = B + 27,2 %. Ab Ziel 1 Stop auf Einstieg und mit 4 × ATR nachziehen. `ZONE='{...}'` bzw. `ZONEGRID=1` für Messungen.
 
-### Kernposition (Welle 5 / Boden)
+### Langfristiger Einstieg (blau)
 
-`src/lib/analysis/core.ts`: im Aufwärtstrend (EMA 50/200) halten, nach erkannter abgeschlossener 5. Welle (großer Wellengrad,
-Qualität ≥ 0,55) Gewinne mitnehmen, nach einem Boden (abgeschlossene Korrektur oder neue Welle 1-2) bzw. neuem Hoch wieder
-einsteigen. Messung: `CORE=0.55 npx tsx scripts/evaluate.ts`.
+`src/lib/analysis/longterm.ts`: Nach einer großen Aufwärtswelle (Welle 1 nach einem Boden oder Impuls mit höherem Hoch,
+ZigZag 6 × ATR, mind. 8 ATR) wird der Bereich 61,8–88,6 % Korrektur (Welle 2) berechnet. Einstieg in drei Teilen
+(Oberkante, Mitte, Unterkante), **kein fester Stop** – ungültig bei Schlusskurs unter dem Wellenstart. Teilausstieg oder
+Stop gibt es nur bei geänderter Zählung (`assessLongTerm`): Welle 5 fertig mit nachlassendem Momentum → Hälfte verkaufen,
+Stop unter Welle 4; Alternativszenario wahrscheinlicher → im Gewinn Hälfte verkaufen + Stop auf Einstieg, sonst Stop unter
+das letzte Tief. Messung über die Vergangenheit (nur Kerzen bis zum jeweiligen Zeitpunkt): EchoChart bzw.
+`LONGTERM=1 npx tsx scripts/evaluate.ts`. Erste Messung auf den vorhandenen Daten (S&P 500, Google, Gold 2016):
+30 Bereiche, 13 erfolgreich, 14 ungültig (≈ 48 %) – kleine Stichprobe.
 
-| Daten | Einfach halten | Kernposition | größter Rückgang Kern / Halten |
-|---|---|---|---|
-| S&P 500 täglich 2010–2021 (Prüfung) | +489 % | +223 % | −23 % / −34 % |
-| S&P 500 wöchentlich (Prüfung) | +372 % | +284 % | −29 % / −53 % |
-| Gold 2013 1h (frisch) | −28 % | −8 % | −12 % / −30 % |
-| Gold 2017 1h (frisch) | +9 % | +11 % | −4 % / −9 % |
+Die frühere Kernposition (Welle 5 / Boden) wurde entfernt. Alte Kernpositionen im Journal bleiben erhalten und werden als „Langfristig“ angezeigt.
+
+### Push-Nachrichten
+
+Einstellungen → Push-Nachrichten. Benötigt Upstash for Redis (Schlüssel werden beim ersten Einschalten erzeugt und dort
+gespeichert; alternativ `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT` setzen). Die App schickt ihre offenen Trades
+und die Watchlist an den eigenen Server; `/api/push/check` prüft sie und sendet: Einstieg erreicht, Stop/Ziel 1, Teil
+gekauft, geänderte Zählung (Teilausstieg/Stop/Ausstieg) und neue langfristige Einstiegsbereiche der Watchlist (die erste
+Prüfung merkt sich vorhandene Bereiche nur, damit keine Nachrichtenflut entsteht).
+
+Vercel Hobby führt Cron-Jobs nur einmal täglich aus. Für häufigere Prüfungen einen kostenlosen Zeitplan-Dienst
+(z. B. cron-job.org) alle 15–30 Minuten `GET https://<deine-app>/api/push/check` aufrufen lassen, mit Header
+`Authorization: Bearer <CRON_SECRET>` (CRON_SECRET in Vercel setzen). iPhone: Push nur, wenn die App über
+„Zum Home-Bildschirm“ installiert ist (ab iOS 16.4).
 
 ## Oberfläche (v2)
 
 Bottom-Navigation: Übersicht · Chancen · Watchlist · Journal · Mehr (EchoChart, Einstellungen, Backups).
-Signalfarben: Grün = Trade, Rot = Short, Blau = Kernposition, Orange = wartende Order.
+Signalfarben: Grün = Trade, Rot = Short, Blau = Langfristiger Einstieg, Orange = wartende Order.
 Journal enthält nur selbst übernommene Papier-Trades; beim Update auf v2 wird vorher ein Backup im Browser angelegt
 (Mehr → Backups). Zurück zum alten Stand: Branch `backup/vor-ui-umbau`.
 

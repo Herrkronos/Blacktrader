@@ -3,6 +3,7 @@
 // Signal-Alarme und automatische Verfolgung offener Papier-Trades.
 import { exhaustionAt, rsi } from "../analysis/indicators";
 import { resumeTraining } from "./trainingSession";
+import { syncPush } from "./push";
 import { effectiveWeights, learnedParams, refreshTrainerParams, trainerVersion } from "./trainerParams";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
@@ -12,8 +13,8 @@ import { fmtPrice } from "../analysis/persona";
 import { actions, getData, useAppData, type Trade, type WatchItem } from "../store/store";
 import type { Candle, Fundamentals, Horizon, Interval, NewsItem, ResolvedAsset } from "../types";
 import { notify } from "./alerts";
-import { syncCoreTrade } from "./autotrade";
-import { coreStatus, type CoreStatus } from "../analysis/core";
+import { findLongTermZone, type LongTermZone } from "../analysis/longterm";
+import { checkLongTermWithCandles, trackLongTerm } from "./longterm";
 import { api } from "./api";
 import { binanceStream } from "./binanceWs";
 
@@ -40,8 +41,8 @@ export interface ItemAnalysis {
   candleSource?: string;
   error?: string;
   loading: boolean;
-  /** Kernposition (Welle 5 / Boden) */
-  core?: CoreStatus | null;
+  /** Langfristiger Einstiegsbereich auf den Kerzen dieses Werts */
+  longterm?: LongTermZone | null;
 }
 
 type Instrument = Pick<ResolvedAsset, "kind" | "symbol" | "name" | "binanceSymbol" | "yahooSymbol" | "coingeckoId">;
@@ -85,6 +86,35 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const instrumentsKey = instruments.map((i) => `${instrumentKey(i)}|${i.binanceSymbol ?? ""}|${i.yahooSymbol ?? ""}`).join(",");
 
   // ---- Live-Kurse
+  // Push-Abo mit offenen Trades und Watchlist aktuell halten
+  const tradesForPush = useAppData((d) => d.trades);
+  useEffect(() => {
+    syncPush();
+  }, [tradesForPush, watchlist]);
+
+  // Langfrist-Positionen alle 15 Minuten mit ihren eigenen Kerzen prüfen (Wellenzählung, Invalidierung)
+  useEffect(() => {
+    const run = async () => {
+      const d = getData();
+      for (const t of d.trades) {
+        if (t.strategy !== "longterm" || t.status === "closed") continue;
+        try {
+          const r = await api.candles(t, t.interval, 10 * 60e3);
+          const msg = checkLongTermWithCandles(getData().trades.find((x) => x.id === t.id) ?? t, r.candles);
+          if (msg) notify(`Langfristig ${t.symbol}`, msg, { sound: d.settings.sound, notifications: d.settings.notifications, kind: "info" });
+        } catch {
+          /* nächster Versuch */
+        }
+      }
+    };
+    const first = setTimeout(run, 8000);
+    const timer = setInterval(run, 15 * 60e3);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, []);
+
   useEffect(() => {
     void refreshTrainerParams();
     resumeTraining(); // laufende Trainingssitzung nach dem Neuladen fortsetzen
@@ -146,7 +176,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   }, [instrumentsKey, settings.pollSeconds]);
 
   // ---- Rohdaten für Analysen (Kerzen, Fundamentaldaten, News)
-  const raw = useRef<Record<string, { candles: Candle[]; fundamentals: Fundamentals | null; news: NewsItem[]; source?: string; error?: string; version: number; horizon: Horizon; interval: Interval; core?: CoreStatus | null }>>({});
+  const raw = useRef<Record<string, { candles: Candle[]; fundamentals: Fundamentals | null; news: NewsItem[]; source?: string; error?: string; version: number; horizon: Horizon; interval: Interval; longterm?: LongTermZone | null }>>({});
   const [dataVersion, setDataVersion] = useState(0);
   const watchKey = watchlist.map((w) => `${w.id}:${itemHorizon(w, settings.globalHorizon)}:${settings.intervals[itemHorizon(w, settings.globalHorizon)]}`).join(",");
 
@@ -164,7 +194,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         try {
           const r = await api.candles(item, interval, candleRefreshMs(interval) / 2);
           if (cancelled) return;
-          raw.current[item.id] = { ...(raw.current[item.id] ?? { fundamentals: null, news: [] }), candles: r.candles, source: r.source, error: undefined, version: Date.now(), horizon, interval, core: coreStatus(r.candles) };
+          raw.current[item.id] = { ...(raw.current[item.id] ?? { fundamentals: null, news: [] }), candles: r.candles, source: r.source, error: undefined, version: Date.now(), horizon, interval, longterm: r.candles.length >= 150 ? findLongTermZone(r.candles) : null };
         } catch (e) {
           if (cancelled) return;
           raw.current[item.id] = { ...(raw.current[item.id] ?? { fundamentals: null, news: [], candles: [] }), error: (e as Error).message, version: Date.now(), horizon, interval } as never;
@@ -215,12 +245,14 @@ export function MarketProvider({ children }: { children: ReactNode }) {
           r.candles.length >= 30
             ? analyze({ symbol: item.symbol, name: item.name, candles: r.candles, horizon: r.horizon, interval: r.interval, fundamentals: r.fundamentals, news: r.news, weights: effectiveWeights(d.settings, item.kind, r.horizon), livePrice: lv?.price, kind: item.kind, currency: lv?.currency ?? item.currency, params: learnedParams(item.kind, r.horizon) })
             : null;
-        next[item.id] = { core: r.core, horizon: r.horizon, interval: r.interval, result, candles: r.candles, fundamentals: r.fundamentals, news: r.news, candleSource: r.source, error: r.error ?? (r.candles.length < 30 && r.candles.length > 0 ? "Zu wenig Historie für eine Analyse" : undefined), loading: false };
+        next[item.id] = { longterm: r.longterm, horizon: r.horizon, interval: r.interval, result, candles: r.candles, fundamentals: r.fundamentals, news: r.news, candleSource: r.source, error: r.error ?? (r.candles.length < 30 && r.candles.length > 0 ? "Zu wenig Historie für eine Analyse" : undefined), loading: false };
         if (result) checkSignal(item, r.horizon, result);
         if (r.candles.length > 50) closeOnWave5End(item.symbol, r.horizon, r.candles);
-        if (result && r.core) {
-          const msg = syncCoreTrade(item, result, r.core);
-          if (msg) notify(`Kernposition ${item.symbol}`, msg, { sound: d.settings.sound, notifications: d.settings.notifications, kind: r.core.state === "hold" ? "buy" : "sell" });
+        // Langfrist-Positionen auf denselben Kerzen begleiten (Meldung nur bei geänderter Zählung)
+        for (const t of d.trades) {
+          if (t.strategy !== "longterm" || t.status === "closed" || t.symbol !== item.symbol || t.interval !== r.interval) continue;
+          const msg = checkLongTermWithCandles(t, r.candles);
+          if (msg) notify(`Langfristig ${item.symbol}`, msg, { sound: d.settings.sound, notifications: d.settings.notifications, kind: "info" });
         }
       }
       if (Object.keys(next).length) setAnalyses((p) => ({ ...p, ...next }));
@@ -262,7 +294,7 @@ const lastTradeWrite: Record<string, number> = {};
 function closeOnWave5End(symbol: string, horizon: Horizon, candles: Candle[]) {
   const d = getData();
   for (const t of d.trades) {
-    if (t.symbol !== symbol || t.horizon !== horizon || t.status !== "open" || !t.trailing || !t.wave5Exit || t.strategy === "core") continue;
+    if (t.symbol !== symbol || t.horizon !== horizon || t.status !== "open" || !t.trailing || !t.wave5Exit || t.strategy === "core" || t.strategy === "longterm") continue;
     const dir = t.direction === "long" ? 1 : -1;
     const r = rsi(candles.map((c) => c.close));
     if (!exhaustionAt(candles, r, candles.length - 1, dir)) continue;
@@ -280,8 +312,18 @@ function trackTrades(trades: Trade[], live: Record<string, LiveState>) {
     const lv = live[instrumentKey(t)];
     if (!lv?.price || lv.status === "offline") continue;
     const price = lv.price;
+    if (t.strategy === "longterm") {
+      // Langfristig: Teil-Orders ausführen, gesetzten Stop prüfen (Meldungen zur Zählung kommen aus der Kerzen-Prüfung)
+      const msg = trackLongTerm(t, price);
+      if (msg) notify(`Langfristig ${t.symbol}`, msg, { sound: s.sound, notifications: s.notifications, kind: "info" });
+      else if (!lastTradeWrite[t.id] || Date.now() - lastTradeWrite[t.id] > 30e3) {
+        lastTradeWrite[t.id] = Date.now();
+        if (t.lastPrice !== price) actions.updateTrade(t.id, { lastPrice: price });
+      }
+      continue;
+    }
     if (t.strategy === "core") {
-      // Kernposition wird über den Kernstatus geschlossen, hier nur den Kurs aktualisieren
+      // Alte Kernposition (vor dem Update): nur den Kurs aktualisieren, schließen kann der Nutzer selbst
       if (!lastTradeWrite[t.id] || Date.now() - lastTradeWrite[t.id] > 30e3) {
         lastTradeWrite[t.id] = Date.now();
         if (t.lastPrice !== price) actions.updateTrade(t.id, { lastPrice: price });

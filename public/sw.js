@@ -1,5 +1,5 @@
 // Service Worker: App-Shell offline verfügbar, API-Aufrufe immer frisch aus dem Netz.
-const CACHE = "bsh-shell-v4";
+const CACHE = "bsh-shell-v5";
 const SHELL = ["/", "/chancen", "/watchlist", "/journal", "/mehr", "/echochart", "/einstellungen", "/manifest.webmanifest", "/icon-192.png", "/background.webp", "/background.jpg"];
 
 self.addEventListener("install", (e) => {
@@ -27,7 +27,36 @@ self.addEventListener("fetch", (e) => {
   );
 });
 
+// Push-Nachrichten vom Server (auch wenn die App geschlossen ist)
+self.addEventListener("push", (e) => {
+  let d = {};
+  try {
+    d = e.data ? e.data.json() : {};
+  } catch {
+    d = { title: "Black Ship", body: e.data ? e.data.text() : "" };
+  }
+  e.waitUntil(
+    self.registration.showNotification(d.title || "Black Ship Trading Analyst", {
+      body: d.body || "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: d.tag,
+      data: { url: d.url || "/" },
+    }),
+  );
+});
+
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  e.waitUntil(self.clients.matchAll({ type: "window" }).then((cs) => (cs[0] ? cs[0].focus() : self.clients.openWindow("/"))));
+  const url = (e.notification.data && e.notification.data.url) || "/";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => {
+      const c = cs.find((x) => "focus" in x);
+      if (c) {
+        c.navigate && c.navigate(url).catch(() => {});
+        return c.focus();
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
 });

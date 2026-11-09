@@ -11,11 +11,11 @@ const SIGNAL_STYLE: Record<SignalLevel, string> = {
   "strong-sell": "border-red-400/60 bg-wine/60 text-red-100",
 };
 
-/** Legende: Blau = Kernposition, Grün = Kauf-Einstieg, Rot = Verkaufs-Einstieg */
+/** Legende: Blau = Langfristiger Einstieg, Grün = Kauf-Einstieg, Rot = Verkaufs-Einstieg */
 export function EntryLegend() {
   return (
     <div className="flex flex-wrap items-center gap-2 text-[13px] text-stone-400">
-      <span className="core-tag">Kernposition</span> = langfristig, Welle 5 / Boden
+      <span className="core-tag">Langfristig</span> = Einstiegsbereich in 3 Teilen, kein fester Stop
       <span className="trade-tag">Kauf</span> = Trading-Einstieg auf steigende Kurse
       <span className="sell-tag">Verkauf</span> = Trading-Einstieg auf fallende Kurse
     </div>

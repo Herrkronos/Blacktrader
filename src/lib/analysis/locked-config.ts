@@ -32,12 +32,15 @@ export const LOCKED = deepFreeze({
   zone: { entryRetrace: 0.618, zoneDeep: 0.786, stopBufferAtr: 0.25, minWaveAtr: 4, target1Ext: 0.272, trendFilter: true },
   /** Trade-Verwaltung: Gewinne laufen lassen */
   trade: { exitMode: "trail", trailAtr: 4, maxWaitBars: 60, maxHoldBars: 200 },
-  /** Kernposition (Welle 5 / Boden) */
-  core: { minQuality: 0.55, degrees: ["grob"] },
+  /**
+   * Langfristiger Einstieg (blau): Bereich 61,8–88,6 % Korrektur einer großen Aufwärtswelle, Einstieg in 3 Teilen,
+   * Invalidierung = Schlusskurs unter dem Wellenstart. Kein fester Stop – Teilausstieg/Stop nur bei geänderter Zählung.
+   */
+  longterm: { atrMult: 6, minMoveAtr: 8, zoneTop: 0.618, zoneBottom: 0.886, tranches: 3 },
   /** Anzeige "Hohes Risiko" ab diesem Stop-Abstand in % (Positionsgröße bleibt Sache des Nutzers) */
   riskBadgePct: 15,
   horizons: { short: ["5m", "15m", "1h"], medium: ["4h", "1d"], long: ["1w", "1M"] },
-  signalKinds: { trade: "grün", short: "rot", core: "blau" },
+  signalKinds: { trade: "grün", short: "rot", longterm: "blau" },
 } as const);
 
 export type Locked = typeof LOCKED;

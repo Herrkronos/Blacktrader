@@ -1,7 +1,6 @@
 // Erzeugt die Kennzahlen, die vor und nach dem Umbau identisch sein müssen.
 import { analyze } from "../../src/lib/analysis/analyze";
 import { runBacktest } from "../../src/lib/analysis/backtest";
-import { runCoreBacktest } from "../../src/lib/analysis/core";
 import { runZoneBacktest } from "../../src/lib/analysis/zoneBacktest";
 import type { Fundamentals, NewsItem } from "../../src/lib/types";
 import { FIXTURES } from "./fixtures";
@@ -41,10 +40,6 @@ export function snapshot() {
       legacy: (() => {
         const z = runBacktest(c, { horizon: "medium", interval: "1d", warmup: 150 });
         return { n: z.trades.length, ret: r6(z.stats.totalReturn) };
-      })(),
-      core: (() => {
-        const z = runCoreBacktest(c);
-        return { n: z.segments.length, ret: r6(z.stats.totalReturn), exp: r6(z.exposure) };
       })(),
     };
   }

@@ -42,7 +42,9 @@ export default function WatchlistPage() {
             key={w.id}
             asset={w}
             views={views}
-            core={a?.core ?? entry?.core}
+            longterm={entry?.longterm ?? a?.longterm}
+            ltCandles={entry?.longterm ? entry.ltCandles : a?.candles}
+            ltHorizon={entry?.longterm ? entry.ltHorizon : h}
             initial={h}
             price={lv?.price}
             changePct={lv?.changePct}

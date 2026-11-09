@@ -54,3 +54,21 @@ export async function releaseLock(key: string): Promise<void> {
   if (creds()) await command(["DEL", key]);
   else mem.delete(key);
 }
+
+/** Mengen (z. B. Liste der Push-Abos): Hinzufügen/Entfernen sind einzelne, atomare Befehle. */
+export async function setAdd(key: string, member: string): Promise<void> {
+  if (creds()) await command(["SADD", key, member]);
+  else mem.set(key, JSON.stringify([...new Set([...(JSON.parse(mem.get(key) ?? "[]") as string[]), member])]));
+}
+export async function setRemove(key: string, member: string): Promise<void> {
+  if (creds()) await command(["SREM", key, member]);
+  else mem.set(key, JSON.stringify((JSON.parse(mem.get(key) ?? "[]") as string[]).filter((x) => x !== member)));
+}
+export async function setMembers(key: string): Promise<string[]> {
+  if (creds()) return ((await command(["SMEMBERS", key])) as string[] | null) ?? [];
+  return JSON.parse(mem.get(key) ?? "[]") as string[];
+}
+export async function delKey(key: string): Promise<void> {
+  if (creds()) await command(["DEL", key]);
+  else mem.delete(key);
+}

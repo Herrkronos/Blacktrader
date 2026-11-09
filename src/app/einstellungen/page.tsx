@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { clampWeights } from "@/lib/analysis/params";
 import { learnedWeightCells, refreshTrainerParams, useTrainerVersion } from "@/lib/client/trainerParams";
+import { disablePush, enablePush, pushEnabled, testPush } from "@/lib/client/push";
 import { playTone, requestNotificationPermission } from "@/lib/client/alerts";
 import { DEFAULT_WEIGHTS } from "@/lib/analysis/score";
 import { actions, DEFAULT_SETTINGS, useAppData } from "@/lib/store/store";
@@ -21,6 +22,45 @@ function Section({ title, children, hint }: { title: string; children: React.Rea
       </div>
       {children}
     </section>
+  );
+}
+
+function PushSettings() {
+  const [on, setOn] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => setOn(pushEnabled()), []);
+  const toggle = async () => {
+    setBusy(true);
+    setNote(null);
+    if (on) {
+      await disablePush();
+      setOn(false);
+      setNote("Push-Nachrichten ausgeschaltet.");
+    } else {
+      const r = await enablePush();
+      setOn(r.ok);
+      setNote(r.note);
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <button className={`btn flex-1 ${on ? "btn-primary" : ""}`} disabled={busy} onClick={toggle}>
+          {busy ? "…" : on ? "Eingeschaltet – ausschalten" : "Push-Nachrichten einschalten"}
+        </button>
+        {on && (
+          <button className="btn" disabled={busy} onClick={async () => setNote(await testPush())}>
+            Test
+          </button>
+        )}
+      </div>
+      {note && <p className="text-[14px] text-stone-200">{note}</p>}
+      <p className="text-[13px] text-stone-500">
+        iPhone: App zuerst über „Zum Home-Bildschirm“ hinzufügen und von dort öffnen. Der Server prüft einmal täglich; öfter mit einem kostenlosen Zeitplan-Dienst (siehe Anleitung).
+      </p>
+    </div>
   );
 }
 
@@ -198,6 +238,10 @@ export default function SettingsPage() {
           </select>
         </label>
         <p className="text-xs text-stone-500">Alarme und Trade-Verfolgung laufen, solange die App in einem Tab geöffnet ist.</p>
+      </Section>
+
+      <Section title="Push-Nachrichten" hint="Nachrichten auch bei geschlossener App: Einstieg erreicht, Stop/Ziel, Teil gekauft, geänderte Wellenzählung (Teilausstieg, Stop, Ausstieg) und neue langfristige Einstiegsbereiche deiner Watchlist.">
+        <PushSettings />
       </Section>
 
       <Section title="Optionale API-Keys" hint="Alles funktioniert ohne Keys. Keys werden ausschließlich lokal in deinem Browser gespeichert und nur an den jeweiligen Anbieter durchgereicht.">
