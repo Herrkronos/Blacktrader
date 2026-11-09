@@ -156,7 +156,7 @@ export function holdoutSeries(s: Series, params: LearnableParams, months = 12, s
 }
 
 export const MIN_SIGNALS_VALID = LOCKED.acceptance.minSignals;
-export const TARGET_HIT_RATE = 0.65;
+export const TARGET_HIT_RATE = 0.7;
 
 export interface Decision {
   accept: boolean;
