@@ -17,6 +17,7 @@ import { OPPONENTS, reportLines, RULES, SCENARIO_LABEL, SCENARIOS, type Tourname
 import { ACTIVE_CELL_KEYS, type CellKey } from "@/lib/trainer/universe";
 import { HORIZON_LABEL, KIND_LABEL, type AssetKind, type Horizon } from "@/lib/types";
 
+const SHORT = { bullisch: "Bulle", neutral: "Neutral", baerisch: "Bär", gemischt: "Mix" } as const;
 const pct = (x: number) => `${(x * 100).toFixed(1).replace(".", ",")} %`;
 const eur = (x: number) => `${Math.round(x).toLocaleString("de-DE")} €`;
 const mins = (ms: number) => {
@@ -67,7 +68,7 @@ function Ranking({ rep }: { rep: TournamentReport }) {
             <span className="min-w-0">
               <span className={`block truncate text-[15px] ${me ? "font-semibold text-gold-light" : "text-stone-100"}`}>{c.name}</span>
               <span className="block truncate text-[12px] text-stone-500">
-                {SCENARIOS.map((s) => `${SCENARIO_LABEL[s].slice(0, 4)}. ${c.rankByScenario[s]}`).join(" · ")}
+                {SCENARIOS.map((s) => `${SHORT[s]} ${c.rankByScenario[s]}.`).join(" · ")}
                 {c.broke ? ` · ${c.broke}× pleite` : ""}
               </span>
             </span>

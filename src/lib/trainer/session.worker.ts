@@ -88,6 +88,10 @@ self.onmessage = async (e: MessageEvent) => {
             same,
           );
           if (stop) s.status = "stopped";
+          if (report && s.cfg.durationMs === 0) {
+            report.before = null; // ohne Training: kein Vorher/Nachher
+            report.note = `${report.note ?? ""} Nur Turnier, ohne Training.`.trim();
+          }
           if (report) postMessage({ type: "report", report });
           s.tournament = report ? { progress: 1, text: "Auswertung fertig", done: true } : { progress: 1, text: "", done: true, failed: stop ? "Gestoppt" : "Keine Kursdaten für das Turnier erreichbar" };
         } catch (err) {
