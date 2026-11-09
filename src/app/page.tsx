@@ -91,7 +91,7 @@ export default function Uebersicht() {
         {scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Blacktrader sucht Chancen … {Math.round(scan.progress * 100)} %</div>}
         {!scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Gerade keine sauberen Einstiege.</div>}
         {top.map(({ e }) => (
-          <EntryTile key={`${e.asset.kind}-${e.asset.symbol}`} asset={e.asset} entry={e} onOpen={() => open(e.asset, e.best.horizon ?? e.ltHorizon, { withEntry: true })} />
+          <EntryTile key={`${e.asset.kind}-${e.asset.symbol}`} asset={e.asset} entry={e} chart onOpen={() => open(e.asset, e.best.horizon ?? e.ltHorizon, { withEntry: true })} />
         ))}
       </Section>
 

@@ -2,7 +2,8 @@
 // Chancen: alle Werte (Watchlist + feste Liste) – je Wert GENAU EIN Einstieg von Blacktrader: Blau (langfristig) oder Grün (Trade).
 // Gelb (kein Einstieg) erscheint nur in der Watchlist.
 import { useEffect, useMemo, useState } from "react";
-import { AssetCard, signalStrength } from "@/components/AssetCard";
+import { signalStrength } from "@/components/AssetCard";
+import { EntryTile } from "@/components/EntryTile";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { Legend } from "@/components/Legend";
 import { ConfirmSheet } from "@/components/Sheet";
@@ -103,7 +104,7 @@ export default function ChancenPage() {
       )}
 
       {list.slice(0, more).map((e) => (
-        <AssetCard key={`${e.asset.kind}:${e.asset.symbol}`} asset={e.asset} entry={e} onOpen={(h) => open(e.asset, h)} />
+        <EntryTile key={`${e.asset.kind}:${e.asset.symbol}`} asset={e.asset} entry={e} chart onOpen={() => open(e.asset, e.best.horizon ?? e.ltHorizon, { withEntry: true })} />
       ))}
       {list.length > more && (
         <button className="btn w-full" onClick={() => setMore(more + 10)}>
