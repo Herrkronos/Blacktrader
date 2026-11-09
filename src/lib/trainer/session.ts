@@ -56,7 +56,7 @@ export interface SessionState {
   saved: Partial<Record<CellKey, SavedPoint>>;
   /** Aktuell beste Trefferquote auf unbekannten Daten (nur Anzeige) und alter Stand */
   live?: { cell: CellKey; best: number | null; old: number | null };
-  /** Turnier: Blacktrader gegen 7 Bots (5 Runden, dazwischen wird gelernt) */
+  /** Turnier: Blacktrader gegen 9 Bots (5 Runden, dazwischen wird gelernt) */
   tournament?: { progress: number; text: string; round?: number; done?: boolean; failed?: string };
   status: "running" | "done" | "stopped";
 }

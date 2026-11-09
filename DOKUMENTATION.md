@@ -23,7 +23,7 @@ src/app/                Seiten (Next.js App Router) und API-Routen
   chancen/              Chancen: Filter Alle · Blau · Grün, Gruppen Aktien/Krypto/Rohstoffe
   watchlist/            Watchlist: kompakte Kacheln mit Mini-Chart (auch Gelb); Antippen = Details + übernehmen
   depot/                Depot (früher Journal): Papier-Trades, Filter Alle · Blau · Grün; /journal leitet weiter
-  trainer/              Trainer: Training + Turnier gegen 7 Bots, Rangliste und Auswertung
+  trainer/              Trainer: Training + Turnier gegen 9 Bots, Rangliste und Auswertung
   echochart/            Rückblick: Wie hätten die Zonen früher gehalten?
   einstellungen/        Gewichtung (in festen Grenzen), Kerzengrößen, Push, Keys
   api/                  candles, quote, fundamentals, news, resolve, llm, history,
@@ -41,7 +41,7 @@ src/lib/analysis/       BLACKTRADER-KERN (reine Funktionen, ohne React/Browser)
   locked-config.ts      feste Werte (vom Trainer nie veränderbar)
   params.ts             lernbare Parameter mit Grenzen
 src/lib/trainer/        Trainer (Walk-Forward, Zellen je Klasse × Zeitraum, Speicher)
-  tournament.ts         Turnier: 7 Gegner, Marktlage, Simulation, Rangliste, Auswertung in Worten
+  tournament.ts         Turnier: 9 Gegner, Marktlage, Simulation, Rangliste, Auswertung in Worten
   tournamentRun.ts      Turnier rechnen (Daten laden, Blacktrader vor/nach dem Training)
 src/lib/client/         Browser: Scanner (Blacktrader im Hintergrund), Verlauf, Live-Kurse, Push
 src/lib/store/          lokaler Speicher (localStorage), Migrationen mit Backup, Export/Import
@@ -136,8 +136,8 @@ Der Trainer hat zwei Teile – beide laufen im Browser (Web Worker), die App ble
 
 **Messung:** Zonen-Quote wie HKCM, Walk-Forward mit gesperrten Testdaten (letzte 12 Monate). Gespeichert wird nur, was dort besser ist – und **kein Zufall** ist: (1) die höhere Quote muss statistisch gesichert sein (einseitiger Test, 95 % Sicherheit), (2) sie muss in mindestens 3 von 4 Prüfzeiträumen auftreten, nicht nur in einem. Dazu wie bisher mindestens 200 Zonen, Gewinnfaktor nicht niedriger, Rückgang nicht größer, höchstens −40 % Signale pro Monat. Das gilt für das Training, das Lernen im Turnier und die Prüfung beim Server.
 
-### 4.2 Turnier: Blacktrader gegen 7 Gegner
-Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen sieben Analysten/Bots an:
+### 4.2 Turnier: Blacktrader gegen 9 Gegner (10 Teilnehmer)
+Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen neun Analysten/Bots an:
 
 | Gegner | Regel |
 |---|---|
@@ -147,6 +147,8 @@ Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen sieben Anal
 | RSI-Bot | kauft bei RSI < 30, verkauft bei Erholung (RSI > 55, 20 Tage oder −10 %) |
 | MACD-Bot | kauft beim MACD-Kreuz nach oben, verkauft beim Kreuz nach unten |
 | Ausbruchs-Bot | kauft beim 55-Tage-Hoch, verkauft beim 20-Tage-Tief (Turtle) |
+| Bollinger-Bot | kauft unter dem unteren Bollinger-Band (20 Tage, 2 Standardabweichungen), verkauft an der Mittellinie (spätestens nach 20 Tagen oder bei −10 %) |
+| Momentum-Bot | kauft am Monatsanfang Werte mit +10 % in 6 Monaten über der 50-Tage-Linie, hält einen Monat |
 | KI-Bot | logistische Regression, lernt jedes Jahr nur mit bereits bekannten Ergebnissen |
 
 **Fair, ohne Tricks:** gleiche Werte (alle Aktien, Krypto, Rohstoffe), gleiche Zeiträume, nur Kauf-Einstiege, Ein- und Ausstieg zum Eröffnungskurs der nächsten Kerze, jedes Signal kennt nur die Vergangenheit (Tests prüfen: abgeschnittene Zukunft ändert keine früheren Trades).
@@ -232,5 +234,5 @@ const entry = pickBestEntry({ symbol: "AAPL", kind: "stock", views, lt: findLong
 
 Chronologischer Test Sep 2022 – Nov 2026, 5.000 € Startkapital, nach 27,5 % KESt (Österreich): Blacktrader mit Sektor-Regel 9.859 € (+97,2 %), ohne Sektor-Regel 9.155 € (+83,1 %), Zufall 8.483 € (+69,7 %), S&P 500 Kaufen-und-Halten 8.103 € (+62,1 %), KI 7.725 € (+54,5 %), RSI 7.359 € (+47,2 %), Trendfolger 6.631 € (+32,6 %).
 
-Turnier (50 Versuche à 5 Jahre, KESt sofort je Gewinn, Standard-Einstellung, Ø pro Jahr): 1. MACD-Bot +20,9 % · **2. Blacktrader +18,9 %** (Ø 154 Trades, Ø Gewinn nach KESt 7.677 €, Platz 1 bei bullischen Märkten) · 3. Kaufen & Halten +18,0 % · 4. Trendfolger +16,9 % · 5. Ausbruchs-Bot +16,7 % · 6. Zufalls-Bot +9,8 % · 7. KI-Bot +8,3 % · 8. RSI-Bot +3,9 %. Niemand ist ausgeschieden. Blacktrader nur Grün: +20,5 % pro Jahr, nur Blau: +5,8 %.
+Turnier (10 Teilnehmer, 50 Versuche à 5 Jahre, KESt sofort je Gewinn, Standard-Einstellung, Ø pro Jahr): 1. MACD-Bot +20,9 % · **2. Blacktrader +18,9 %** (Ø 154 Trades, Ø Gewinn nach KESt 7.677 €, Platz 1 bei bullischen Märkten) · 3. Kaufen & Halten +18,0 % · 4. Trendfolger +16,9 % · 5. Ausbruchs-Bot +16,7 % · 6. Momentum-Bot +15,7 % · 7. Zufalls-Bot +9,8 % · 8. KI-Bot +8,3 % · 9. RSI-Bot +3,9 % · 10. Bollinger-Bot −1,0 %. Niemand ist ausgeschieden. Blacktrader nur Grün: +20,5 % pro Jahr, nur Blau: +5,8 %.
 **Ehrlicher Hinweis:** überwiegend steigende Märkte; der Vorsprung vor Zufall ist im chronologischen Test klein. Bei Krypto ist der Gewinnfaktor trotz höherer Quote schwach.

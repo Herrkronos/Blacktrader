@@ -1,4 +1,4 @@
-// Turnier-Auswertungen (Blacktrader gegen 7 Bots): die letzten 20 werden gespeichert und sind exportierbar.
+// Turnier-Auswertungen (Blacktrader gegen 9 Bots): die letzten 20 werden gespeichert und sind exportierbar.
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/trainer/auth";
 import { getJson, setJson } from "@/lib/trainer/storage";

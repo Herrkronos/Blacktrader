@@ -23,9 +23,9 @@ const T = (sym: string, d0: number, d1: number, r: number): PoolTrade => ({ sym,
 const flat = () => 100;
 
 describe("Turnier: Regeln", () => {
-  it("5.000 € Start, 5 Jahre, 50 Versuche, 7 Gegner, KESt 27,5 %", () => {
+  it("5.000 € Start, 5 Jahre, 50 Versuche, 9 Gegner (10 Teilnehmer), KESt 27,5 %", () => {
     expect(RULES).toMatchObject({ start: 5000, years: 5, reps: 50, stake: 500, tax: 0.275 });
-    expect(OPPONENTS).toHaveLength(7);
+    expect(OPPONENTS).toHaveLength(9);
   });
   it("ohne Trades bleibt das Geld liegen", () => {
     const r = runWindow([], W(1_500_000_000), flat);

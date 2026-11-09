@@ -1,4 +1,4 @@
-// Turnier: Blacktrader gegen 7 andere Analysten/Bots – fair und ohne Blick in die Zukunft.
+// Turnier: Blacktrader gegen 9 andere Analysten/Bots (insgesamt 10 Teilnehmer) – fair und ohne Blick in die Zukunft.
 //
 // Jeder Teilnehmer erzeugt aus DENSELBEN Kursdaten (alle Werte: Aktien, Krypto, Rohstoffe, 15 Jahre) seine Kauf-Trades.
 // Jedes Signal kennt nur Kerzen bis zu seinem Tag; Einstieg und Ausstieg zum Eröffnungskurs der nächsten Kerze.
@@ -63,7 +63,7 @@ export function regimeIndex(spx: Candle[]) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Die 7 Gegner (Tageskerzen, nur Kauf-Einstiege)
+// Die 9 Gegner (Tageskerzen, nur Kauf-Einstiege)
 
 const trade = (sym: string, c: Candle[], i: number, j: number): PoolTrade | null => (j < c.length && i < j && c[i].open > 0 ? { sym, entry: c[i].time, exit: c[j].time, r: (c[j].open / c[i].open - 1) * 100, px: c[i].open } : null);
 
@@ -259,6 +259,48 @@ function kiBot(data: Series[]): PoolTrade[] {
   return out;
 }
 
+/** Bollinger-Bot: Kauf unter dem unteren Band (20 Tage, 2 Standardabweichungen), Verkauf an der Mittellinie. */
+function bollinger(data: Series[]): PoolTrade[] {
+  const out: PoolTrade[] = [];
+  for (const { symbol, candles: c } of data) {
+    const cl = c.map((x) => x.close);
+    let inAt = -1;
+    for (let i = 21; i < c.length - 1; i++) {
+      let m = 0;
+      for (let k = i - 19; k <= i; k++) m += cl[k];
+      m /= 20;
+      let v = 0;
+      for (let k = i - 19; k <= i; k++) v += (cl[k] - m) ** 2;
+      const sd = Math.sqrt(v / 20);
+      if (inAt < 0 && cl[i] < m - 2 * sd) inAt = i + 1;
+      else if (inAt >= 0 && i >= inAt && (cl[i] > m || i - inAt >= 20 || cl[i] < c[inAt].open * 0.9)) {
+        const t = trade(symbol, c, inAt, i + 1);
+        if (t) out.push(t);
+        inAt = -1;
+      }
+    }
+  }
+  return out;
+}
+
+/** Momentum-Bot: am Monatsanfang Werte mit starkem Halbjahres-Trend (+10 %, über der 50-Tage-Linie) kaufen, 1 Monat halten. */
+function momentum(data: Series[]): PoolTrade[] {
+  const out: PoolTrade[] = [];
+  for (const { symbol, candles: c } of data) {
+    const cl = c.map((x) => x.close);
+    const m50 = sma(cl, 50);
+    for (let i = 127; i + 22 < c.length; i++) {
+      const newMonth = new Date(c[i].time * 1000).getUTCMonth() !== new Date(c[i - 1].time * 1000).getUTCMonth();
+      if (!newMonth || m50[i] == null) continue;
+      if (cl[i] / cl[i - 126] - 1 > 0.1 && cl[i] > m50[i]!) {
+        const t = trade(symbol, c, i + 1, i + 22);
+        if (t) out.push(t);
+      }
+    }
+  }
+  return out;
+}
+
 export interface Opponent {
   id: string;
   name: string;
@@ -273,6 +315,8 @@ export const OPPONENTS: Opponent[] = [
   { id: "rsi", name: "RSI-Bot", desc: "kauft bei RSI unter 30, verkauft bei Erholung", build: rsiBot },
   { id: "macd", name: "MACD-Bot", desc: "kauft beim MACD-Kreuz nach oben, verkauft beim Kreuz nach unten", build: macdBot },
   { id: "ausbruch", name: "Ausbruchs-Bot", desc: "kauft beim 55-Tage-Hoch, verkauft beim 20-Tage-Tief (Turtle)", build: ausbruch },
+  { id: "bollinger", name: "Bollinger-Bot", desc: "kauft unter dem unteren Bollinger-Band, verkauft an der Mittellinie", build: bollinger },
+  { id: "momentum", name: "Momentum-Bot", desc: "kauft monatlich Werte mit starkem Halbjahres-Trend, hält einen Monat", build: momentum },
   { id: "ki", name: "KI-Bot", desc: "lernende KI (logistische Regression), lernt jedes Jahr neu", build: kiBot },
 ];
 

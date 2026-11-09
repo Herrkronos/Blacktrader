@@ -1,6 +1,6 @@
 "use client";
 // Mehr → Trainer: Blacktrader lernt (Walk-Forward, Strenge-Regeln unverändert) und tritt danach in einem Turnier
-// gegen 7 andere Analysten/Bots an: je Durchgang 5.000 € Startkapital, 500 Trades, 50 Wiederholungen in bullischen,
+// gegen 9 andere Analysten/Bots an (10 Teilnehmer): 50 Versuche à 5 Jahre, 5.000 € Startkapital, in bullischen,
 // neutralen, bärischen und gemischten Szenarien. Alle Werte (Aktien, Krypto, Rohstoffe) werden verwendet.
 // Danach: Rangliste und wo sich Blacktrader verbessert hat.
 import Link from "next/link";
@@ -217,7 +217,7 @@ export default function TrainerPage() {
       </section>
 
       <section className="card space-y-2 p-4">
-        <h2 className="text-[17px] text-gold-light">Turnier: Blacktrader gegen 7 Gegner</h2>
+        <h2 className="text-[17px] text-gold-light">Turnier: Blacktrader gegen 9 Gegner</h2>
         <p className="text-[14px] text-stone-400">
           {RULES.reps} Versuche à {RULES.years} Jahre echte Zeit: {eur(RULES.start)} Startkapital, {eur(RULES.stake)} je Trade, Gebühren und 27,5 % KESt pro Jahr. Wer kein Geld mehr hat, scheidet aus. Zeiträume bullisch, neutral, bärisch und gemischt; gewertet wird der Durchschnitt. Blacktrader spielt in {RULES.rounds} Runden und lernt dazwischen – Verbesserungen werden sofort gespeichert. Alle Werte, gleiche Daten, kein Blick in die Zukunft.
         </p>

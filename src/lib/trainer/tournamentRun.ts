@@ -40,7 +40,7 @@ export interface Prepared {
   note: string;
 }
 
-/** Daten laden, Zeiträume festlegen und die 7 Gegner spielen lassen (die lernen nicht mit). */
+/** Daten laden, Zeiträume festlegen und die 9 Gegner spielen lassen (die lernen nicht mit). */
 export async function prepareTournament(io: TournamentIO, span: [number, number] = [0, 1]): Promise<Prepared | null> {
   const P = (f: number, t: string) => io.onProgress(span[0] + (span[1] - span[0]) * f, t);
   const specs = new Map<string, { kind: AssetKind; daily: SeriesSpec; weekly: SeriesSpec }>();
