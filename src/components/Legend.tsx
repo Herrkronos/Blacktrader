@@ -20,6 +20,9 @@ export function Legend() {
             <span className="badge-trade">Trade</span> Grün: steigende Kurse, mit Stop und Ziel
           </div>
           <div className="flex items-center gap-2">
+            <span className="badge-short">Short</span> Rot: fallende Kurse, mit Stop und Ziel
+          </div>
+          <div className="flex items-center gap-2">
             <span className="badge-wait">Abwarten</span> Gelb: gerade kein sauberer Einstieg
           </div>
           <div className="flex items-center gap-2">
@@ -29,7 +32,7 @@ export function Legend() {
             <span className="badge-risk">Hohes Risiko</span> Stop sehr weit entfernt
           </div>
           <p className="border-t border-white/10 pt-2 text-stone-400">
-            <b className="text-stone-200">Stärke 0–100</b> (nur grün): je höher, desto stärker das Signal. Ein grüner Trade wird blau, wenn der Wochenchart den Aufwärtstrend bestätigt – der Stop wird dann nur noch nachgezogen. Keine Shorts.
+            <b className="text-stone-200">Stärke 0–100</b> (grün und rot): je höher, desto stärker das Signal. Ein grüner Trade wird blau, wenn der Wochenchart den Aufwärtstrend bestätigt – der Stop wird dann nur noch nachgezogen.
           </p>
         </div>
       )}

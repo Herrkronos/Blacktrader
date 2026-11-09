@@ -8,10 +8,11 @@ Blacktrader ist der Analyst der App. Er rechnet für jeden Wert die Zeiträume *
 |---|---|
 | **Blau** | Langfristiger Einstieg: Bereich 61,8–88,6 % einer großen Aufwärtswelle, Kauf in 3 Teilen, kein fester Stop, ungültig bei Schlusskurs unter dem Wellenstart |
 | **Grün** | Trade auf steigende Kurse mit Einstiegszone, Stop und Ziel |
+| **Rot** | Short: Trade auf fallende Kurse mit Einstiegszone, Stop (darüber) und Ziel (darunter) – nur wenn der Gesamtmarkt (S&P 500) bärisch ist |
 | **Gelb** | Gerade kein sauberer Einstieg – mit kurzem Hinweis, worauf Blacktrader wartet (nur in der Watchlist) |
 | **Grau** | Alte Einstiege (erledigt, ungültig, abgelöst) im Chart und unter „Verlauf“ |
 
-Es gibt **keine Shorts**. Fallende Kurse bedeuten „Gelb – abwarten“.
+Shorts (rot) gibt es nur bei bärischem Gesamtmarkt (S&P 500 unter der 200-Tage-Linie und −5 % in 100 Tagen). In anderen Marktlagen bedeuten fallende Kurse „Gelb – abwarten“. Begründung: Im Turnier verloren Shorts ohne diese Regel −21,8 % pro Jahr (Blacktrader gesamt nur +9,4 %), mit der Regel ist Blacktrader gesamt bei +19,8 % – besser als ganz ohne Shorts (+18,9 %).
 
 ---
 
@@ -66,6 +67,7 @@ tests/                  Vitest (über 170 Tests)
 | Schriften | Überschriften **Cinzel**, Text **Inter** (Google Fonts), Zahlen tabellarisch |
 | Signal Blau | `#38bdf8` (Rand `edge-core`, Badge `badge-core`) |
 | Signal Grün | `#34d399` (`edge-trade`, `badge-trade`) |
+| Signal Rot (Short) | `#f87171` (`edge-short`, `badge-short`) |
 | Signal Gelb | Amber `#fbbf24` (`edge-wait`, `badge-wait`) |
 | Grau (alt) | Stein-Grau, gestrichelte Box im Mini-Chart, Liste „Verlauf“ |
 | Stop/Verlust | `#f87171` |
@@ -93,7 +95,7 @@ Relatives Volumen, OBV, Volume Profile, RSI (Wilder) und Divergenzen.
 `Gesamt = 0,6 × Elliott + 0,2 × Fundamental/News + 0,2 × Volumen/RSI` (Standard). Der Trainer darf innerhalb fester Grenzen lernen (Elliott ≥ 60 %, die anderen je ≥ 10 %, Summe 100 %).
 
 ### 3.5 Einstieg, Stop, Ziel (grün)
-Zone = 61,8–78,6 % Rücksetzer der letzten Welle; Stop knapp hinter dem Wellenstart (+0,25 ATR); Ziel 1 = Fibonacci-Erweiterung (+27,2 %); Chance/Risiko mindestens 1,5. Ab Ziel 1 läuft der Stop mit (4 × ATR).
+Zone = 61,8–78,6 % Rücksetzer der letzten Welle; Stop knapp hinter dem Wellenstart (+0,25 ATR); Ziel 1 = Fibonacci-Erweiterung (+27,2 %); Chance/Risiko mindestens 1,5. Shorts genauso spiegelverkehrt (Stop darüber, Ziel darunter); Zonen mit einem Ziel unter 0 werden verworfen. Ab Ziel 1 läuft der Stop mit (4 × ATR).
 
 ### 3.6 Szenario-Entscheidung: EIN Einstieg pro Wert (`bestEntry.ts`)
 1. **Blau im Bereich** (Kurs schon im Langfrist-Bereich) hat Vorrang.
@@ -103,7 +105,7 @@ Zone = 61,8–78,6 % Rücksetzer der letzten Welle; Stop knapp hinter dem Wellen
 4. Sonst **Gelb** mit Hinweis (z. B. „Der Chart zeigt fallende Kurse – Blacktrader wartet …“).
 
 Regeln:
-- **Keine Shorts.**
+- **Shorts (rot) nur bei bärischem Gesamtmarkt** (S&P 500 unter der 200-Tage-Linie und −5 % in 100 Tagen). Die Sektor-Regel betrifft nur grüne Tech-Trades, nicht rote Shorts.
 - **Aktien und Krypto ohne kurzfristige Signale.** Rohstoffe kurzfristig nur, wenn der S&P 500 bullisch ist (über der 200-Tage-Linie und +5 % in 100 Tagen).
 - **Sektor-Regel:** Liegt der NASDAQ 100 unter seiner 200-Tage-Linie, gibt es keine grünen Tech-Trades. Blaue Einstiege, Dividendenwerte und Rohstoffe bleiben.
 
@@ -234,5 +236,5 @@ const entry = pickBestEntry({ symbol: "AAPL", kind: "stock", views, lt: findLong
 
 Chronologischer Test Sep 2022 – Nov 2026, 5.000 € Startkapital, nach 27,5 % KESt (Österreich): Blacktrader mit Sektor-Regel 9.859 € (+97,2 %), ohne Sektor-Regel 9.155 € (+83,1 %), Zufall 8.483 € (+69,7 %), S&P 500 Kaufen-und-Halten 8.103 € (+62,1 %), KI 7.725 € (+54,5 %), RSI 7.359 € (+47,2 %), Trendfolger 6.631 € (+32,6 %).
 
-Turnier (10 Teilnehmer, 50 Versuche à 5 Jahre, KESt sofort je Gewinn, Standard-Einstellung, Ø pro Jahr): 1. MACD-Bot +20,9 % · **2. Blacktrader +18,9 %** (Ø 154 Trades, Ø Gewinn nach KESt 7.677 €, Platz 1 bei bullischen Märkten) · 3. Kaufen & Halten +18,0 % · 4. Trendfolger +16,9 % · 5. Ausbruchs-Bot +16,7 % · 6. Momentum-Bot +15,7 % · 7. Zufalls-Bot +9,8 % · 8. KI-Bot +8,3 % · 9. RSI-Bot +3,9 % · 10. Bollinger-Bot −1,0 %. Niemand ist ausgeschieden. Blacktrader nur Grün: +20,5 % pro Jahr, nur Blau: +5,8 %.
+Turnier (10 Teilnehmer, 50 Versuche à 5 Jahre, KESt sofort je Gewinn, Standard-Einstellung, Ø pro Jahr): 1. MACD-Bot +20,9 % · **2. Blacktrader +19,8 %** (Ø 169 Trades, Ø Gewinn nach KESt 8.134 €, Platz 1 bei bullischen Märkten) · 3. Kaufen & Halten +18,0 % · 4. Trendfolger +16,9 % · 5. Ausbruchs-Bot +16,7 % · 6. Momentum-Bot +15,7 % · 7. Zufalls-Bot +9,8 % · 8. KI-Bot +8,3 % · 9. RSI-Bot +3,9 % · 10. Bollinger-Bot −1,0 %. Niemand ist ausgeschieden. Blacktrader getrennt: Grün +20,5 %, Blau +5,8 %, Rot (Shorts nur bei bärischem Markt) −5,4 % pro Jahr – zusammen besser als ohne Shorts (+18,9 %).
 **Ehrlicher Hinweis:** überwiegend steigende Märkte; der Vorsprung vor Zufall ist im chronologischen Test klein. Bei Krypto ist der Gewinnfaktor trotz höherer Quote schwach.

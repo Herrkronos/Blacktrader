@@ -1,11 +1,11 @@
 // Zeichnet Einstiegszonen wie bei HKCM in den Kerzenchart (lightweight-charts „Series Primitive“):
-// Kasten für die Zone (blau = langfristig, grün = Trade, grau = alter Einstieg), darin Stop (rot) und Ziel (grün)
+// Kasten für die Zone (blau = langfristig, grün = Trade, rot = Short, grau = alter Einstieg), darin Stop (rot) und Ziel (grün)
 // als beschriftete Linien, dazu der erwartete Weg: erst in die Zone (rot), dann Richtung Ziel (grün).
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
 import type { AutoscaleInfo, IChartApiBase, IPrimitivePaneRenderer, IPrimitivePaneView, ISeriesApi, ISeriesPrimitive, Logical, SeriesAttachedParameter, SeriesType, Time } from "lightweight-charts";
 
 export interface ChartEntry {
-  color: "blau" | "gruen" | "grau";
+  color: "blau" | "gruen" | "rot" | "grau";
   /** Beginn der Zone (Unix-Sekunden) */
   from: number;
   /** Ende (nur bei alten Einstiegen); sonst bis zum rechten Rand */
@@ -22,6 +22,7 @@ export interface ChartEntry {
 const COLORS = {
   blau: { fill: "rgba(56,189,248,0.22)", line: "rgba(56,189,248,0.9)", text: "#7dd3fc" },
   gruen: { fill: "rgba(52,211,153,0.22)", line: "rgba(52,211,153,0.9)", text: "#6ee7b7" },
+  rot: { fill: "rgba(248,113,113,0.22)", line: "rgba(248,113,113,0.9)", text: "#fca5a5" },
   grau: { fill: "rgba(168,162,158,0.14)", line: "rgba(168,162,158,0.55)", text: "#a8a29e" },
 };
 const RED = "#f87171";
@@ -141,7 +142,11 @@ export class ZonesPrimitive implements ISeriesPrimitive<Time> {
             if (e.stop != null) hline(e.stop, x1, x2, RED, 1.6, [], `Stop ${self.fmt(e.stop)}`);
             if (e.invalidation != null) hline(e.invalidation, x1, x2, RED, 1.2, [5, 4], `Ungültig unter ${self.fmt(e.invalidation)}`);
             if (e.target != null) hline(e.target, x1, x2, GREEN, 1.6, [], `Ziel ${self.fmt(e.target)}`);
-            // Erwarteter Weg: vom letzten Kurs in die Zone (rot), dann Richtung Ziel (grün)
+            // Erwarteter Weg: vom letzten Kurs in die Zone, dann Richtung Ziel
+            // Kauf: erst fallen (rot) in die Zone, dann steigen (grün). Short: erst steigen (grün) in die Zone, dann fallen (rot).
+            const short = e.color === "rot";
+            const away = short ? GREEN : RED;
+            const toward = short ? RED : GREEN;
             const xl = XI(self.lastReal);
             const yl = Y(self.lastClose);
             const mid = Y((e.top + e.bottom) / 2);
@@ -149,18 +154,19 @@ export class ZonesPrimitive implements ISeriesPrimitive<Time> {
             if (xl == null || yl == null || mid == null || yT == null) continue;
             const xm = xl + (x2 - xl) * 0.4;
             const xe = x2 - 6;
+            const outside = short ? self.lastClose < e.bottom : self.lastClose > e.top;
             ctx.lineWidth = 2 * vr;
             ctx.setLineDash([]);
-            if (self.lastClose > e.top) {
-              ctx.strokeStyle = RED;
+            if (outside) {
+              ctx.strokeStyle = away;
               ctx.beginPath();
               ctx.moveTo(xl * hr, yl * vr);
               ctx.lineTo(xm * hr, mid * vr);
               ctx.stroke();
             }
-            const sx = self.lastClose > e.top ? xm : xl;
-            const sy = self.lastClose > e.top ? mid : yl;
-            ctx.strokeStyle = GREEN;
+            const sx = outside ? xm : xl;
+            const sy = outside ? mid : yl;
+            ctx.strokeStyle = toward;
             ctx.beginPath();
             ctx.moveTo(sx * hr, sy * vr);
             ctx.lineTo(xe * hr, yT * vr);
@@ -168,7 +174,7 @@ export class ZonesPrimitive implements ISeriesPrimitive<Time> {
             // Pfeilspitze
             const ang = Math.atan2((yT - sy) * vr, (xe - sx) * hr);
             const L = 9 * hr;
-            ctx.fillStyle = GREEN;
+            ctx.fillStyle = toward;
             ctx.beginPath();
             ctx.moveTo(xe * hr, yT * vr);
             ctx.lineTo(xe * hr - L * Math.cos(ang - 0.45), yT * vr - L * Math.sin(ang - 0.45));

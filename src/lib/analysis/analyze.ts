@@ -26,8 +26,6 @@ export interface AnalysisResult {
   decision: SignalDecision;
   plan: TradePlan | null;
   commentary: Commentary;
-  /** Gesetzt, wenn ein Short-Ergebnis zu „Abwarten“ wurde (Blacktrader kauft nur) */
-  waitNote?: string;
 }
 
 /** Zusätzliche, strengere Prüfungen (machen Einstiege nie leichter). */

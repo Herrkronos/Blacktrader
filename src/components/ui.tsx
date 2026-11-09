@@ -11,13 +11,13 @@ const SIGNAL_STYLE: Record<SignalLevel, string> = {
   "strong-sell": "border-red-400/60 bg-wine/60 text-red-100",
 };
 
-/** Legende: Blau = Langfristiger Einstieg, Grün = Kauf-Einstieg, Gelb = Abwarten (keine Shorts) */
+/** Legende: Blau = Langfristiger Einstieg, Grün = Kauf-Einstieg, Rot = Short */
 export function EntryLegend() {
   return (
     <div className="flex flex-wrap items-center gap-2 text-[13px] text-stone-400">
       <span className="core-tag">Langfristig</span> = Einstiegsbereich in 3 Teilen, kein fester Stop
       <span className="trade-tag">Kauf</span> = Trading-Einstieg auf steigende Kurse
-      <span className="badge-wait">Abwarten</span> = gerade kein Kauf-Einstieg (Blacktrader handelt keine Shorts)
+      <span className="sell-tag">Short</span> = Trading-Einstieg auf fallende Kurse
     </div>
   );
 }

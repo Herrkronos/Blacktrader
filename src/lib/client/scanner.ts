@@ -1,6 +1,6 @@
 "use client";
 // Chancen-Scanner (geteilt von Übersicht, Chancen und Watchlist): Blacktrader rechnet die Zeiträume im Hintergrund
-// und wählt GENAU EINEN aktuellen Einstieg pro Wert (blau / grün / gelb). Keine Shorts, Aktien und Krypto ohne
+// und wählt GENAU EINEN aktuellen Einstieg pro Wert (blau / grün / rot / gelb). Shorts nur bei bärischem Gesamtmarkt, Aktien und Krypto ohne
 // kurzfristige Signale, Rohstoffe kurzfristig nur bei bullischem Gesamtmarkt (S&P 500).
 import { effectiveWeights, learnedParams, refreshTrainerParams } from "./trainerParams";
 import { useSyncExternalStore } from "react";
@@ -185,8 +185,8 @@ async function fetchMarketContext(): Promise<MarketContext> {
   return marketContext(sp.status === "fulfilled" ? sp.value.candles : null, nd.status === "fulfilled" ? nd.value.candles : null);
 }
 
-/** Signalart des aktuellen Einstiegs (Chancen-Filter: Alle · Blau · Grün) */
-export type SignalKind = "blau" | "gruen";
+/** Signalart des aktuellen Einstiegs (Chancen-Filter: Alle · Blau · Grün · Rot) */
+export type SignalKind = "blau" | "gruen" | "rot";
 
 /** Abstand vom Kurs bis zur Oberkante des Langfrist-Bereichs in % (0 = im Bereich) */
 export function longTermDistance(z: LongTermZone, price: number): number {
@@ -197,7 +197,9 @@ export function longTermDistance(z: LongTermZone, price: number): number {
 export function bestDistance(e: ScanEntry): number {
   const b = e.best;
   const price = lastPrice(e);
-  if (b.zoneTop == null || price == null) return 1000;
+  if (b.zoneTop == null || b.zoneBottom == null || price == null) return 1000;
+  // Short: Kurs muss bis zur Unterkante steigen
+  if (b.color === "rot") return price >= b.zoneBottom ? 0 : ((b.zoneBottom - price) / price) * 100;
   return price <= b.zoneTop ? 0 : ((price - b.zoneTop) / price) * 100;
 }
 

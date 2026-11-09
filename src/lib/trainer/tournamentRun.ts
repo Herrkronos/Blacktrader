@@ -6,7 +6,7 @@ import { runLongTermEcho } from "../analysis/longterm";
 import type { LearnableParams } from "../analysis/params";
 import type { AssetKind, Candle, Horizon } from "../types";
 import { backtestSeries } from "./engine";
-import { makeWindows, OPPONENTS, rank, RULES, runWindow, SCENARIOS, summarizeRuns, type ContestantResult, type PoolTrade, type RunResult, type Scenario, type Series, type TournamentReport, type Window } from "./tournament";
+import { makeWindows, OPPONENTS, regimeIndex, rank, RULES, runWindow, SCENARIOS, summarizeRuns, type ContestantResult, type PoolTrade, type RunResult, type Scenario, type Series, type TournamentReport, type Window } from "./tournament";
 import { universe, type CellKey, type SeriesSpec } from "./universe";
 
 export interface TournamentIO {
@@ -21,7 +21,7 @@ export type Params = (kind: AssetKind, horizon: Horizon) => LearnableParams;
 const KINDS: AssetKind[] = ["stock", "crypto", "commodity"];
 const DAYS = 15 * 365;
 const tick = () => new Promise((r) => setTimeout(r, 0));
-const DESC = "Elliott-Wellen + Fundamental/News + Volumen/RSI, ein Einstieg pro Wert (blau/grün), keine Shorts, Sektor-Regel";
+const DESC = "Elliott-Wellen + Fundamental/News + Volumen/RSI, ein Einstieg pro Wert (blau/grün/rot), Sektor-Regel";
 
 interface Asset {
   symbol: string;
@@ -36,6 +36,8 @@ export interface Prepared {
   from: number;
   priceAt: (sym: string, t: number) => number | null;
   techWeakAt: (t: number) => boolean;
+  /** Marktlage des S&P 500 zum Zeitpunkt t */
+  regimeAt: (t: number) => "bullisch" | "neutral" | "baerisch" | null;
   bots: ContestantResult[];
   note: string;
 }
@@ -107,22 +109,24 @@ export async function prepareTournament(io: TournamentIO, span: [number, number]
   const cnt: Partial<Record<Scenario, number>> = {};
   for (const w of windows) cnt[w.scenario] = (cnt[w.scenario] ?? 0) + 1;
   const note = `${assets.length} Werte (Aktien, Krypto, Rohstoffe), Daten ab ${new Date(from * 1000).toLocaleDateString("de-DE")}, ${windows.length} Zeiträume à 5 Jahre (${SCENARIOS.filter((s) => cnt[s]).map((s) => `${cnt[s]}× ${s === "baerisch" ? "bärisch" : s}`).join(", ")}). Rohstoffe kurzfristig (Stundenkerzen) sind nicht enthalten.`;
-  return { assets, windows, from, priceAt, techWeakAt, bots, note };
+  return { assets, windows, from, priceAt, techWeakAt, regimeAt: regimeIndex(spx), bots, note };
 }
 
-/** Alle Kauf-Trades von Blacktrader mit einem Parameter-Stand (grün: Tag + Woche; blau: Langfrist-Bereich). */
+/** Alle Trades von Blacktrader mit einem Parameter-Stand (grün/rot: Tag + Woche; blau: Langfrist-Bereich). */
 export async function blacktraderPool(prep: Prepared, params: Params, io: TournamentIO, span: [number, number], label: string): Promise<PoolTrade[] | null> {
   const out: PoolTrade[] = [];
-  const { assets, from, techWeakAt } = prep;
+  const { assets, from, techWeakAt, regimeAt } = prep;
   for (let k = 0; k < assets.length; k++) {
     if (io.shouldStop()) return null;
     const a = assets[k];
     io.onProgress(span[0] + ((span[1] - span[0]) * k) / assets.length, `${label}: ${a.symbol}`);
     const tech = TECH_SYMBOLS.has(a.symbol);
     const green = (t: { direction: string; reason: string; entryTime: number; exitTime: number; returnPct: number; entry: number }) => {
-      if (t.direction !== "long" || t.reason === "end" || t.entryTime < from) return;
-      if (tech && techWeakAt(t.entryTime)) return; // Sektor-Regel
-      out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, color: "gruen" });
+      if (t.reason === "end" || t.entryTime < from) return;
+      const short = t.direction === "short";
+      if (!short && tech && techWeakAt(t.entryTime)) return; // Sektor-Regel (nur grüne Tech-Trades)
+      if (short && regimeAt(t.entryTime) !== "baerisch") return; // Shorts nur bei bärischem Gesamtmarkt (wie in der App)
+      out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, color: short ? "rot" : "gruen", short });
     };
     try {
       if (a.daily.length > 300) for (const t of backtestSeries({ name: a.symbol, kind: a.kind, horizon: "medium", interval: "1d", candles: a.daily }, params(a.kind, "medium"), { step: 1 }).trades) green(t);
@@ -148,11 +152,11 @@ export function playRound(prep: Prepared, pool: PoolTrade[], round: number): { w
 export function buildReport(prep: Prepared, btRuns: { w: Window; r: RunResult }[], rounds: TournamentReport["rounds"], finalPool: PoolTrade[], improvedCells: TournamentReport["improvedCells"]): TournamentReport {
   const bt = summarizeRuns("blacktrader", "Blacktrader", DESC, btRuns);
   const ranking = rank([bt, ...prep.bots.map((b) => ({ ...b, rankByScenario: {} }))]);
-  const only = (c: "blau" | "gruen") => {
+  const only = (c: "blau" | "gruen" | "rot") => {
     const p = finalPool.filter((t) => t.color === c);
-    return p.length ? summarizeRuns(`bt-${c}`, `Blacktrader nur ${c === "blau" ? "Blau" : "Grün"}`, "", prep.windows.map((w) => ({ w, r: runWindow(p, w, prep.priceAt) }))) : null;
+    return p.length ? summarizeRuns(`bt-${c}`, `Blacktrader nur ${c === "blau" ? "Blau" : c === "gruen" ? "Grün" : "Rot"}`, "", prep.windows.map((w) => ({ w, r: runWindow(p, w, prep.priceAt) }))) : null;
   };
   const scenarioCount: Partial<Record<Scenario, number>> = {};
   for (const w of prep.windows) scenarioCount[w.scenario] = (scenarioCount[w.scenario] ?? 0) + 1;
-  return { v: 2, at: new Date().toISOString(), rules: { ...RULES }, ranking, scenarioCount, rounds, split: { blau: only("blau"), gruen: only("gruen") }, improvedCells, note: prep.note };
+  return { v: 2, at: new Date().toISOString(), rules: { ...RULES }, ranking, scenarioCount, rounds, split: { blau: only("blau"), gruen: only("gruen"), rot: only("rot") }, improvedCells, note: prep.note };
 }

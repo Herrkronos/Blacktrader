@@ -12,22 +12,22 @@ import { useAppData } from "@/lib/store/store";
 import type { Fundamentals, NewsItem } from "@/lib/types";
 import { ScoreBar, SignalBadge } from "./ui";
 
-export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => void }) {
+export function SignalCard({ a, onTrade, shortAllowed = true }: { a: AnalysisResult; onTrade: () => void; shortAllowed?: boolean }) {
   const w = a.weights;
   const sum = w.elliott + w.fundamental + w.volume || 1;
   const expert = useAppData((d) => d.settings.expertMode);
-  // Blacktrader: nur Kauf-Einstiege – fallende Kurse bedeuten „abwarten“
+  // Kauf (grün) oder Short (rot); sonst Abwarten
   const active = !!a.plan && a.decision.level !== "neutral";
   const buy = active && a.plan!.direction === "long";
-  const falling = (active && a.plan!.direction === "short") || !!a.waitNote;
+  const sell = active && a.plan!.direction === "short";
   return (
-    <div className={`panel space-y-3 p-4 ${buy ? "trade-bg" : ""}`}>
+    <div className={`panel space-y-3 p-4 ${buy ? "trade-bg" : sell ? "sell-bg" : ""}`}>
       <div className="flex items-center justify-between">
         <span className="panel-title">
           Signal{" "}
-          {buy ? <span className="trade-tag ml-1 align-middle">Kauf</span> : <span className="badge-wait ml-1 align-middle">Abwarten</span>}
+          {buy ? <span className="trade-tag ml-1 align-middle">Kauf</span> : sell ? <span className="sell-tag ml-1 align-middle">Short</span> : <span className="badge-wait ml-1 align-middle">Abwarten</span>}
         </span>
-        {buy && <SignalBadge level={a.decision.level} />}
+        {active && <SignalBadge level={a.decision.level} />}
       </div>
       <div className="flex items-end gap-2">
         <span className="num font-display text-4xl text-gold-light">{a.total.toFixed(0)}</span>
@@ -41,8 +41,10 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
           Roh-Signal „{SIGNAL_LABEL[a.decision.rawLevel]}“ neutralisiert: {a.decision.vetoes.join("; ")}.
         </div>
       )}
-      {falling && <p className="rounded-lg bg-amber-500/10 p-2 text-sm text-amber-100">Der Chart zeigt fallende Kurse – Blacktrader wartet, bis die Korrektur abgeschlossen ist und sich ein Kauf-Einstieg bildet.</p>}
-      {a.plan && (expert || buy) ? (
+      {sell && !shortAllowed && (
+        <p className="rounded-lg bg-amber-500/10 p-2 text-sm text-amber-100">Hinweis: Der Gesamtmarkt (S&P 500) ist gerade nicht bärisch. Blacktrader nimmt Shorts nur in bärischen Märkten als aktuellen Einstieg – dieser Short ist nur zur Information.</p>
+      )}
+      {a.plan && (expert || active) ? (
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
           <dt className="text-stone-400">Richtung</dt>
           <dd className={a.plan.direction === "long" ? "text-up" : "text-down"}>{a.plan.direction === "long" ? "Auf steigende Kurse" : "Auf fallende Kurse"}</dd>
@@ -68,7 +70,7 @@ export function SignalCard({ a, onTrade }: { a: AnalysisResult; onTrade: () => v
       ) : (
         <p className="text-sm text-stone-400">Aktuell kein Einstieg geplant.</p>
       )}
-      {buy ? (
+      {active ? (
         <button className="btn-primary w-full" onClick={onTrade}>
           {a.plan!.orderType === "limit" ? "Order in die Zone legen (Papier-Trade)" : "Als Papier-Trade übernehmen"}
         </button>
@@ -115,7 +117,7 @@ export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: str
           </button>
         )}
       </div>
-      <p className={`text-lg font-semibold leading-snug ${a.waitNote ? "text-amber-200" : a.decision.level === "neutral" ? "text-stone-200" : "text-emerald-300"}`}>{c.summary}</p>
+      <p className={`text-lg font-semibold leading-snug ${a.decision.level === "neutral" ? "text-stone-200" : a.plan?.direction === "short" ? "text-red-300" : "text-emerald-300"}`}>{c.summary}</p>
       <p className="text-base leading-relaxed text-stone-100">{c.reason}</p>
       {llm && <div className="whitespace-pre-wrap text-sm leading-relaxed text-stone-300">{llm}</div>}
       {c.risk && <p className="text-sm text-stone-300">{c.risk}</p>}

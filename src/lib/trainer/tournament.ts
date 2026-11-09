@@ -1,6 +1,6 @@
 // Turnier: Blacktrader gegen 9 andere Analysten/Bots (insgesamt 10 Teilnehmer) – fair und ohne Blick in die Zukunft.
 //
-// Jeder Teilnehmer erzeugt aus DENSELBEN Kursdaten (alle Werte: Aktien, Krypto, Rohstoffe, 15 Jahre) seine Kauf-Trades.
+// Jeder Teilnehmer erzeugt aus DENSELBEN Kursdaten (alle Werte: Aktien, Krypto, Rohstoffe, 15 Jahre) seine Trades (die Bots nur Käufe, Blacktrader auch Shorts).
 // Jedes Signal kennt nur Kerzen bis zu seinem Tag; Einstieg und Ausstieg zum Eröffnungskurs der nächsten Kerze.
 //
 // Ein Versuch = 5 Jahre ECHTE Zeit: 5.000 € Startkapital, 500 € je Trade (nur wenn genug Geld da ist, je Wert höchstens
@@ -27,8 +27,10 @@ export interface PoolTrade {
   r: number;
   /** Einstiegskurs (für die Bewertung offener Positionen am Ende) */
   px?: number;
-  /** Nur Blacktrader: blauer oder grüner Einstieg */
-  color?: "blau" | "gruen";
+  /** Nur Blacktrader: blauer, grüner oder roter (Short) Einstieg */
+  color?: "blau" | "gruen" | "rot";
+  /** Short: Gewinn bei fallenden Kursen */
+  short?: boolean;
 }
 
 export interface Series {
@@ -416,7 +418,7 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
   for (const i of [...open.keys()]) {
     const p = trades[i];
     const now = priceAt(p.sym, w.to);
-    close(i, now && p.px ? (now / p.px - 1) * 100 : 0, w.to);
+    close(i, now && p.px ? (p.short ? (1 - now / p.px) * 100 : (now / p.px - 1) * 100) : 0, w.to);
   }
   if (cash < RULES.stake) broke = true;
   return { end: cash, profit: cash - RULES.start, tax, trades: taken, wins, low: Math.min(low, cash), broke };
@@ -527,8 +529,8 @@ export interface TournamentReport {
   scenarioCount: Partial<Record<Scenario, number>>;
   /** Blacktrader je Runde (er lernt zwischen den Runden) */
   rounds?: { round: number; avgPerYear: number; changed: boolean }[];
-  /** Blacktrader getrennt: nur blaue bzw. nur grüne Einstiege (mit dem Endstand) */
-  split?: { blau: ContestantResult | null; gruen: ContestantResult | null };
+  /** Blacktrader getrennt: nur blaue, nur grüne bzw. nur rote Einstiege (mit dem Endstand) */
+  split?: { blau: ContestantResult | null; gruen: ContestantResult | null; rot?: ContestantResult | null };
   /** Bereiche, die das Lernen verbessert hat (Zonen-Quote alt → neu) */
   improvedCells?: { cell: string; old: number | null; neu: number | null }[];
   note?: string;
@@ -556,7 +558,12 @@ export function reportLines(rep: TournamentReport, previous?: TournamentReport |
     const changed = rep.rounds.filter((r) => r.changed).length;
     lines.push(changed ? `Während des Turniers verbessert: Runde 1 ${pct1(a.avgPerYear)} → Runde ${z.round} ${pct1(z.avgPerYear)} pro Jahr (${changed}× neuer Stand gespeichert).` : "Während des Turniers wurde kein besserer Stand gefunden – alter Stand bleibt.");
   }
-  if (rep.split?.blau && rep.split?.gruen) lines.push(`Nur Blau: Ø ${pct1(rep.split.blau.avgPerYear)} pro Jahr · nur Grün: Ø ${pct1(rep.split.gruen.avgPerYear)} pro Jahr.`);
+  if (rep.split) {
+    const parts = (["blau", "gruen", "rot"] as const)
+      .map((k) => (rep.split![k] ? `nur ${k === "blau" ? "Blau" : k === "gruen" ? "Grün" : "Rot (Short)"}: Ø ${pct1(rep.split![k]!.avgPerYear)} pro Jahr (${Math.round(rep.split![k]!.avgTrades)} Trades)` : null))
+      .filter(Boolean);
+    if (parts.length) lines.push(`Getrennt: ${parts.join(" · ")}.`);
+  }
   if (previous) {
     const pb = previous.ranking.find((c) => c.id === "blacktrader");
     if (pb) lines.push(`Gegenüber der letzten Auswertung: Platz ${pb.rank} → ${bt.rank}, ${pct1(pb.avgPerYear)} → ${pct1(bt.avgPerYear)} pro Jahr.`);

@@ -5,7 +5,6 @@ import { effectiveWeights, learnedParams, useTrainerVersion } from "@/lib/client
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { analyze } from "@/lib/analysis/analyze";
-import { longOnly } from "@/lib/analysis/longOnly";
 import { findLongTermZone } from "@/lib/analysis/longterm";
 import { avgEntry, filledTranches, openLongTerm, openLongTermTrade } from "@/lib/client/longterm";
 import { money } from "@/lib/analysis/persona";
@@ -113,7 +112,7 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
   const analysis = useMemo(
     () =>
       chartCandles.length >= 30
-        ? longOnly(analyze({ symbol: asset.symbol, name: asset.name, candles: chartCandles, horizon, interval, fundamentals, news, weights: effectiveWeights(settings, asset.kind, horizon), kind: asset.kind, currency, params: learnedParams(asset.kind, horizon) }))
+        ? analyze({ symbol: asset.symbol, name: asset.name, candles: chartCandles, horizon, interval, fundamentals, news, weights: effectiveWeights(settings, asset.kind, horizon), kind: asset.kind, currency, params: learnedParams(asset.kind, horizon) })
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [asset.symbol, asset.name, asset.kind, chartCandles, horizon, interval, fundamentals, news, settings.weights, settings.weightsMode, currency, trainerV],
@@ -128,20 +127,20 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
       if (p.zoneTop != null && p.zoneBottom != null) out.push({ color: "grau", from: p.from, to: p.to, top: p.zoneTop, bottom: p.zoneBottom, label: `${p.status ? STATUS[p.status] : "alt"} ${p.to ? fmtD(p.to) : ""}`.trim() });
     const b = best?.best;
     const lastT = chartCandles[chartCandles.length - 1]?.time ?? 0;
-    if (b?.color === "gruen" && b.zoneTop != null && b.zoneBottom != null) {
+    if ((b?.color === "gruen" || b?.color === "rot") && b.zoneTop != null && b.zoneBottom != null) {
       const piv = b.res?.elliott.best?.pivots;
       const from = piv?.length ? piv[piv.length - 1].time : chartCandles[Math.max(0, chartCandles.length - 20)]?.time ?? lastT;
-      out.push({ color: "gruen", from, top: b.zoneTop, bottom: b.zoneBottom, stop: b.stop, target: b.targets?.[0], label: "Zielzone" });
+      out.push({ color: b.color, from, top: b.zoneTop, bottom: b.zoneBottom, stop: b.stop, target: b.targets?.[0], label: b.color === "rot" ? "Short-Zone" : "Zielzone" });
     } else if (b?.color === "blau" && b.lt) {
       out.push({ color: "blau", from: b.lt.high.time, top: b.lt.zoneTop, bottom: b.lt.zoneBottom, invalidation: b.lt.invalidation, target: b.lt.targets[0], label: "Langfrist-Einstieg (3 Teile)" });
     } else if (!best) {
       // Ohne Blacktrader-Suche: Einstieg aus der Analyse dieses Charts
       const p = analysis?.plan;
-      if (p && p.direction === "long" && analysis?.decision.level !== "neutral") {
+      if (p && analysis?.decision.level !== "neutral") {
         const top = Math.max(p.zoneStart ?? p.entry, p.zoneEnd ?? p.entry);
         const bottom = Math.min(p.zoneStart ?? p.entry, p.zoneEnd ?? p.entry);
         const piv = analysis?.elliott.best?.pivots;
-        out.push({ color: "gruen", from: piv?.length ? piv[piv.length - 1].time : lastT, top, bottom, stop: p.stop, target: p.targets[0], label: "Zielzone" });
+        out.push({ color: p.direction === "short" ? "rot" : "gruen", from: piv?.length ? piv[piv.length - 1].time : lastT, top, bottom, stop: p.stop, target: p.targets[0], label: p.direction === "short" ? "Short-Zone" : "Zielzone" });
       } else if (ltZone && ltZone.status !== "invalidiert") {
         out.push({ color: "blau", from: ltZone.high.time, top: ltZone.zoneTop, bottom: ltZone.zoneBottom, invalidation: ltZone.invalidation, target: ltZone.targets[0], label: "Langfrist-Einstieg (3 Teile)" });
       }
@@ -197,14 +196,14 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
         <p className="px-2 pb-1.5 text-[13px] text-stone-400">
           {settings.expertMode
             ? "Experte: Gold = Primärzählung mit Wellen-Labels, gestrichelt = Alternativzählung, Linien = Fibonacci-Ziele/-Retracements, Volumen und RSI. Kästen: Blau = Langfrist-Einstieg, Grün = Zielzone, Grau = alte Einstiege."
-            : "Blauer Kasten = Langfrist-Einstieg · Grüner Kasten = Zielzone · Grau = alte Einstiege · Rot = Stop · Grüne Linie = Ziel · Pfeile = erwarteter Weg."}{" "}
+            : "Blauer Kasten = Langfrist-Einstieg · Grüner Kasten = Zielzone (Kauf) · Roter Kasten = Short-Zone · Grau = alte Einstiege · Rote Linie = Stop · Grüne Linie = Ziel · Pfeile = erwarteter Weg."}{" "}
           Zoomen mit zwei Fingern, Antippen zeigt den Kurs.
         </p>
       </div>
 
       {analysis ? (
         <>
-          <SignalCard a={analysis} onTrade={() => setTrade(true)} />
+          <SignalCard a={analysis} onTrade={() => setTrade(true)} shortAllowed={scan.ctx.spBear === true} />
           <LongTermCard
             zone={ltZone}
             currency={currency}

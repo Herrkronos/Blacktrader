@@ -22,15 +22,18 @@ const RISK_LIMIT = 15; // % Abstand Einstieg–Stop, ab dem "Hohes Risiko" angez
 const pctStr = (a: number, b: number) => `${((Math.abs(b - a) / a) * 100).toFixed(1).replace(".", ",")} %`;
 const dateStr = (sec: number) => new Date(sec * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
 
-/** Signalstärke 0–100 (nur Anzeige, nur Kauf-Signale): Gesamtscore der Analyse. */
+/**
+ * Signalstärke 0–100 (nur Anzeige): je höher, desto stärker – für Kauf und Short gleich.
+ * Kauf = Gesamtscore, Short = 100 − Gesamtscore (ein niedriger Score bedeutet ein starkes Short-Signal).
+ */
 export function signalStrength(res: AnalysisResult | null | undefined): number | null {
-  if (!res || !res.plan || res.decision.level === "neutral" || res.plan.direction !== "long") return null;
-  return res.total;
+  if (!res || !res.plan || res.decision.level === "neutral") return null;
+  return res.plan.direction === "long" ? res.total : 100 - res.total;
 }
 
-export const COLOR_LABEL: Record<BestEntry["color"], string> = { blau: "Langfristig", gruen: "Trade", gelb: "Abwarten" };
-const BADGE: Record<BestEntry["color"], string> = { blau: "badge-core", gruen: "badge-trade", gelb: "badge-wait" };
-const EDGE: Record<BestEntry["color"], string> = { blau: "edge-core", gruen: "edge-trade", gelb: "edge-wait" };
+export const COLOR_LABEL: Record<BestEntry["color"], string> = { blau: "Langfristig", gruen: "Trade", rot: "Short", gelb: "Abwarten" };
+const BADGE: Record<BestEntry["color"], string> = { blau: "badge-core", gruen: "badge-trade", rot: "badge-short", gelb: "badge-wait" };
+const EDGE: Record<BestEntry["color"], string> = { blau: "edge-core", gruen: "edge-trade", rot: "edge-short", gelb: "edge-wait" };
 const PAST_LABEL = { erledigt: "erledigt", ungültig: "ungültig", abgelöst: "abgelöst" } as const;
 
 /** Kerzengröße des Zeitraums */
@@ -38,7 +41,7 @@ const intervalFor = (h?: Horizon) => getData().settings.intervals[h ?? "long"];
 
 function viewCandles(e: ScanEntry): { candles: Candle[]; res: AnalysisResult | null } {
   const b = e.best;
-  if (b.color === "gruen" && b.horizon) return { candles: e.horizons[b.horizon]?.candles ?? [], res: b.res ?? null };
+  if ((b.color === "gruen" || b.color === "rot") && b.horizon) return { candles: e.horizons[b.horizon]?.candles ?? [], res: b.res ?? null };
   if (b.color === "blau" && e.ltCandles?.length) return { candles: e.ltCandles, res: e.horizons[e.ltHorizon ?? "long"]?.res ?? null };
   const h = (["medium", "long", "short"] as Horizon[]).find((x) => e.horizons[x]);
   return { candles: h ? e.horizons[h]!.candles : e.ltCandles ?? [], res: h ? e.horizons[h]!.res : null };
@@ -93,14 +96,15 @@ export function AssetCard({
   const view = entry ? viewCandles(entry) : { candles: [], res: null };
   const res = view.res;
   const lastPrice = price ?? res?.price ?? entry?.ltCandles?.at(-1)?.close;
-  const plan = b?.color === "gruen" ? b.plan ?? null : null;
+  const plan = b?.color === "gruen" || b?.color === "rot" ? b.plan ?? null : null;
+  const isShort = plan?.direction === "short";
   const lt = b?.color === "blau" ? b.lt ?? null : null;
   const strength = plan ? signalStrength(b?.res) : null;
   const riskPct = plan ? (Math.abs(plan.entry - plan.stop) / plan.entry) * 100 : 0;
   const myLong = trades.find((t) => t.status !== "closed" && (t.strategy === "longterm" || t.strategy === "core") && t.symbol === asset.symbol);
   const myTrade = trades.find((t) => t.status !== "closed" && t.symbol === asset.symbol && t.strategy !== "core");
   const tradeOpen = plan && b?.horizon ? hasOpenTrade(asset.symbol, b.horizon) : false;
-  const isNachkauf = !!plan && !!myLong;
+  const isNachkauf = !!plan && !isShort && !!myLong;
   const past = entry?.history.past ?? [];
   const openHorizon: Horizon = b?.horizon ?? entry?.ltHorizon ?? "medium";
 
@@ -158,12 +162,12 @@ export function AssetCard({
               <div className="rounded-xl bg-white/5 px-1 py-2">
                 <div className="label">Stop</div>
                 <div className="num text-[17px] font-semibold text-red-300">{money(plan.stop, cur)}</div>
-                <div className="num text-[13px] text-red-300/80">−{pctStr(plan.entry, plan.stop)}</div>
+                <div className="num text-[13px] text-red-300/80">{isShort ? "+" : "−"}{pctStr(plan.entry, plan.stop)}</div>
               </div>
               <div className="rounded-xl bg-white/5 px-1 py-2">
                 <div className="label">Ziel</div>
                 <div className="num text-[17px] font-semibold text-emerald-300">{money(plan.targets[0], cur)}</div>
-                <div className="num text-[13px] text-emerald-300/80">+{pctStr(plan.entry, plan.targets[0])}</div>
+                <div className="num text-[13px] text-emerald-300/80">{isShort ? "−" : "+"}{pctStr(plan.entry, plan.targets[0])}</div>
               </div>
             </div>
           ) : lt ? (
@@ -188,7 +192,7 @@ export function AssetCard({
             <p className="rounded-xl bg-amber-500/10 px-3 py-2 text-[15px] text-amber-100">{b.waitFor ?? b.reason}</p>
           )}
 
-          {b.color === "gruen" && <p className="text-[14px] text-stone-300">{b.reason}</p>}
+          {(b.color === "gruen" || b.color === "rot") && <p className="text-[14px] text-stone-300">{b.reason}</p>}
 
           {expert && res && (
             <div className="rounded-xl border border-gold/20 bg-black/30 px-3 py-2 text-[13px] text-stone-300">
@@ -284,7 +288,7 @@ export function AssetCard({
 
       <ConfirmSheet
         open={confirm === "trade"}
-        title={isNachkauf ? "Nachkauf als Papier-Trade" : "Papier-Trade übernehmen"}
+        title={isNachkauf ? "Nachkauf als Papier-Trade" : isShort ? "Short als Papier-Trade" : "Papier-Trade übernehmen"}
         confirm={plan?.orderType === "limit" ? "Order legen" : "Trade eröffnen"}
         onClose={() => setConfirm(null)}
         onConfirm={() => {
@@ -295,12 +299,12 @@ export function AssetCard({
         text={
           plan ? (
             <div className="space-y-2">
-              <p>{asset.name}: Trade auf steigende Kurse.</p>
+              <p>{asset.name}: {isShort ? "Short – Trade auf fallende Kurse." : "Trade auf steigende Kurse."}</p>
               <p className="num">
                 Einstieg {money(plan.entry, cur)} · Stop {money(plan.stop, cur)} · Ziel {money(plan.targets[0], cur)}
               </p>
               {plan.orderType === "limit" && <p className="text-amber-300">Wartende Order: Der Trade startet erst, wenn der Kurs {money(plan.entry, cur)} erreicht.</p>}
-              <p className="text-[13px] text-stone-400">Einstieg, Stop und Ziele kommen unverändert von Blacktrader. Bestätigt der Wochenchart den Aufwärtstrend, wird der Trade zu Blau hochgestuft und der Stop nur nachgezogen.</p>
+              <p className="text-[13px] text-stone-400">Einstieg, Stop und Ziele kommen unverändert von Blacktrader.{isShort ? "" : " Bestätigt der Wochenchart den Aufwärtstrend, wird der Trade zu Blau hochgestuft und der Stop nur nachgezogen."}</p>
             </div>
           ) : null
         }

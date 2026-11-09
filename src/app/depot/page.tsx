@@ -133,8 +133,8 @@ export default function DepotPage() {
   const trades = useAppData((d) => d.trades);
   const notice = useAppData((d) => d.migrationNotice);
   const { live } = useMarket();
-  // Signalart statt Zeitraum: Blau (langfristig / hochgestuft) · Grün (Trade). Der Zeitraum steht nur noch als Info am Trade.
-  const [art, setArt] = useState<"all" | "blau" | "gruen">("all");
+  // Signalart statt Zeitraum: Blau (langfristig / hochgestuft) · Grün (Trade) · Rot (Short). Der Zeitraum steht nur noch als Info am Trade.
+  const [art, setArt] = useState<"all" | "blau" | "gruen" | "rot">("all");
   const [action, setAction] = useState<Trade | null>(null);
   const [exitPrice, setExitPrice] = useState("");
 
@@ -144,7 +144,7 @@ export default function DepotPage() {
         .filter((t) => {
           if (art === "all") return true;
           const blue = t.strategy === "core" || t.strategy === "longterm" || !!t.promotedAt;
-          return art === "blau" ? blue : !blue && t.direction === "long";
+          return art === "blau" ? blue : art === "gruen" ? !blue && t.direction === "long" : !blue && t.direction === "short";
         })
         .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0) || b.openedAt - a.openedAt),
     [trades, art],
@@ -218,6 +218,7 @@ export default function DepotPage() {
             ["all", "Alle"],
             ["blau", "Blau"],
             ["gruen", "Grün"],
+            ["rot", "Rot"],
           ] as const
         ).map(([k, l]) => (
           <button key={k} onClick={() => setArt(k)} className={`chip shrink-0 ${art === k ? "border-gold bg-white/10 font-semibold text-gold-light" : "border-white/10 text-stone-400"}`}>

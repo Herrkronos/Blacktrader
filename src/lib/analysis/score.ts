@@ -69,7 +69,7 @@ export function buildPlan(count: WaveCount | undefined, price: number, minStopDi
   const risk = (price - stop) * dir;
   if (!(risk > 0)) return null;
   const targets = count.targets
-    .filter((t) => (t - price) * dir > 0)
+    .filter((t) => (t - price) * dir > 0 && t > 0)
     .sort((a, b) => (a - b) * dir)
     .slice(0, 3);
   if (targets.length === 0) return null;

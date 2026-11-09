@@ -1,5 +1,6 @@
 "use client";
-// Chancen: alle Werte (Watchlist + feste Liste) – je Wert GENAU EIN Einstieg von Blacktrader: Blau (langfristig) oder Grün (Trade).
+// Chancen: alle Werte (Watchlist + feste Liste) – je Wert GENAU EIN Einstieg von Blacktrader: Blau (langfristig),
+// Grün (Trade auf steigende Kurse) oder Rot (Short auf fallende Kurse).
 // Gelb (kein Einstieg) erscheint nur in der Watchlist.
 import { useEffect, useMemo, useState } from "react";
 import { signalStrength } from "@/components/AssetCard";
@@ -19,6 +20,7 @@ const KIND_FILTERS: { k: KindFilter; label: string; cls: string }[] = [
   { k: "all", label: "Alle", cls: "border-gold/60 text-gold-light" },
   { k: "blau", label: "Blau", cls: "border-sky-400/60 text-sky-300" },
   { k: "gruen", label: "Grün", cls: "border-emerald-400/60 text-emerald-300" },
+  { k: "rot", label: "Rot", cls: "border-red-400/60 text-red-300" },
 ];
 
 /** Sortierung: zuerst Werte, deren Kurs schon in der Zone liegt, dann nach Nähe; bei Gleichstand das stärkere Signal. */
@@ -50,7 +52,7 @@ export default function ChancenPage() {
     [scan.entries, kind, group],
   );
   const counts = useMemo(() => {
-    const c: Record<KindFilter, number> = { all: 0, blau: 0, gruen: 0 };
+    const c: Record<KindFilter, number> = { all: 0, blau: 0, gruen: 0, rot: 0 };
     for (const e of scan.entries) {
       if (group !== "all" && e.asset.kind !== group) continue;
       if (e.best.color === "gelb") continue;
@@ -60,7 +62,7 @@ export default function ChancenPage() {
     return c;
   }, [scan.entries, group]);
 
-  const tradable = list.filter((e) => e.best.color === "gruen" && e.best.res).map((e) => ({ asset: e.asset, res: e.best.res! }));
+  const tradable = list.filter((e) => (e.best.color === "gruen" || e.best.color === "rot") && e.best.res).map((e) => ({ asset: e.asset, res: e.best.res! }));
 
   return (
     <div className="space-y-4">

@@ -1,7 +1,7 @@
 # Black Ship Holding – Blacktrader
 
 Web-App für Watchlist, Echtzeit-Überwachung und regelbasierte Analyse (Elliott-Wellen 60 %, Fundamental/News 20 %, Volumen/RSI 20 %) mit Papier-Trade-Journal und Backtest.
-Der Analyst heißt **Blacktrader**: Er rechnet die Zeiträume im Hintergrund und zeigt je Wert **genau einen Einstieg** – Blau (langfristig), Grün (Trade) oder Gelb (abwarten); alte Einstiege werden grau. Keine Shorts.
+Der Analyst heißt **Blacktrader**: Er rechnet die Zeiträume im Hintergrund und zeigt je Wert **genau einen Einstieg** – Blau (langfristig), Grün (Trade), Rot (Short, nur bei bärischem Gesamtmarkt) oder Gelb (abwarten); alte Einstiege werden grau.
 Der Trainer lässt Blacktrader in einem Turnier gegen 9 andere Bots antreten (10 Teilnehmer): 50 Versuche à 5 Jahre echte Zeit (5.000 € Start, 500 € je Trade, 27,5 % KESt, wer kein Geld mehr hat scheidet aus) in bullischen, neutralen, bärischen und gemischten Zeiträumen; Blacktrader lernt zwischen den Runden und speichert Verbesserungen sofort. Das Journal heißt jetzt **Depot**.
 Ausführliche Beschreibung: **[DOKUMENTATION.md](DOKUMENTATION.md)**.
 **Kein Login, keine Registrierung, keine Zahlungsmittel.** Alle Daten liegen lokal im Browser (localStorage) und lassen sich als JSON exportieren und importieren.

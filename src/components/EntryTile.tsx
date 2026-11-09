@@ -10,21 +10,28 @@ import { COLOR_LABEL, signalStrength } from "./AssetCard";
 import { MiniChart } from "./MiniChart";
 import { StatusPill } from "./StatusPill";
 
-const EDGE = { blau: "edge-core", gruen: "edge-trade", gelb: "edge-wait" } as const;
-const BADGE = { blau: "badge-core", gruen: "badge-trade", gelb: "badge-wait" } as const;
+const EDGE = { blau: "edge-core", gruen: "edge-trade", rot: "edge-short", gelb: "edge-wait" } as const;
+const BADGE = { blau: "badge-core", gruen: "badge-trade", rot: "badge-short", gelb: "badge-wait" } as const;
 
 export function EntryTile({ asset, entry, price, changePct, status, source, chart = false, onOpen }: { asset: ResolvedAsset; entry?: ScanEntry; price?: number; changePct?: number; status?: LiveStatus; source?: string; chart?: boolean; onOpen: () => void }) {
   const b = entry?.best;
   const cur = asset.currency;
   const p = price ?? (entry ? lastPrice(entry) : undefined);
-  const dist = b?.zoneTop != null && p != null ? (p <= b.zoneTop ? 0 : ((p - b.zoneTop) / p) * 100) : null;
+  const short = b?.color === "rot";
+  // Abstand zur Zone: Kauf – Kurs fällt bis zur Oberkante; Short – Kurs steigt bis zur Unterkante
+  const dist =
+    b?.zoneTop != null && b.zoneBottom != null && p != null
+      ? short
+        ? p >= b.zoneBottom ? 0 : ((b.zoneBottom - p) / p) * 100
+        : p <= b.zoneTop ? 0 : ((p - b.zoneTop) / p) * 100
+      : null;
   const blue = b?.color === "blau";
-  const strength = b?.color === "gruen" ? signalStrength(b.res) : null;
+  const strength = b?.color === "gruen" || short ? signalStrength(b?.res) : null;
 
   // Chart: Kerzen des aktuellen Einstiegs, Wellenzählung, Zone (grün/blau), alte Einstiege grau
   const view = (() => {
     if (!entry || !b) return null;
-    if (b.color === "gruen" && b.horizon) return { candles: entry.horizons[b.horizon]?.candles ?? [], best: b.res?.elliott.best };
+    if ((b.color === "gruen" || short) && b.horizon) return { candles: entry.horizons[b.horizon]?.candles ?? [], best: b.res?.elliott.best };
     if (blue && entry.ltCandles?.length) return { candles: entry.ltCandles, best: undefined };
     const h = entry.horizons.medium ?? entry.horizons.long ?? entry.horizons.short;
     return h ? { candles: h.candles, best: h.res.elliott.best } : null;
@@ -58,7 +65,7 @@ export function EntryTile({ asset, entry, price, changePct, status, source, char
 
       {chart && view && view.candles.length > 4 && (
         <div className="mt-2">
-          <MiniChart candles={view.candles} plan={b?.color === "gruen" ? b.plan : null} best={view.best} longterm={lt} past={entry?.history.past ?? []} height={84} />
+          <MiniChart candles={view.candles} plan={b?.color === "gruen" || short ? b?.plan : null} best={view.best} longterm={lt} past={entry?.history.past ?? []} height={84} />
         </div>
       )}
 
@@ -66,7 +73,7 @@ export function EntryTile({ asset, entry, price, changePct, status, source, char
         <div className="num mt-2 grid grid-cols-3 gap-2 text-[14px]">
           <span>
             <span className="label block">Einstieg</span>
-            {money(b.zoneTop!, cur)}
+            {money(short ? b.zoneBottom! : b.zoneTop!, cur)}
           </span>
           <span className="text-red-300">
             <span className="label block">{blue ? "Ungültig unter" : "Stop"}</span>

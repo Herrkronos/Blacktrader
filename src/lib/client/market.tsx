@@ -7,7 +7,6 @@ import { syncPush } from "./push";
 import { effectiveWeights, learnedParams, refreshTrainerParams, trainerVersion } from "./trainerParams";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
-import { longOnly } from "../analysis/longOnly";
 import { SIGNAL_LABEL } from "../analysis/score";
 import { tradeReturnPct } from "../analysis/stats";
 import { fmtPrice } from "../analysis/persona";
@@ -244,7 +243,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         lastCalc.current[item.id] = { version: r.version, price: lv?.price, at: Date.now(), tv: trainerVersion() };
         const result =
           r.candles.length >= 30
-            ? longOnly(analyze({ symbol: item.symbol, name: item.name, candles: r.candles, horizon: r.horizon, interval: r.interval, fundamentals: r.fundamentals, news: r.news, weights: effectiveWeights(d.settings, item.kind, r.horizon), livePrice: lv?.price, kind: item.kind, currency: lv?.currency ?? item.currency, params: learnedParams(item.kind, r.horizon) }))
+            ? analyze({ symbol: item.symbol, name: item.name, candles: r.candles, horizon: r.horizon, interval: r.interval, fundamentals: r.fundamentals, news: r.news, weights: effectiveWeights(d.settings, item.kind, r.horizon), livePrice: lv?.price, kind: item.kind, currency: lv?.currency ?? item.currency, params: learnedParams(item.kind, r.horizon) })
             : null;
         next[item.id] = { longterm: r.longterm, horizon: r.horizon, interval: r.interval, result, candles: r.candles, fundamentals: r.fundamentals, news: r.news, candleSource: r.source, error: r.error ?? (r.candles.length < 30 && r.candles.length > 0 ? "Zu wenig Historie für eine Analyse" : undefined), loading: false };
         if (result) checkSignal(item, r.horizon, result);

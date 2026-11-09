@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowedHorizons, closeInHistory, doneKeys, longTermOutcome, marketContext, pickBestEntry, updateHistory, type BestEntry } from "../src/lib/analysis/bestEntry";
+import { allowedHorizons, closeInHistory, entryStatus, doneKeys, longTermOutcome, marketContext, pickBestEntry, updateHistory, type BestEntry } from "../src/lib/analysis/bestEntry";
 import { checkPromotion, trailStop } from "../src/lib/analysis/promotion";
 import type { LongTermZone } from "../src/lib/analysis/longterm";
 import type { AnalysisResult } from "../src/lib/analysis/analyze";
@@ -26,10 +26,26 @@ describe("Ein Einstieg pro Wert", () => {
     expect(pickBestEntry({ symbol: "KO", kind: "stock", views: { medium: res("long") }, lt: lt("in-zone"), ctx: bull }).color).toBe("blau");
     expect(pickBestEntry({ symbol: "KO", kind: "stock", views: { medium: res("long") }, lt: lt("zulaufend"), ctx: bull }).color).toBe("gruen");
   });
-  it("keine Shorts: ein Short-Signal ergibt Gelb mit Hinweis", () => {
-    const e = pickBestEntry({ symbol: "KO", kind: "stock", views: { medium: res("short") }, ctx: bull });
-    expect(e.color).toBe("gelb");
-    expect(e.waitFor).toMatch(/fallende Kurse/);
+  it("Short-Signal ergibt Rot – aber nur bei bärischem Gesamtmarkt", () => {
+    const bear = { spBull: false, techWeak: false, spBear: true };
+    const e = pickBestEntry({ symbol: "KO", kind: "stock", views: { medium: res("short", [95, 100]) }, ctx: bear });
+    expect(e.color).toBe("rot");
+    const w = pickBestEntry({ symbol: "KO", kind: "stock", views: { medium: res("short", [95, 100]) }, ctx: bull });
+    expect(w.color).toBe("gelb");
+    expect(w.waitFor).toMatch(/bärisch/);
+    expect(e.dir).toBe("short");
+    expect(e.key).toMatch(/^rot:/);
+  });
+  it("Sektor-Regel sperrt nur grüne Tech-Trades – rote Shorts bleiben", () => {
+    const weak = { spBull: false, techWeak: true, spBear: true };
+    expect(pickBestEntry({ symbol: "NVDA", kind: "stock", views: { medium: res("long") }, ctx: weak }).color).toBe("gelb");
+    expect(pickBestEntry({ symbol: "NVDA", kind: "stock", views: { medium: res("short", [95, 100]) }, ctx: weak }).color).toBe("rot");
+  });
+  it("Short: hineingestiegen und unten wieder heraus → erledigt; über dem Stop → ungültig", () => {
+    const e = { key: "rot:x", color: "rot" as const, dir: "short" as const, zoneTop: 100, zoneBottom: 95, stop: 110, from: 0 };
+    const c = (time: number, high: number, close: number) => ({ time, open: close, high, low: close - 1, close, volume: 1 });
+    expect(entryStatus(e, [c(1, 90, 89), c(2, 97, 96), c(3, 94, 93)]).status).toBe("erledigt");
+    expect(entryStatus(e, [c(1, 97, 96), c(2, 112, 111)]).status).toBe("ungültig");
   });
   it("Aktien und Krypto ohne kurzfristig; Rohstoffe kurzfristig nur im bullischen Markt", () => {
     expect(allowedHorizons("stock", bull)).not.toContain("short");
@@ -46,7 +62,9 @@ describe("Ein Einstieg pro Wert", () => {
   });
   it("Marktlage aus Tageskerzen", () => {
     const up = Array.from({ length: 260 }, (_, i) => ({ time: i, open: 100 + i, high: 101 + i, low: 99 + i, close: 100 + i, volume: 1 }));
-    expect(marketContext(up, up)).toEqual({ spBull: true, techWeak: false });
+    expect(marketContext(up, up)).toEqual({ spBull: true, techWeak: false, spBear: false });
+    const down = up.map((c, i) => ({ ...c, close: 400 - i, open: 400 - i, high: 401 - i, low: 399 - i }));
+    expect(marketContext(down, down).spBear).toBe(true);
   });
 });
 

@@ -104,7 +104,9 @@ export function findZoneSetup(candles: Candle[], o: ZoneOptions = DEFAULT_ZONE_O
     const inZone = (price - zoneStart) * dir <= 0 && (price - zoneEnd) * dir >= 0;
     if ((deepest - zoneEnd) * dir < 0 && !inZone) continue; // Zone bereits durchlaufen
     const entry = inZone ? price : zoneStart;
-    const targets = [b.price + dir * L * o.target1Ext, entry + dir * L * 1.618];
+    // Ziele unter 0 sind unmöglich (große Abwärtswellen im Monatschart): solche Shorts sind kein sinnvoller Einstieg
+    const targets = [b.price + dir * L * o.target1Ext, entry + dir * L * 1.618].filter((t) => t > 0);
+    if (targets.length === 0 || (dir === -1 && targets[0] >= entry)) continue;
     const risk = (entry - stop) * dir;
     if (!(risk > 0)) continue;
     const riskReward = ((targets[0] - entry) * dir) / risk;
