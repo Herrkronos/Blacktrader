@@ -1,7 +1,7 @@
 "use client";
-// Kompakte Kachel (wie „Top 3 Chancen“): Name, Signalart, Abstand zur Zone, Einstieg/Stop/Ziel –
-// optional mit Mini-Chart (Elliott-Wellen, erwartete Richtung, Einstiegszone, alte Einstiege grau).
-// Antippen öffnet alle Details und die Möglichkeit, den Trade zu übernehmen.
+// Kompakte Kachel: Name, Signalart, Abstand zur Zone, Mini-Chart (Elliott-Wellen, Richtung, Zone, alte Einstiege grau),
+// Einstieg/Stop/Ziel. Bewusst ohne Texte – Begründung, Wellen-Beschreibung, Risiko-Hinweis und „worauf Blacktrader
+// wartet“ stehen in den Details (Antippen), dort auch „übernehmen“.
 import { money } from "@/lib/analysis/persona";
 import type { LiveStatus } from "@/lib/client/market";
 import { lastPrice, type ScanEntry } from "@/lib/client/scanner";
@@ -9,11 +9,9 @@ import type { ResolvedAsset } from "@/lib/types";
 import { COLOR_LABEL, signalStrength } from "./AssetCard";
 import { MiniChart } from "./MiniChart";
 import { StatusPill } from "./StatusPill";
-import { waveCaption } from "./waveText";
 
 const EDGE = { blau: "edge-core", gruen: "edge-trade", gelb: "edge-wait" } as const;
 const BADGE = { blau: "badge-core", gruen: "badge-trade", gelb: "badge-wait" } as const;
-const RISK_LIMIT = 15;
 
 export function EntryTile({ asset, entry, price, changePct, status, source, chart = false, onOpen }: { asset: ResolvedAsset; entry?: ScanEntry; price?: number; changePct?: number; status?: LiveStatus; source?: string; chart?: boolean; onOpen: () => void }) {
   const b = entry?.best;
@@ -22,7 +20,6 @@ export function EntryTile({ asset, entry, price, changePct, status, source, char
   const dist = b?.zoneTop != null && p != null ? (p <= b.zoneTop ? 0 : ((p - b.zoneTop) / p) * 100) : null;
   const blue = b?.color === "blau";
   const strength = b?.color === "gruen" ? signalStrength(b.res) : null;
-  const risk = b?.color === "gruen" && b.zoneTop && b.stop ? ((b.zoneTop - b.stop) / b.zoneTop) * 100 : 0;
 
   // Chart: Kerzen des aktuellen Einstiegs, Wellenzählung, Zone (grün/blau), alte Einstiege grau
   const view = (() => {
@@ -62,7 +59,6 @@ export function EntryTile({ asset, entry, price, changePct, status, source, char
       {chart && view && view.candles.length > 4 && (
         <div className="mt-2">
           <MiniChart candles={view.candles} plan={b?.color === "gruen" ? b.plan : null} best={view.best} longterm={lt} past={entry?.history.past ?? []} height={84} />
-          {!blue && waveCaption(view.best) && <p className="text-[12px] text-stone-400">{waveCaption(view.best)}</p>}
         </div>
       )}
 
@@ -81,10 +77,7 @@ export function EntryTile({ asset, entry, price, changePct, status, source, char
             {b.targets?.[0] != null ? money(b.targets[0], cur) : "–"}
           </span>
         </div>
-      ) : b ? (
-        <p className="mt-2 text-[14px] text-amber-100/90">{b.waitFor ?? b.reason}</p>
       ) : null}
-      {risk > RISK_LIMIT && <span className="badge-risk mt-2">Hohes Risiko · Stop −{risk.toFixed(0)} %</span>}
     </button>
   );
 }

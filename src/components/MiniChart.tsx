@@ -1,5 +1,5 @@
 "use client";
-// Kleiner SVG-Chart für Karten: Kursverlauf, Wellenzählung, Einstiegszone (gold), Stop (rot), Ziel (grün).
+// Kleiner SVG-Chart für Karten: Kursverlauf, Wellenzählung, Einstiegszone (grün bzw. blau), Stop (rot), Ziel (grün), alte Einstiege grau.
 import type { WaveCount } from "@/lib/analysis/elliott";
 import type { TradePlan } from "@/lib/analysis/score";
 import type { Candle } from "@/lib/types";
@@ -56,7 +56,7 @@ export function MiniChart({ candles, plan, best, height = 92, showWaves = true, 
       })}
       {plan && (
         <>
-          <rect x={lastX - 70} width={W - lastX + 70} y={Math.min(y(plan.zoneStart ?? plan.entry), y(plan.zoneEnd ?? plan.entry)) - 1} height={Math.max(3, Math.abs(y(plan.zoneStart ?? plan.entry) - y(plan.zoneEnd ?? plan.entry)) + 2)} fill="rgba(201,162,74,0.28)" rx="2" />
+          <rect x={lastX - 70} width={W - lastX + 70} y={Math.min(y(plan.zoneStart ?? plan.entry), y(plan.zoneEnd ?? plan.entry)) - 1} height={Math.max(3, Math.abs(y(plan.zoneStart ?? plan.entry) - y(plan.zoneEnd ?? plan.entry)) + 2)} fill="rgba(52,211,153,0.25)" stroke="rgba(52,211,153,0.75)" strokeWidth="1" rx="2" />
           <line x1={lastX - 70} x2={W} y1={y(plan.stop)} y2={y(plan.stop)} stroke="#f87171" strokeWidth="1.5" strokeDasharray="4 3" />
           <line x1={lastX - 70} x2={W} y1={y(plan.targets[0])} y2={y(plan.targets[0])} stroke="#34d399" strokeWidth="1.5" strokeDasharray="4 3" />
         </>
