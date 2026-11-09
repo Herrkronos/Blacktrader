@@ -8,7 +8,7 @@ import type { ResolvedAsset } from "../types";
 
 const INTERVAL_MS = { "5m": 300e3, "15m": 900e3, "1h": 3600e3, "4h": 14400e3, "1d": 86400e3, "1w": 604800e3, "1M": 2592000e3 } as const;
 
-type Asset = Pick<ResolvedAsset, "kind" | "symbol" | "name" | "binanceSymbol" | "yahooSymbol">;
+type Asset = Pick<ResolvedAsset, "kind" | "symbol" | "name" | "binanceSymbol" | "yahooSymbol" | "currency">;
 
 export function hasOpenTrade(symbol: string, horizon: AnalysisResult["horizon"]): boolean {
   return getData().trades.some((t) => t.status !== "closed" && t.symbol === symbol && t.horizon === horizon && t.strategy !== "core");
@@ -34,6 +34,7 @@ export function openPaperTrade(asset: Asset, res: AnalysisResult): boolean {
     kind: asset.kind,
     binanceSymbol: asset.binanceSymbol,
     yahooSymbol: asset.yahooSymbol,
+    currency: asset.currency,
     direction: plan.direction,
     horizon: res.horizon,
     interval: res.interval,

@@ -26,6 +26,8 @@ export interface AnalysisResult {
   decision: SignalDecision;
   plan: TradePlan | null;
   commentary: Commentary;
+  /** Währung des Werts (Anzeige in Euro wird daraus umgerechnet) */
+  currency?: string;
 }
 
 /** Zusätzliche, strengere Prüfungen (machen Einstiege nie leichter). */
@@ -184,7 +186,7 @@ export function analyze(input: AnalyzeInput): AnalysisResult | null {
       kind: input.kind,
       currency: input.currency,
     });
-    return { symbol: input.symbol, horizon: input.horizon, interval: input.interval, price, time: candles[candles.length - 1].time, elliott, fundamental, volume, total, weights, decision, plan: ok ? plan : null, commentary };
+    return { symbol: input.symbol, horizon: input.horizon, interval: input.interval, price, time: candles[candles.length - 1].time, elliott, fundamental, volume, total, weights, decision, plan: ok ? plan : null, commentary, currency: input.currency };
   }
   const plan = buildPlan(elliott.best, price, f.minStopAtr * atrNow);
   const extraVetoes: string[] = [];
@@ -238,5 +240,6 @@ export function analyze(input: AnalyzeInput): AnalysisResult | null {
     decision,
     plan,
     commentary,
+    currency: input.currency,
   };
 }

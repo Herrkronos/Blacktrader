@@ -1,7 +1,9 @@
 "use client";
 // Kerzenchart (TradingView lightweight-charts): Einstiegszonen wie bei HKCM als farbige Kästen (blau/grün, alte grau)
 // mit Stop und Ziel, Elliott-Wellen. Volumen, RSI, Fibonacci und Alternativzählung nur in der Expertenansicht.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { eurPerUnit, fxVersion, onFx } from "@/lib/fx";
+import { fmtPrice } from "@/lib/analysis/persona";
 import {
   CandlestickSeries,
   ColorType,
@@ -34,6 +36,8 @@ interface Props {
   /** Einstiege als Kästen: aktueller (blau/grün) und alte (grau) */
   entries?: ChartEntry[];
   fmt?: (n: number) => string;
+  /** Währung des Werts – die Preisachse zeigt Euro */
+  currency?: string;
 }
 
 const GOLD = "#C9A24A";
@@ -42,7 +46,7 @@ const VISIBLE = 160;
 const futureBars = (n: number) => Math.max(18, Math.round(Math.min(n, VISIBLE) * 0.35));
 const WINE = "#a32234";
 
-export function PriceChart({ candles, best, alternative, plan, showAlternative = true, height = 460, simple = false, entries = [], fmt = (n) => n.toFixed(2) }: Props) {
+export function PriceChart({ candles, best, alternative, plan, showAlternative = true, height = 460, simple = false, entries = [], fmt = (n) => n.toFixed(2), currency }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<{ candle: ISeriesApi<"Candlestick">; volume: ISeriesApi<"Histogram"> | null; rsi: ISeriesApi<"Line"> | null; wave: ISeriesApi<"Line">; alt: ISeriesApi<"Line"> } | null>(null);
@@ -50,6 +54,8 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
   const markersRef = useRef<ReturnType<typeof createSeriesMarkers<Time>> | null>(null);
   const linesRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
   const fittedRef = useRef<string>("");
+  const [fxV, setFxV] = useState(fxVersion());
+  useEffect(() => onFx(() => setFxV(fxVersion())), []);
 
   // Chart einmalig erzeugen
   useEffect(() => {
@@ -118,6 +124,14 @@ export function PriceChart({ candles, best, alternative, plan, showAlternative =
       chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - VISIBLE), to: n - 1 + extra });
     }
   }, [candles, simple]);
+
+  // Preisachse in Euro (umgerechnet zum aktuellen Wechselkurs)
+  useEffect(() => {
+    const c = chartRef.current;
+    if (!c) return;
+    const r = eurPerUnit(currency);
+    c.applyOptions({ localization: { locale: "de-DE", priceFormatter: (p: number) => fmtPrice(r != null ? p * r : p) } });
+  }, [currency, height, simple, fxV]);
 
   // Einstiege (Kästen)
   useEffect(() => {

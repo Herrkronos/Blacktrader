@@ -52,18 +52,18 @@ export function SignalCard({ a, onTrade, shortAllowed = true }: { a: AnalysisRes
             <>
               <dt className="text-stone-400">{a.plan.direction === "long" ? "Kaufzone" : "Verkaufszone"}</dt>
               <dd className="num">
-                {fmtPrice(a.plan.zoneStart)} – {fmtPrice(a.plan.zoneEnd!)}
+                {money(a.plan.zoneStart, a.currency)} – {money(a.plan.zoneEnd!, a.currency)}
               </dd>
             </>
           )}
           <dt className="text-stone-400">Einstieg</dt>
           <dd className="num">
-            {fmtPrice(a.plan.entry)} {a.plan.orderType === "limit" ? <span className="text-xs text-amber-300">(wartet, bis der Kurs dort ist)</span> : a.plan.orderType === "market" ? <span className="text-xs text-emerald-300">(jetzt in der Zone)</span> : null}
+            {money(a.plan.entry, a.currency)} {a.plan.orderType === "limit" ? <span className="text-xs text-amber-300">(wartet, bis der Kurs dort ist)</span> : a.plan.orderType === "market" ? <span className="text-xs text-emerald-300">(jetzt in der Zone)</span> : null}
           </dd>
           <dt className="text-stone-400">{expert ? "Stop-Loss" : "Stop (Verlustgrenze)"}</dt>
-          <dd className="num text-down">{fmtPrice(a.plan.stop)}</dd>
+          <dd className="num text-down">{money(a.plan.stop, a.currency)}</dd>
           <dt className="text-stone-400">Kursziele</dt>
-          <dd className="num text-up">{a.plan.targets.map(fmtPrice).join(" / ")}</dd>
+          <dd className="num text-up">{a.plan.targets.map((x) => money(x, a.currency)).join(" / ")}</dd>
           <dt className="text-stone-400">{expert ? "CRV" : "Chance : Risiko"}</dt>
           <dd className={`num ${a.plan.riskReward >= 1.5 ? "text-up" : "text-down"}`}>{a.plan.riskReward.toFixed(2)} : 1</dd>
         </dl>
@@ -141,7 +141,7 @@ export function Commentary({ a, item }: { a: AnalysisResult; item: { symbol: str
   );
 }
 
-function CountBlock({ c, title }: { c: WaveCount; title: string }) {
+function CountBlock({ c, title, currency }: { c: WaveCount; title: string; currency?: string }) {
   return (
     <div className="rounded-lg border border-gold/15 bg-black/30 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -166,7 +166,7 @@ function CountBlock({ c, title }: { c: WaveCount; title: string }) {
       <div className="mt-2 flex flex-wrap gap-1">
         {c.levels.map((l) => (
           <span key={l.label + l.price} className={`chip ${l.kind === "invalidation" ? "border-wine-light/50 text-red-300" : l.kind === "target" ? "border-gold/40 text-gold-light" : "border-stone-600 text-stone-400"}`}>
-            {l.label}: {fmtPrice(l.price)}
+            {l.label}: {money(l.price, currency)}
           </span>
         ))}
       </div>
@@ -183,8 +183,8 @@ export function WavePanel({ a }: { a: AnalysisResult }) {
         <span className="text-xs text-stone-400">Score {a.elliott.score} · Konfidenz {Math.round(a.elliott.confidence * 100)} %</span>
       </div>
       {!best && <p className="text-sm text-stone-400">Keine regelkonforme Zählung gefunden.</p>}
-      {best && <CountBlock c={best} title="Primärzählung" />}
-      {alternative && <CountBlock c={alternative} title="Alternative" />}
+      {best && <CountBlock currency={a.currency} c={best} title="Primärzählung" />}
+      {alternative && <CountBlock currency={a.currency} c={alternative} title="Alternative" />}
       {a.elliott.contested && <p className="text-xs text-amber-300">Achtung: Primär- und Alternativzählung zeigen in entgegengesetzte Richtungen und sind fast gleichwertig.</p>}
       {counts.length > 2 && (
         <details className="text-xs text-stone-400">
@@ -350,13 +350,13 @@ export function VolumePanel({ a }: { a: AnalysisResult }) {
       </ul>
       {data.length > 0 && (
         <>
-          <div className="mb-1 text-[13px] text-stone-400">Volume Profile (POC {fmtPrice(v.profile!.poc)})</div>
+          <div className="mb-1 text-[13px] text-stone-400">Volume Profile (POC {money(v.profile!.poc, a.currency)})</div>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} layout="vertical" margin={{ left: 4, right: 8, top: 0, bottom: 0 }} barCategoryGap={1}>
                 <XAxis type="number" hide />
-                <YAxis type="category" dataKey="price" width={64} tick={{ fill: "#8f887a", fontSize: 13 }} tickFormatter={(x: number) => fmtPrice(x)} interval={2} />
-                <Tooltip cursor={{ fill: "rgba(201,162,74,0.08)" }} contentStyle={{ background: "#0b0b0b", border: "1px solid rgba(201,162,74,0.3)", fontSize: 12 }} formatter={(x) => [`${x} %`, "Volumenanteil"]} labelFormatter={(l) => fmtPrice(Number(l))} />
+                <YAxis type="category" dataKey="price" width={64} tick={{ fill: "#8f887a", fontSize: 13 }} tickFormatter={(x: number) => money(x, a.currency)} interval={2} />
+                <Tooltip cursor={{ fill: "rgba(201,162,74,0.08)" }} contentStyle={{ background: "#0b0b0b", border: "1px solid rgba(201,162,74,0.3)", fontSize: 12 }} formatter={(x) => [`${x} %`, "Volumenanteil"]} labelFormatter={(l) => money(Number(l), a.currency)} />
                 <ReferenceLine y={data.reduce((best, d) => (d.share > best.share ? d : best), data[0]).price} stroke="#C9A24A" strokeDasharray="3 3" />
                 <Bar dataKey="share" isAnimationActive={false}>
                   {data.map((d) => (

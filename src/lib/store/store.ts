@@ -4,6 +4,7 @@ import { clampWeights, validateWeights } from "../analysis/params";
 import { useRef, useSyncExternalStore } from "react";
 import { DEFAULT_WEIGHTS, type SignalLevel, type Weights } from "../analysis/score";
 import { HORIZON_DEFAULT_INTERVAL, type Horizon, type Interval, type ResolvedAsset } from "../types";
+import { eurPerUnit } from "../fx";
 
 export interface WatchItem extends ResolvedAsset {
   id: string;
@@ -66,6 +67,11 @@ export interface Trade {
   /** Herkunft unklar (vor dem Update angelegt) – Nutzer entscheidet einmalig */
   unverified?: boolean;
   returnPct?: number;
+  /** Währung des Werts (für die Umrechnung in Euro) */
+  currency?: string;
+  /** Wert von 1 Einheit der Währung in Euro beim Kauf bzw. Verkauf */
+  fxEntry?: number;
+  fxExit?: number;
   /** Hochstufung GRÜN → BLAU (Blacktrader): Zeitpunkt und Grund */
   promotedAt?: number;
   promoteReason?: string;
@@ -315,7 +321,9 @@ export const actions = {
   },
   /** Nur für selbst übernommene Trades (source = manual). */
   addTrade(t: Omit<Trade, "id" | "status"> & { status?: Trade["status"] }) {
-    update((d) => ({ ...d, trades: [...d.trades, { ...t, id: uid(), status: t.status ?? "open", source: "manual" }] }));
+    // Wechselkurs beim Kauf merken – Ergebnisse werden in Euro gerechnet
+    const fxEntry = t.fxEntry ?? eurPerUnit(t.currency ?? null) ?? undefined;
+    update((d) => ({ ...d, trades: [...d.trades, { ...t, fxEntry, id: uid(), status: t.status ?? "open", source: "manual" }] }));
   },
   updateTrade(id: string, patch: Partial<Trade>) {
     update((d) => ({ ...d, trades: d.trades.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));

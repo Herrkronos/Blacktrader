@@ -8,7 +8,8 @@ import { useAssetSheet } from "@/components/AssetSheet";
 import { EquityChart } from "@/components/EquityChart";
 import { IconChevron } from "@/components/Icons";
 import { money } from "@/lib/analysis/persona";
-import { performance, tradeReturnPct } from "@/lib/analysis/stats";
+import { performance } from "@/lib/analysis/stats";
+import { tradeReturnEur } from "@/lib/client/eur";
 import { instrumentKey, useMarket } from "@/lib/client/market";
 import { bestDistance, runScan, useScan } from "@/lib/client/scanner";
 import { useAppData } from "@/lib/store/store";
@@ -50,7 +51,7 @@ export default function Uebersicht() {
     .filter((t) => t.status === "open")
     .map((t) => {
       const p = live[instrumentKey(t)]?.price ?? t.lastPrice;
-      return p ? tradeReturnPct(t.direction, t.entry, p) : null;
+      return p ? tradeReturnEur(t, p) : null;
     })
     .filter((x): x is number => x != null);
 
@@ -102,7 +103,7 @@ export default function Uebersicht() {
           <div className="card divide-y divide-white/5">
             {openTrades.slice(0, 6).map((t) => {
               const p = live[instrumentKey(t)]?.price ?? t.lastPrice;
-              const r = t.status === "open" && p ? tradeReturnPct(t.direction, t.entry, p) : null;
+              const r = t.status === "open" && p ? tradeReturnEur(t, p) : null;
               const edge = t.strategy === "core" || t.strategy === "longterm" || t.promotedAt ? "edge-core" : t.direction === "long" ? "edge-trade" : "edge-short";
               return (
                 <div key={t.id} className={`flex min-h-[56px] items-center justify-between gap-3 rounded-none px-4 py-2.5 ${edge}`}>

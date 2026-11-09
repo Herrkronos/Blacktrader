@@ -9,7 +9,10 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { analyze, type AnalysisResult } from "../analysis/analyze";
 import { SIGNAL_LABEL } from "../analysis/score";
 import { tradeReturnPct } from "../analysis/stats";
-import { fmtPrice } from "../analysis/persona";
+import { fmtPrice, money } from "../analysis/persona";
+import { tradeCurrency, tradeReturnEur } from "./eur";
+import { eurPerUnit, onFx } from "../fx";
+import { refreshFx } from "./fx";
 import { actions, getData, useAppData, type Trade, type WatchItem } from "../store/store";
 import type { Candle, Fundamentals, Horizon, Interval, NewsItem, ResolvedAsset } from "../types";
 import { notify } from "./alerts";
@@ -112,6 +115,18 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     return () => {
       clearTimeout(first);
       clearInterval(timer);
+    };
+  }, []);
+
+  // Wechselkurse (Euro-Anzeige) beim Start und alle 30 Minuten
+  const [, setFxTick] = useState(0);
+  useEffect(() => {
+    const off = onFx(() => setFxTick((x) => x + 1));
+    void refreshFx();
+    const t = setInterval(() => void refreshFx(), 30 * 60e3);
+    return () => {
+      off();
+      clearInterval(t);
     };
   }, []);
 
@@ -299,9 +314,9 @@ function closeOnWave5End(symbol: string, horizon: Horizon, candles: Candle[]) {
     const r = rsi(candles.map((c) => c.close));
     if (!exhaustionAt(candles, r, candles.length - 1, dir)) continue;
     const exit = candles[candles.length - 1].close;
-    const returnPct = tradeReturnPct(t.direction, t.entry, exit);
-    actions.updateTrade(t.id, { status: "closed", exit, closedAt: Date.now(), closeReason: "welle5", returnPct, lastPrice: exit });
-    notify(`Gewinn gesichert: ${t.symbol}`, `Welle 5 läuft aus (RSI wird schwächer) – Trade bei ${fmtPrice(exit)} geschlossen · ${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(2)} %`, { sound: d.settings.sound, notifications: d.settings.notifications, kind: "info" });
+    const returnPct = tradeReturnEur(t, exit);
+    actions.updateTrade(t.id, { status: "closed", exit, closedAt: Date.now(), closeReason: "welle5", returnPct, fxExit: eurPerUnit(tradeCurrency(t)) ?? undefined, lastPrice: exit });
+    notify(`Gewinn gesichert: ${t.symbol}`, `Welle 5 läuft aus (RSI wird schwächer) – Trade bei ${money(exit, tradeCurrency(t))} geschlossen · ${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(2)} %`, { sound: d.settings.sound, notifications: d.settings.notifications, kind: "info" });
   }
 }
 
@@ -335,7 +350,7 @@ function trackTrades(trades: Trade[], live: Record<string, LiveState>) {
       // Wartende Limit-Order: Einstieg bei Erreichen der Zone, sonst verfallen lassen
       if ((price - t.entry) * dir <= 0) {
         actions.updateTrade(t.id, { status: "open", entry: dir === 1 ? Math.min(t.entry, price) : Math.max(t.entry, price), openedAt: Date.now(), lastPrice: price });
-        notify(`Einstieg ausgeführt: ${t.symbol}`, `Der Kurs hat die ${dir === 1 ? "Kaufzone" : "Verkaufszone"} erreicht – Papier-Trade bei ${fmtPrice(price)} eröffnet.`, {
+        notify(`Einstieg ausgeführt: ${t.symbol}`, `Der Kurs hat die ${dir === 1 ? "Kaufzone" : "Verkaufszone"} erreicht – Papier-Trade bei ${money(price, tradeCurrency(t))} eröffnet.`, {
           sound: s.sound,
           notifications: s.notifications,
           kind: dir === 1 ? "buy" : "sell",
@@ -359,7 +374,7 @@ function trackTrades(trades: Trade[], live: Record<string, LiveState>) {
       if (!trailing && (price - sortedTargets[0]) * dir >= 0) {
         trailing = true;
         stop = dir === 1 ? Math.max(stop, t.entry) : Math.min(stop, t.entry);
-        notify(`Ziel 1 erreicht: ${t.symbol}`, `Stop auf Einstieg ${fmtPrice(t.entry)} gezogen – der Trade läuft jetzt ohne Verlustrisiko weiter.`, { sound: s.sound, notifications: s.notifications, kind: "info" });
+        notify(`Ziel 1 erreicht: ${t.symbol}`, `Stop auf Einstieg ${money(t.entry, tradeCurrency(t))} gezogen – der Trade läuft jetzt ohne Verlustrisiko weiter.`, { sound: s.sound, notifications: s.notifications, kind: "info" });
       }
       if (trailing) {
         const trail = price - dir * t.trailDistance;
@@ -378,11 +393,11 @@ function trackTrades(trades: Trade[], live: Record<string, LiveState>) {
       exit = price;
     }
     if (closeReason) {
-      const returnPct = tradeReturnPct(t.direction, t.entry, exit);
-      actions.updateTrade(t.id, { status: "closed", exit, closedAt: Date.now(), closeReason, returnPct, lastPrice: price });
+      const returnPct = tradeReturnEur(t, exit);
+      actions.updateTrade(t.id, { status: "closed", exit, closedAt: Date.now(), closeReason, returnPct, fxExit: eurPerUnit(tradeCurrency(t)) ?? undefined, lastPrice: price });
       notify(
         `Trade geschlossen: ${t.symbol}`,
-        `${closeReason === "target" ? "Kursziel erreicht" : "Stop-Loss ausgelöst"} bei ${fmtPrice(exit)} · ${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(2)} %`,
+        `${closeReason === "target" ? "Kursziel erreicht" : "Stop-Loss ausgelöst"} bei ${money(exit, tradeCurrency(t))} · ${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(2)} %`,
         { sound: s.sound, notifications: s.notifications, kind: closeReason === "target" ? "buy" : "sell" },
       );
     } else if (!lastTradeWrite[t.id] || Date.now() - lastTradeWrite[t.id] > 30e3) {

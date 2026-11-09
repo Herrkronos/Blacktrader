@@ -5,6 +5,7 @@ import type { FundamentalResult } from "./fundamental";
 import { SIGNAL_LABEL, type SignalDecision, type TradePlan } from "./score";
 import type { VolumeRsiResult } from "./volume";
 import type { NewsItem } from "../types";
+import { toEur } from "../fx";
 
 export interface Commentary {
   /** Kurzfassung in Alltagssprache, z. B. „Einstieg bei 12,50 € · Stop bei 10,00 €“ */
@@ -38,8 +39,15 @@ const pct = (x: number) => `${Math.round(x * 100)} %`;
 
 const CURRENCY_SIGN: Record<string, string> = { EUR: "€", USD: "$", USDT: "$", USDC: "$", GBP: "£", GBp: "Pence", CHF: "CHF", JPY: "¥" };
 
-/** Preis mit Währungszeichen, z. B. „12,50 €“. */
+/**
+ * Preis in Euro, z. B. „12,50 €“. Werte in Dollar (oder anderer Währung) werden zum aktuellen Wechselkurs umgerechnet.
+ * Ist (noch) kein Kurs bekannt, bleibt die Originalwährung stehen.
+ */
 export function money(x: number, currency?: string): string {
+  if (currency && currency !== "EUR") {
+    const eur = toEur(x, currency);
+    if (eur != null) return `${fmtPrice(eur)} €`;
+  }
   const sign = currency ? CURRENCY_SIGN[currency] ?? currency : "";
   return sign ? `${fmtPrice(x)} ${sign}` : fmtPrice(x);
 }

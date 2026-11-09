@@ -191,6 +191,7 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
             height={typeof window !== "undefined" && window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches ? Math.max(240, window.innerHeight - 110) : 360}
             entries={chartEntries}
             fmt={fmtPrice}
+            currency={currency}
           />
         )}
         <p className="px-2 pb-1.5 text-[13px] text-stone-400">

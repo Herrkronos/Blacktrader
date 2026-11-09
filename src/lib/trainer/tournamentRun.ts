@@ -36,6 +36,8 @@ export interface Prepared {
   from: number;
   priceAt: (sym: string, t: number) => number | null;
   techWeakAt: (t: number) => boolean;
+  /** Trades in Euro umrechnen (Wechselkurs am Kauf- und Verkaufstag) */
+  toEur: (pool: PoolTrade[]) => PoolTrade[];
   /** Marktlage des S&P 500 zum Zeitpunkt t */
   regimeAt: (t: number) => "bullisch" | "neutral" | "baerisch" | null;
   bots: ContestantResult[];
@@ -57,8 +59,8 @@ export async function prepareTournament(io: TournamentIO, span: [number, number]
     specs.set(symbol, { kind: e.kind, daily: { symbol, kind: e.kind, horizon: "medium", interval: "1d", days: DAYS, step: 1 }, weekly: { symbol, kind: e.kind, horizon: "long", interval: "1w", days: DAYS, step: 1 } });
   }
   const idx = (symbol: string): SeriesSpec => ({ symbol, kind: "stock", horizon: "medium", interval: "1d", days: DAYS, step: 1 });
-  P(0, "Kursdaten laden: S&P 500 und NASDAQ 100");
-  const [spx, ndx] = await Promise.all([io.load(idx("^GSPC")), io.load(idx("^NDX"))]);
+  P(0, "Kursdaten laden: S&P 500, NASDAQ 100 und Euro/Dollar");
+  const [spx, ndx, eurusd] = await Promise.all([io.load(idx("^GSPC")), io.load(idx("^NDX")), io.load(idx("EURUSD=X"))]);
   if (!spx || spx.length < 1600) return null;
   const ndxCl = (ndx ?? []).map((c) => c.close);
   const techWeakAt = (t: number) => {
@@ -84,9 +86,9 @@ export async function prepareTournament(io: TournamentIO, span: [number, number]
   const windows = makeWindows(spx, from);
   if (!windows.length) return null;
   const bySym = new Map(assets.map((a) => [a.symbol, a.daily]));
-  const priceAt = (sym: string, t: number) => {
-    const c = bySym.get(sym);
-    if (!c?.length || c[0].time > t) return null;
+  const closeAt = (c: Candle[] | null | undefined, t: number) => {
+    if (!c?.length) return null;
+    if (c[0].time > t) return c[0].close;
     let lo = 0;
     let hi = c.length - 1;
     while (lo < hi) {
@@ -96,6 +98,20 @@ export async function prepareTournament(io: TournamentIO, span: [number, number]
     }
     return c[lo].close;
   };
+  // Alles in Euro: Werte außerhalb des Euro-Raums (US-Aktien, Krypto, Rohstoffe) mit dem Euro/Dollar-Kurs des Tages
+  const EUR_SUFFIX = [".DE", ".F", ".VI", ".PA", ".AS", ".MI", ".MC", ".BR"];
+  const inEur = (sym: string) => EUR_SUFFIX.some((x) => sym.toUpperCase().endsWith(x));
+  const eurPer = (sym: string, t: number) => {
+    if (inEur(sym)) return 1;
+    const r = closeAt(eurusd, t);
+    return r && r > 0 ? 1 / r : 1;
+  };
+  const toEur = (pool: PoolTrade[]): PoolTrade[] =>
+    pool.map((p) => ({ ...p, r: ((1 + p.r / 100) * (eurPer(p.sym, p.exit) / eurPer(p.sym, p.entry)) - 1) * 100, px: p.px != null ? p.px * eurPer(p.sym, p.entry) : p.px }));
+  const priceAt = (sym: string, t: number) => {
+    const c = closeAt(bySym.get(sym), t);
+    return c == null ? null : c * eurPer(sym, t);
+  };
   const data: Series[] = assets.map((a) => ({ symbol: a.symbol, candles: a.daily }));
   const bots: ContestantResult[] = [];
   for (let k = 0; k < OPPONENTS.length; k++) {
@@ -103,13 +119,13 @@ export async function prepareTournament(io: TournamentIO, span: [number, number]
     const o = OPPONENTS[k];
     P(0.6 + (0.4 * k) / OPPONENTS.length, `${o.name} handelt`);
     await tick();
-    const pool = o.build(data).filter((t) => t.entry >= from);
+    const pool = toEur(o.build(data).filter((t) => t.entry >= from));
     bots.push(summarizeRuns(o.id, o.name, o.desc, windows.map((w) => ({ w, r: runWindow(pool, w, priceAt) }))));
   }
   const cnt: Partial<Record<Scenario, number>> = {};
   for (const w of windows) cnt[w.scenario] = (cnt[w.scenario] ?? 0) + 1;
-  const note = `${assets.length} Werte (Aktien, Krypto, Rohstoffe), Daten ab ${new Date(from * 1000).toLocaleDateString("de-DE")}, ${windows.length} Zeiträume à 5 Jahre (${SCENARIOS.filter((s) => cnt[s]).map((s) => `${cnt[s]}× ${s === "baerisch" ? "bärisch" : s}`).join(", ")}). Rohstoffe kurzfristig (Stundenkerzen) sind nicht enthalten.`;
-  return { assets, windows, from, priceAt, techWeakAt, regimeAt: regimeIndex(spx), bots, note };
+  const note = `Alle Beträge in Euro (Wechselkurs am Kauf- und Verkaufstag${eurusd?.length ? "" : " – Euro/Dollar-Kurs nicht erreichbar, ohne Umrechnung"}). ${assets.length} Werte (Aktien, Krypto, Rohstoffe), Daten ab ${new Date(from * 1000).toLocaleDateString("de-DE")}, ${windows.length} Zeiträume à 5 Jahre (${SCENARIOS.filter((s) => cnt[s]).map((s) => `${cnt[s]}× ${s === "baerisch" ? "bärisch" : s}`).join(", ")}). Rohstoffe kurzfristig (Stundenkerzen) sind nicht enthalten.`;
+  return { assets, windows, from, priceAt, techWeakAt, toEur, regimeAt: regimeIndex(spx), bots, note };
 }
 
 /** Alle Trades von Blacktrader mit einem Parameter-Stand (grün/rot: Tag + Woche; blau: Langfrist-Bereich). */
@@ -139,7 +155,7 @@ export async function blacktraderPool(prep: Prepared, params: Params, io: Tourna
     }
     await tick();
   }
-  return out;
+  return prep.toEur(out);
 }
 
 /** Versuche einer Runde (Runde b spielt die Zeiträume b, b+5, b+10, … – so ist jede Runde gemischt). */

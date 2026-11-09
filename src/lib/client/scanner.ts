@@ -9,6 +9,7 @@ import { findLongTermZone, type LongTermZone } from "../analysis/longterm";
 import { HORIZON_RANK, longTermOutcome, marketContext, pickBestEntry, type BestEntry, type HistEntry, type MarketContext } from "../analysis/bestEntry";
 import { money } from "../analysis/persona";
 import { applyPromotions } from "./promote";
+import { refreshFx } from "./fx";
 import { assetKey, closeEntry, doneFor, getHistory, recordEntry, type EntryHistory } from "./entries";
 import { getData } from "../store/store";
 import type { Candle, Horizon, ResolvedAsset } from "../types";
@@ -89,7 +90,8 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   const assets = scanAssets();
   emit({ busy: true, progress: 0 });
   await Promise.race([refreshTrainerParams(), new Promise((r) => setTimeout(r, 3000))]);
-  const ctx = await fetchMarketContext();
+  // Wechselkurse zuerst – alle Beträge werden in Euro angezeigt
+  const [ctx] = await Promise.all([fetchMarketContext(), Promise.race([refreshFx(), new Promise((r) => setTimeout(r, 4000))])]);
   // Nur die Zeiträume, die ein Signal liefern dürfen oder für den blauen Bereich gebraucht werden
   const horizonsFor = (kind: ResolvedAsset["kind"]): Horizon[] => (["short", "medium", "long"] as Horizon[]).filter((h) => h !== "short" || (kind === "commodity" && ctx.spBull === true && HORIZON_RANK.commodity.includes("short")));
   const jobs = assets.flatMap((asset) => horizonsFor(asset.kind).map((horizon) => ({ asset, horizon })));

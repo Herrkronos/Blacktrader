@@ -169,6 +169,13 @@ Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen neun Analys
 
 **Speicher Lernstände:** je Zelle eigener Schlüssel (`trainer:aktien:mittel` …) mit Sperre auf dem Server (Upstash/Vercel KV) **und** sofort eine lokale Kopie; der jüngere Stand gewinnt.
 
+## 4.3 Alles in Euro
+
+- **Anzeige:** Kurse, Zonen, Stops, Ziele, Begründungen, Nachrichten und die Preisachse im Chart werden für Werte in Dollar (bzw. GBP/CHF) zum aktuellen Wechselkurs in Euro umgerechnet (`src/lib/fx.ts`, Kurse EUR/USD, EUR/GBP, EUR/CHF von Yahoo, alle 30 Minuten, auf dem Gerät zwischengespeichert).
+- **Depot:** Beim Kauf wird der Wechselkurs gemerkt (`fxEntry`), beim Verkauf ebenso (`fxExit`). Die Rendite ist die Rendite in Euro: Kursrendite × Wechselkursänderung. Ältere Trades ohne gemerkten Kurs zeigen die Kursrendite. Manuelles Schließen: Ausstiegskurs in Euro.
+- **Turnier:** jeder Trade mit dem Euro/Dollar-Kurs am Kauf- und Verkaufstag; offene Positionen am Ende ebenso.
+- **Die Wellenzählung** läuft weiter auf dem Originalkurs der Börse (z. B. Apple in $) – wie bei HKCM und allen Elliott-Analysten; ein umgerechneter Chart würde die Wellen durch Wechselkurs-Schwankungen verfälschen.
+
 ## 5. Datenquellen
 
 | Zweck | Quelle |
@@ -236,5 +243,5 @@ const entry = pickBestEntry({ symbol: "AAPL", kind: "stock", views, lt: findLong
 
 Chronologischer Test Sep 2022 – Nov 2026, 5.000 € Startkapital, nach 27,5 % KESt (Österreich): Blacktrader mit Sektor-Regel 9.859 € (+97,2 %), ohne Sektor-Regel 9.155 € (+83,1 %), Zufall 8.483 € (+69,7 %), S&P 500 Kaufen-und-Halten 8.103 € (+62,1 %), KI 7.725 € (+54,5 %), RSI 7.359 € (+47,2 %), Trendfolger 6.631 € (+32,6 %).
 
-Turnier (10 Teilnehmer, 50 Versuche à 5 Jahre, KESt sofort je Gewinn, Standard-Einstellung, Ø pro Jahr): 1. MACD-Bot +20,9 % · **2. Blacktrader +19,8 %** (Ø 169 Trades, Ø Gewinn nach KESt 8.134 €, Platz 1 bei bullischen Märkten) · 3. Kaufen & Halten +18,0 % · 4. Trendfolger +16,9 % · 5. Ausbruchs-Bot +16,7 % · 6. Momentum-Bot +15,7 % · 7. Zufalls-Bot +9,8 % · 8. KI-Bot +8,3 % · 9. RSI-Bot +3,9 % · 10. Bollinger-Bot −1,0 %. Niemand ist ausgeschieden. Blacktrader getrennt: Grün +20,5 %, Blau +5,8 %, Rot (Shorts nur bei bärischem Markt) −5,4 % pro Jahr – zusammen besser als ohne Shorts (+18,9 %).
+Turnier in Euro (10 Teilnehmer, 50 Versuche à 5 Jahre, KESt sofort je Gewinn, Standard-Einstellung, Ø pro Jahr): **1. Blacktrader +21,8 %** (Ø 176 Trades, Ø Gewinn nach KESt 9.293 €) · 2. MACD-Bot +20,9 % · 3. Kaufen & Halten +19,4 % · 4. Trendfolger +16,8 % · 5. Ausbruchs-Bot +16,7 % · 6. Momentum-Bot +16,1 % · 7. Zufalls-Bot +10,6 % · 8. KI-Bot +8,4 % · 9. RSI-Bot +4,0 % · 10. Bollinger-Bot −0,3 %. Niemand ist ausgeschieden. Hinweis: Der Euro fiel im Zeitraum von 1,38 auf 1,12 Dollar – Dollar-Werte bekamen dadurch Rückenwind, am meisten bei langen Haltedauern.
 **Ehrlicher Hinweis:** überwiegend steigende Märkte; der Vorsprung vor Zufall ist im chronologischen Test klein. Bei Krypto ist der Gewinnfaktor trotz höherer Quote schwach.

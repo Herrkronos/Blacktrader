@@ -3,7 +3,8 @@
 // Bestätigt der Wochenchart (langfristiger Zeitraum) den Aufwärtstrend, wird der Trade blau; Stop und Ziel werden nach der
 // Wellenstruktur nachgezogen. Der Stop wird NUR angehoben, nie zurückgesetzt.
 import { checkPromotion } from "../analysis/promotion";
-import { fmtPrice } from "../analysis/persona";
+import { tradeCurrency } from "./eur";
+import { money } from "../analysis/persona";
 import { actions, getData } from "../store/store";
 import { notify } from "./alerts";
 import type { ScanEntry } from "./scanner";
@@ -22,10 +23,10 @@ export function applyPromotions(entries: ScanEntry[]) {
     if (!p) continue;
     if (!t.promotedAt) {
       actions.updateTrade(t.id, { promotedAt: Date.now(), promoteReason: p.reason, stop: p.stop, targets: p.targets, initialStop: t.initialStop ?? t.stop });
-      notify(`Hochgestuft zu Blau: ${t.symbol}`, `${p.reason} Stop jetzt ${fmtPrice(p.stop)}.`, { sound: d.settings.sound, notifications: d.settings.notifications, kind: "info" });
+      notify(`Hochgestuft zu Blau: ${t.symbol}`, `${p.reason} Stop jetzt ${money(p.stop, tradeCurrency(t))}.`, { sound: d.settings.sound, notifications: d.settings.notifications, kind: "info" });
     } else if (p.stop > t.stop) {
       actions.updateTrade(t.id, { stop: p.stop });
-      notify(`Stop nachgezogen: ${t.symbol}`, `Neues Korrekturtief bestätigt – Stop auf ${fmtPrice(p.stop)} angehoben.`, { sound: d.settings.sound, notifications: d.settings.notifications, kind: "info" });
+      notify(`Stop nachgezogen: ${t.symbol}`, `Neues Korrekturtief bestätigt – Stop auf ${money(p.stop, tradeCurrency(t))} angehoben.`, { sound: d.settings.sound, notifications: d.settings.notifications, kind: "info" });
     }
   }
 }

@@ -3,7 +3,7 @@
 // sie können nicht angepasst werden, und ohne Signal gibt es keinen Trade.
 import { useState } from "react";
 import type { AnalysisResult } from "@/lib/analysis/analyze";
-import { fmtPrice } from "@/lib/analysis/persona";
+import { money } from "@/lib/analysis/persona";
 import { hasOpenTrade, openPaperTrade } from "@/lib/client/autotrade";
 import type { WatchItem } from "@/lib/store/store";
 import { HORIZON_LABEL } from "@/lib/types";
@@ -40,16 +40,16 @@ export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; anal
                 <>
                   <dt className="text-stone-400">{plan.direction === "long" ? "Kaufzone" : "Verkaufszone"}</dt>
                   <dd className="num">
-                    {fmtPrice(plan.zoneStart)} – {fmtPrice(plan.zoneEnd!)}
+                    {money(plan.zoneStart, item.currency)} – {money(plan.zoneEnd!, item.currency)}
                   </dd>
                 </>
               )}
               <dt className="text-stone-400">Einstieg</dt>
-              <dd className="num">{fmtPrice(plan.entry)}</dd>
+              <dd className="num">{money(plan.entry, item.currency)}</dd>
               <dt className="text-stone-400">Stop (Verlustgrenze)</dt>
-              <dd className="num text-down">{fmtPrice(plan.stop)}</dd>
+              <dd className="num text-down">{money(plan.stop, item.currency)}</dd>
               <dt className="text-stone-400">Kursziele</dt>
-              <dd className="num text-up">{plan.targets.map(fmtPrice).join(" / ")}</dd>
+              <dd className="num text-up">{plan.targets.map((x) => money(x, item.currency)).join(" / ")}</dd>
               <dt className="text-stone-400">Chance : Risiko</dt>
               <dd className="num">{plan.riskReward.toFixed(2)} : 1</dd>
             </dl>
@@ -57,7 +57,7 @@ export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; anal
             {c.risk && <p className="mt-1 text-xs text-stone-400">{c.risk}</p>}
             {plan.orderType === "limit" && (
               <p className="mt-2 rounded-lg border border-amber-500/40 bg-amber-900/20 p-2 text-xs text-amber-100">
-                Wartende Order: Der Trade startet erst, wenn der Kurs {fmtPrice(plan.entry)} erreicht. Läuft der Kurs vorher über {fmtPrice(plan.cancelAbove ?? plan.entry)} oder passiert 60 Kerzen lang nichts, verfällt sie.
+                Wartende Order: Der Trade startet erst, wenn der Kurs {money(plan.entry, item.currency)} erreicht. Läuft der Kurs vorher über {money(plan.cancelAbove ?? plan.entry, item.currency)} oder passiert 60 Kerzen lang nichts, verfällt sie.
               </p>
             )}
             <p className="mt-3 text-[13px] text-stone-500">Einstieg, Stop und Ziele sind von Blacktrader festgelegt und werden unverändert übernommen.</p>

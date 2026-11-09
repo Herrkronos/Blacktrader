@@ -5,8 +5,10 @@ import { useMemo, useRef, useState } from "react";
 import { EquityChart } from "@/components/EquityChart";
 import { Legend } from "@/components/Legend";
 import { Sheet } from "@/components/Sheet";
+import { tradeCurrency, tradeReturnEur } from "@/lib/client/eur";
 import { money } from "@/lib/analysis/persona";
-import { performance, tradeReturnPct } from "@/lib/analysis/stats";
+import { performance } from "@/lib/analysis/stats";
+import { eurPerUnit } from "@/lib/fx";
 import { instrumentKey, useMarket } from "@/lib/client/market";
 import { actions, useAppData, type Trade } from "@/lib/store/store";
 import { HORIZON_LABEL } from "@/lib/types";
@@ -40,7 +42,7 @@ function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction:
   const edge = isLt ? "edge-core" : t.direction === "long" ? "edge-trade" : "edge-short";
   const kind = t.promotedAt ? <span className="badge-core">Blau (hochgestuft)</span> : t.strategy === "longterm" || t.strategy === "core" ? <span className="badge-core">Langfristig</span> : t.direction === "long" ? <span className="badge-trade">Trade</span> : <span className="badge-short">Short</span>;
   const cur = t.status === "closed" ? t.exit : price ?? t.lastPrice;
-  const ret = t.status === "closed" ? t.returnPct : t.status === "open" && cur ? tradeReturnPct(t.direction, t.entry, cur) : undefined;
+  const ret = t.status === "closed" ? t.returnPct : t.status === "open" && cur ? tradeReturnEur(t, cur) : undefined;
   const st = statusText(t);
   return (
     <div className="relative">
@@ -81,15 +83,15 @@ function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction:
         <div className="num mt-2 grid grid-cols-3 gap-2 text-[14px]">
           <span>
             <span className="label block">Einstieg</span>
-            {money(t.entry)}
+            {money(t.entry, tradeCurrency(t))}
           </span>
           <span>
             <span className="label block">{t.status === "closed" ? "Ausstieg" : "Kurs"}</span>
-            {cur != null ? money(cur) : "–"}
+            {cur != null ? money(cur, tradeCurrency(t)) : "–"}
           </span>
           <span>
             <span className="label block">Stop / Ziel</span>
-            {isLt ? `${t.stop ? money(t.stop) : "kein Stop"} / ${t.targets[0] != null ? money(t.targets[0]) : "–"}` : `${money(t.stop)} / ${t.targets[0] != null ? money(t.targets[0]) : "–"}`}
+            {isLt ? `${t.stop ? money(t.stop, tradeCurrency(t)) : "kein Stop"} / ${t.targets[0] != null ? money(t.targets[0], tradeCurrency(t)) : "–"}` : `${money(t.stop, tradeCurrency(t))} / ${t.targets[0] != null ? money(t.targets[0], tradeCurrency(t)) : "–"}`}
           </span>
         </div>
         {open && (
@@ -99,15 +101,15 @@ function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction:
             {t.promotedAt && (
               <p className="rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
                 Hochgestuft zu Blau am {new Date(t.promotedAt).toLocaleDateString("de-DE")}: {t.promoteReason}
-                {t.initialStop != null && t.initialStop !== t.stop ? ` Stop von ${money(t.initialStop)} auf ${money(t.stop)} nachgezogen.` : ""}
+                {t.initialStop != null && t.initialStop !== t.stop ? ` Stop von ${money(t.initialStop, tradeCurrency(t))} auf ${money(t.stop, tradeCurrency(t))} nachgezogen.` : ""}
               </p>
             )}
             {t.strategy === "longterm" && (
               <div className="space-y-1 rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
-                <p>Teile: {(t.tranches ?? []).map((x) => `${money(x.price)} ${x.filledAt ? "✓" : "wartet"}`).join(" · ") || "–"}</p>
+                <p>Teile: {(t.tranches ?? []).map((x) => `${money(x.price, tradeCurrency(t))} ${x.filledAt ? "✓" : "wartet"}`).join(" · ") || "–"}</p>
                 {(t.partials ?? []).map((p, i) => (
                   <p key={i}>
-                    Teilausstieg {Math.round(p.fraction * 100)} % bei {money(p.price)} ({new Date(p.at).toLocaleDateString("de-DE")})
+                    Teilausstieg {Math.round(p.fraction * 100)} % bei {money(p.price, tradeCurrency(t))} ({new Date(p.at).toLocaleDateString("de-DE")})
                   </p>
                 ))}
                 {t.lastActionText && <p className="text-sky-200">Letzte Meldung: {t.lastActionText}</p>}
@@ -155,7 +157,7 @@ export default function DepotPage() {
     .filter((t) => t.status === "open")
     .map((t) => {
       const p = live[instrumentKey(t)]?.price ?? t.lastPrice;
-      return p ? tradeReturnPct(t.direction, t.entry, p) : null;
+      return p ? tradeReturnEur(t, p) : null;
     })
     .filter((x): x is number => x != null);
   const openAvg = openRets.length ? openRets.reduce((a, b) => a + b, 0) / openRets.length : null;
@@ -244,7 +246,7 @@ export default function DepotPage() {
               price={live[instrumentKey(t)]?.price}
               onAction={(x) => {
                 setAction(x);
-                setExitPrice(String(+(live[instrumentKey(x)]?.price ?? x.lastPrice ?? x.entry).toPrecision(6)));
+                setExitPrice(String(+((live[instrumentKey(x)]?.price ?? x.lastPrice ?? x.entry) * (eurPerUnit(tradeCurrency(x)) ?? 1)).toPrecision(6)));
               }}
             />
           ))}
@@ -257,15 +259,18 @@ export default function DepotPage() {
             {action.status === "open" && (
               <>
                 <label className="block text-[14px] text-stone-300">
-                  Ausstiegskurs
+                  Ausstiegskurs in €
                   <input className="input mt-1 num" value={exitPrice} onChange={(e) => setExitPrice(e.target.value)} inputMode="decimal" />
                 </label>
                 <button
                   className="btn-primary w-full"
                   onClick={() => {
-                    const exit = parseFloat(exitPrice.replace(",", "."));
-                    if (!(exit > 0)) return;
-                    actions.updateTrade(action.id, { status: "closed", exit, closedAt: Date.now(), closeReason: "manual", returnPct: tradeReturnPct(action.direction, action.entry, exit) });
+                    const exitEur = parseFloat(exitPrice.replace(",", "."));
+                    if (!(exitEur > 0)) return;
+                    // Eingabe in Euro → Börsenkurs in der Originalwährung; Ergebnis in Euro (mit Wechselkurs)
+                    const fx = eurPerUnit(tradeCurrency(action)) ?? 1;
+                    const exit = exitEur / fx;
+                    actions.updateTrade(action.id, { status: "closed", exit, closedAt: Date.now(), closeReason: "manual", returnPct: tradeReturnEur(action, exit), fxExit: fx });
                     setAction(null);
                   }}
                 >
