@@ -4,7 +4,7 @@
 // wartet“ stehen in den Details (Antippen), dort auch „übernehmen“.
 import { money } from "@/lib/analysis/persona";
 import type { LiveStatus } from "@/lib/client/market";
-import { lastPrice, type ScanEntry } from "@/lib/client/scanner";
+import { lastPrice, potential, type ScanEntry } from "@/lib/client/scanner";
 import type { ResolvedAsset } from "@/lib/types";
 import { COLOR_LABEL, signalStrength } from "./AssetCard";
 import { MiniChart } from "./MiniChart";
@@ -13,7 +13,7 @@ import { StatusPill } from "./StatusPill";
 const EDGE = { blau: "edge-core", gruen: "edge-trade", rot: "edge-short", gelb: "edge-wait" } as const;
 const BADGE = { blau: "badge-core", gruen: "badge-trade", rot: "badge-short", gelb: "badge-wait" } as const;
 
-export function EntryTile({ asset, entry, price, changePct, status, source, chart = false, onOpen }: { asset: ResolvedAsset; entry?: ScanEntry; price?: number; changePct?: number; status?: LiveStatus; source?: string; chart?: boolean; onOpen: () => void }) {
+export function EntryTile({ asset, entry, price, changePct, status, source, chart = false, showChance = false, onOpen }: { asset: ResolvedAsset; entry?: ScanEntry; price?: number; changePct?: number; status?: LiveStatus; source?: string; chart?: boolean; showChance?: boolean; onOpen: () => void }) {
   const b = entry?.best;
   const cur = asset.currency;
   const p = price ?? (entry ? lastPrice(entry) : undefined);
@@ -59,6 +59,7 @@ export function EntryTile({ asset, entry, price, changePct, status, source, char
             <span className="badge-muted">rechnet …</span>
           )}
           {b && b.color !== "gelb" && dist != null && <span className={dist === 0 ? "text-[13px] text-emerald-300" : "text-[13px] text-amber-300"}>{dist === 0 ? "jetzt in der Zone" : `noch ${dist.toFixed(1).replace(".", ",")} %`}</span>}
+          {showChance && entry && potential(entry) && <span className="num text-[13px] text-stone-300">Chance {short ? "−" : "+"}{Math.round(potential(entry)!.chancePct)} % bis zum Ziel</span>}
           {status && !b && <StatusPill status={status} source={source} />}
         </div>
       </div>

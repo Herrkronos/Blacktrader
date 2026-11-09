@@ -2,7 +2,6 @@
 // Übersicht: Gesamtperformance, Top-3-Chancen, offene Trades (live), News zur Watchlist.
 import Link from "next/link";
 import { useEffect, useMemo } from "react";
-import { signalStrength } from "@/components/AssetCard";
 import { EntryTile } from "@/components/EntryTile";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { EquityChart } from "@/components/EquityChart";
@@ -11,7 +10,7 @@ import { money } from "@/lib/analysis/persona";
 import { performance } from "@/lib/analysis/stats";
 import { tradeReturnEur } from "@/lib/client/eur";
 import { instrumentKey, useMarket } from "@/lib/client/market";
-import { bestDistance, runScan, useScan } from "@/lib/client/scanner";
+import { isChance, potential, runScan, useScan } from "@/lib/client/scanner";
 import { useAppData } from "@/lib/store/store";
 import { HORIZON_LABEL, type NewsItem } from "@/lib/types";
 
@@ -56,9 +55,13 @@ export default function Uebersicht() {
     .filter((x): x is number => x != null);
 
   const top = useMemo(() => {
-    // Je Wert genau ein Einstieg (blau oder grün); zuerst die, deren Kurs schon in der Zone ist, dann das stärkere Signal
-    const items = scan.entries.filter((e) => e.best.color !== "gelb").map((e) => ({ e, d: bestDistance(e), s: signalStrength(e.best.res) ?? 0 }));
-    return items.sort((a, b) => a.d - b.d || b.s - a.s).slice(0, 3);
+    // Wie bei den Chancen: aus den Trainings-Werten die 3 mit dem größten Potenzial
+    return scan.entries
+      .filter((e) => isChance(e) && e.best.color !== "gelb")
+      .map((e) => ({ e, p: potential(e) }))
+      .filter((x) => x.p != null)
+      .sort((a, b) => b.p!.score - a.p!.score)
+      .slice(0, 3);
   }, [scan.entries]);
 
   const news = useMemo(() => {
@@ -92,7 +95,7 @@ export default function Uebersicht() {
         {scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Blacktrader sucht Chancen … {Math.round(scan.progress * 100)} %</div>}
         {!scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Gerade keine sauberen Einstiege.</div>}
         {top.map(({ e }) => (
-          <EntryTile key={`${e.asset.kind}-${e.asset.symbol}`} asset={e.asset} entry={e} chart onOpen={() => open(e.asset, e.best.horizon ?? e.ltHorizon, { withEntry: true })} />
+          <EntryTile key={`${e.asset.kind}-${e.asset.symbol}`} asset={e.asset} entry={e} chart showChance onOpen={() => open(e.asset, e.best.horizon ?? e.ltHorizon, { withEntry: true })} />
         ))}
       </Section>
 

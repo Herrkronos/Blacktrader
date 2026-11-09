@@ -1,6 +1,6 @@
 "use client";
-// Chancen: alle Werte (Watchlist + feste Liste) – je Wert GENAU EIN Einstieg von Blacktrader: Blau (langfristig),
-// Grün (Trade auf steigende Kurse) oder Rot (Short auf fallende Kurse).
+// Chancen: aus allen Trainings-Werten (40 Aktien, 15 Krypto, 10 Rohstoffe) die 10 Einstiege mit dem größten Potenzial –
+// Blau (langfristig), Grün (Trade auf steigende Kurse) oder Rot (Short). Werte nur aus der Watchlist kommen nicht hierher.
 // Gelb (kein Einstieg) erscheint nur in der Watchlist.
 import { useEffect, useMemo, useState } from "react";
 import { signalStrength } from "@/components/AssetCard";
@@ -10,8 +10,8 @@ import { Legend } from "@/components/Legend";
 import { ConfirmSheet } from "@/components/Sheet";
 import { haptic } from "@/lib/client/alerts";
 import { openPaperTrade } from "@/lib/client/autotrade";
-import { bestDistance, runScan, useScan, type ScanEntry, type SignalKind } from "@/lib/client/scanner";
-import { SCAN_GROUPS } from "@/lib/client/presets";
+import { isChance, potential, runScan, useScan, type SignalKind } from "@/lib/client/scanner";
+import { UNIVERSE_GROUPS } from "@/lib/client/presets";
 import { getData } from "@/lib/store/store";
 import type { AssetKind } from "@/lib/types";
 
@@ -23,17 +23,14 @@ const KIND_FILTERS: { k: KindFilter; label: string; cls: string }[] = [
   { k: "rot", label: "Rot", cls: "border-red-400/60 text-red-300" },
 ];
 
-/** Sortierung: zuerst Werte, deren Kurs schon in der Zone liegt, dann nach Nähe; bei Gleichstand das stärkere Signal. */
-function sortKey(e: ScanEntry): [number, number] {
-  return [bestDistance(e), -(signalStrength(e.best.res) ?? 0)];
-}
+/** Es werden nur die Einstiege mit dem größten Potenzial gezeigt */
+const TOP = 10;
 
 export default function ChancenPage() {
   const scan = useScan();
   const [kind, setKind] = useState<KindFilter>("all");
   const [group, setGroup] = useState<AssetKind | "all">("all");
   const [confirmAll, setConfirmAll] = useState(false);
-  const [more, setMore] = useState(10);
   const { open, sheet } = useAssetSheet();
 
   useEffect(() => {
@@ -43,18 +40,18 @@ export default function ChancenPage() {
   const list = useMemo(
     () =>
       scan.entries
-        .filter((e) => (group === "all" || e.asset.kind === group) && e.best.color !== "gelb" && (kind === "all" || e.best.color === kind))
-        .sort((a, b) => {
-          const ka = sortKey(a);
-          const kb = sortKey(b);
-          return ka[0] - kb[0] || ka[1] - kb[1];
-        }),
+        .filter((e) => isChance(e) && (group === "all" || e.asset.kind === group) && e.best.color !== "gelb" && (kind === "all" || e.best.color === kind))
+        .map((e) => ({ e, p: potential(e) }))
+        .filter((x) => x.p != null)
+        .sort((a, b) => b.p!.score - a.p!.score)
+        .slice(0, TOP)
+        .map((x) => x.e),
     [scan.entries, kind, group],
   );
   const counts = useMemo(() => {
     const c: Record<KindFilter, number> = { all: 0, blau: 0, gruen: 0, rot: 0 };
     for (const e of scan.entries) {
-      if (group !== "all" && e.asset.kind !== group) continue;
+      if (!isChance(e) || (group !== "all" && e.asset.kind !== group)) continue;
       if (e.best.color === "gelb") continue;
       c.all++;
       c[e.best.color]++;
@@ -69,7 +66,7 @@ export default function ChancenPage() {
       <div className="flex items-start justify-between gap-2">
         <div>
           <h1 className="text-[22px] text-gold">Chancen</h1>
-          <p className="text-[15px] text-stone-400">15 Aktien, 8 Krypto, 7 Rohstoffe und deine Watchlist – Blacktrader zeigt je Wert den besten Einstieg.</p>
+          <p className="text-[15px] text-stone-400">Die {TOP} Einstiege mit dem größten Potenzial aus allen Werten, mit denen Blacktrader trainiert (40 Aktien, 15 Krypto, 10 Rohstoffe).</p>
         </div>
         <Legend />
       </div>
@@ -82,7 +79,7 @@ export default function ChancenPage() {
         ))}
       </div>
       <div className="seg w-full">
-        {[{ k: "all" as const, t: "Alle" }, ...SCAN_GROUPS.map((g) => ({ k: g.kind, t: g.title }))].map((g) => (
+        {[{ k: "all" as const, t: "Alle" }, ...UNIVERSE_GROUPS.map((g) => ({ k: g.kind, t: g.title }))].map((g) => (
           <button key={g.k} aria-pressed={group === g.k} onClick={() => setGroup(g.k)} className="flex-1">
             {g.t}
           </button>
@@ -105,14 +102,9 @@ export default function ChancenPage() {
         <div className="card p-5 text-center text-[15px] text-stone-300">Gerade keine passenden Einstiege. Lieber kein Trade als ein schwacher – Blacktrader sucht bei jedem Öffnen neu.</div>
       )}
 
-      {list.slice(0, more).map((e) => (
-        <EntryTile key={`${e.asset.kind}:${e.asset.symbol}`} asset={e.asset} entry={e} chart onOpen={() => open(e.asset, e.best.horizon ?? e.ltHorizon, { withEntry: true })} />
+      {list.map((e) => (
+        <EntryTile key={`${e.asset.kind}:${e.asset.symbol}`} asset={e.asset} entry={e} chart showChance onOpen={() => open(e.asset, e.best.horizon ?? e.ltHorizon, { withEntry: true })} />
       ))}
-      {list.length > more && (
-        <button className="btn w-full" onClick={() => setMore(more + 10)}>
-          Weitere {Math.min(10, list.length - more)} anzeigen
-        </button>
-      )}
 
       <div className="flex gap-2">
         <button className="btn flex-1" onClick={() => runScan(0)} disabled={scan.busy}>

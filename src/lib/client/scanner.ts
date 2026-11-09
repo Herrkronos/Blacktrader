@@ -14,7 +14,7 @@ import { assetKey, closeEntry, doneFor, getHistory, recordEntry, type EntryHisto
 import { getData } from "../store/store";
 import type { Candle, Horizon, ResolvedAsset } from "../types";
 import { api } from "./api";
-import { SCAN_PRESETS } from "./presets";
+import { inUniverse, UNIVERSE_ASSETS } from "./presets";
 
 export interface HorizonResult {
   res: AnalysisResult;
@@ -78,7 +78,8 @@ export function scanAssets(): ResolvedAsset[] {
   const d = getData();
   // Offene Trades mitrechnen (für Hochstufung und nachgezogenen Stop)
   const fromTrades: ResolvedAsset[] = d.trades.filter((t) => t.status !== "closed").map((t) => ({ kind: t.kind, symbol: t.symbol, name: t.name, binanceSymbol: t.binanceSymbol, yahooSymbol: t.yahooSymbol }));
-  for (const a of [...d.watchlist, ...SCAN_PRESETS, ...fromTrades]) if (!map.has(`${a.kind}:${a.symbol}`)) map.set(`${a.kind}:${a.symbol}`, a);
+  // Alle Trainings-Werte (für die Chancen) + Watchlist (nur für die Watchlist) + offene Trades
+  for (const a of [...d.watchlist, ...UNIVERSE_ASSETS, ...fromTrades]) if (!map.has(`${a.kind}:${a.symbol}`)) map.set(`${a.kind}:${a.symbol}`, a);
   return [...map.values()];
 }
 
@@ -98,7 +99,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   const byAsset = new Map<string, Omit<ScanEntry, "best" | "history"> & { full: Partial<Record<Horizon, Candle[]>> }>();
   let done = 0;
   let failed = 0;
-  await pool(jobs, 4, async ({ asset, horizon }) => {
+  await pool(jobs, 6, async ({ asset, horizon }) => {
     const key = assetKey(asset);
     const entry = byAsset.get(key) ?? { asset, horizons: {}, longterm: null, full: {} };
     byAsset.set(key, entry);
@@ -203,6 +204,37 @@ export function bestDistance(e: ScanEntry): number {
   // Short: Kurs muss bis zur Unterkante steigen
   if (b.color === "rot") return price >= b.zoneBottom ? 0 : ((b.zoneBottom - price) / price) * 100;
   return price <= b.zoneTop ? 0 : ((price - b.zoneTop) / price) * 100;
+}
+
+/** Gehört der Eintrag in die Chancen? (nur Trainings-Werte, nicht reine Watchlist-Werte) */
+export const isChance = (e: ScanEntry) => inUniverse(e.asset);
+
+/**
+ * Gemessene Stärke je Signalart im Turnier (Ø Rendite pro Jahr, relativ zu Grün = 1):
+ * Grün +22,7 %, Blau +5,8 %, Rot (nur bei bärischem Markt) schwächer – so steht nicht automatisch das höchste Ziel oben.
+ */
+const COLOR_WEIGHT = { gruen: 1, blau: 0.35, rot: 0.6 } as const;
+
+/**
+ * Potenzial eines Einstiegs (für die Rangliste der Chancen):
+ * Chance bis zum Ziel in % (gedeckelt bei 60 %, damit „Mondziele“ nicht alles verdrängen), gewichtet mit
+ * Chance/Risiko (gedeckelt bei 4), Signalstärke, Nähe zur Zone und der im Turnier gemessenen Stärke der Signalart.
+ */
+export function potential(e: ScanEntry): { score: number; chancePct: number; riskPct: number } | null {
+  const b = e.best;
+  if (b.color === "gelb" || b.zoneTop == null || b.zoneBottom == null || !b.targets?.length) return null;
+  const short = b.color === "rot";
+  const entry = short ? b.zoneBottom : b.zoneTop;
+  const limit = b.color === "blau" ? b.invalidation : b.stop;
+  if (!entry || limit == null) return null;
+  const chancePct = (Math.abs(b.targets[0] - entry) / entry) * 100;
+  const riskPct = Math.max(0.5, (Math.abs(entry - limit) / entry) * 100);
+  const crv = Math.min(4, chancePct / riskPct);
+  const strength = b.res ? (b.res.plan?.direction === "short" ? 100 - b.res.total : b.res.total) : 55;
+  const dist = bestDistance(e);
+  const near = dist === 0 ? 1 : Math.max(0.25, 1 - dist / 15);
+  const weight = COLOR_WEIGHT[b.color as keyof typeof COLOR_WEIGHT] ?? 1;
+  return { score: Math.min(60, chancePct) * (crv / 2) * (strength / 60) * near * weight, chancePct, riskPct };
 }
 
 /** Letzter bekannter Kurs eines Eintrags */

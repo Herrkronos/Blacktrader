@@ -131,3 +131,19 @@ describe("Blauer Bereich ab dem Hoch von Welle 1 geprüft", () => {
     expect(longTermOutcome(z, [c(11, 70, 75), c(12, 45, 48)])?.status).toBe("ungültig");
   });
 });
+
+describe("Chancen: nur Trainings-Werte, nach Potenzial", () => {
+  it("Watchlist-Werte außerhalb der Trainings-Werte kommen nicht in die Chancen", async () => {
+    const { inUniverse, UNIVERSE_ASSETS } = await import("../src/lib/client/presets");
+    expect(UNIVERSE_ASSETS).toHaveLength(65);
+    expect(inUniverse({ kind: "stock", symbol: "AAPL" })).toBe(true);
+    expect(inUniverse({ kind: "stock", symbol: "CE" })).toBe(false);
+    expect(inUniverse({ kind: "stock", symbol: "EURUSD=X" })).toBe(false);
+  });
+  it("Trainings-Werte der App = Trainings-Werte des Trainers", async () => {
+    const { UNIVERSE_GROUPS } = await import("../src/lib/client/presets");
+    const { universe } = await import("../src/lib/trainer/universe");
+    const yahoo = (a: { yahooSymbol?: string; symbol: string }) => a.yahooSymbol ?? a.symbol;
+    for (const g of UNIVERSE_GROUPS) expect(g.assets.map(yahoo).sort()).toEqual(universe(`${g.kind}:medium` as never).map((s) => s.symbol).sort());
+  });
+});
