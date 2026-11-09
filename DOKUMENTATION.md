@@ -153,6 +153,8 @@ Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen sieben Anal
 
 **Ablauf je Durchgang:** 5.000 € Startkapital, 500 Trades, 500 € je Trade (bzw. Restgeld), 0,2 % Gebühren je Trade, 27,5 % KESt (Österreich) auf Gewinne (je ca. 55 Trades ≈ 1 Jahr). **50 Durchgänge**, abwechselnd bullisch, neutral, bärisch und gemischt (Marktlage wechselt in Phasen von 30–80 Trades). Die Marktlage eines Trades ist die des S&P 500 beim Einstieg. Alle Teilnehmer bekommen in Durchgang k dieselbe Szenario-Folge. Hat jemand in einer Marktlage keinen Trade, bleibt sein Geld liegen.
 
+**Tempo:** Für jeden Teilnehmer wird geschätzt, wie lange 500 Trades im Schnitt dauern: Signale pro Jahr (über alle Werte), begrenzt durch das Geld (5.000 € / 500 € = höchstens 10 Trades gleichzeitig) und die durchschnittliche Haltedauer. Daraus auch die Rendite pro Jahr. Die KESt wird je Teilnehmer einmal pro (geschätztem) Jahr abgezogen.
+
 **Auswertung:** Rangliste nach Median-Endkapital (mit Spanne der schlechtesten/besten 10 %, Pleiten, Platz je Szenario). Blacktrader wird mit dem Stand **vor und nach** dem Training auf denselben Durchgängen gerechnet – daraus „wo hat er sich verbessert“ (je Szenario in €, Platz vorher → nachher), dazu die im Training verbesserten Bereiche und der Vergleich zur letzten Auswertung. Gespeichert auf dem Gerät und beim Server (`/api/trainer/report`, letzte 20), im JSON-Export enthalten.
 
 **Ehrlicher Hinweis:** Auch „bärische“ Phasen der letzten 15 Jahre wurden meist schnell wieder aufgeholt; Kauf-Strategien schneiden dort deshalb oft gut ab. Ergebnisse der Vergangenheit sind keine Garantie.

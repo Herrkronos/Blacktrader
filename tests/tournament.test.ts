@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluate, OPPONENTS, rank, regimeIndex, reportLines, RULES, simulate, type PoolTrade, type Series } from "../src/lib/trainer/tournament";
+import { evaluate, formatDuration, OPPONENTS, pace, rank, regimeIndex, reportLines, RULES, simulate, type PoolTrade, type Series } from "../src/lib/trainer/tournament";
 import type { Candle } from "../src/lib/types";
 
 // Kursverlauf mit Auf und Ab (deterministisch)
@@ -52,6 +52,26 @@ describe("Turnier: Regeln", () => {
     expect(regimeIndex(up)(up[399].time)).toBe("bullisch");
     expect(regimeIndex(down)(down[399].time)).toBe("baerisch");
     expect(regimeIndex(up)(up[50].time)).toBeNull();
+  });
+});
+
+describe("Turnier: wie lange dauern 500 Trades?", () => {
+  it("Dauer verständlich: Monate, Jahre", () => {
+    expect(formatDuration(5 / 12)).toBe("5 Monate");
+    expect(formatDuration(1)).toBe("1 Jahr");
+    expect(formatDuration(4.25)).toBe("4 Jahre 3 Monate");
+    expect(formatDuration(null)).toBe("–");
+  });
+  it("wenige Signale → langsam; viele Signale werden durch das Geld begrenzt (max. 10 Trades gleichzeitig)", () => {
+    const day = 86400;
+    // 50 Signale in 10 Jahren, je 20 Tage gehalten → 5 pro Jahr → 100 Jahre für 500 Trades
+    const few = Array.from({ length: 50 }, (_, i) => ({ sym: "A", entry: i * 73 * day, exit: i * 73 * day + 20 * day, r: 1 }));
+    expect(pace(few, 10)!.years).toBeCloseTo(100, 0);
+    // 10.000 Signale in 10 Jahren, je 73 Tage gehalten → Geld reicht für 10 × 5 = 50 Trades pro Jahr → 10 Jahre
+    const many = Array.from({ length: 10000 }, (_, i) => ({ sym: "A", entry: i * day, exit: i * day + 73 * day, r: 1 }));
+    const p = pace(many, 10)!;
+    expect(p.tradesPerYear).toBeCloseTo(50, 0);
+    expect(p.years).toBeCloseTo(10, 0);
   });
 });
 

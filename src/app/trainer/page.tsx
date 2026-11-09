@@ -13,7 +13,7 @@ import { loadReports, startTraining, stopTraining, TOKEN_KEY, useTraining } from
 import { primaryCount, primaryRate, TARGET_HIT_RATE } from "@/lib/trainer/engine";
 import { goalProgress, goalReached } from "@/lib/trainer/goal";
 import { DURATIONS } from "@/lib/trainer/session";
-import { OPPONENTS, reportLines, RULES, SCENARIO_LABEL, SCENARIOS, type TournamentReport } from "@/lib/trainer/tournament";
+import { formatDuration, OPPONENTS, perYear, reportLines, RULES, SCENARIO_LABEL, SCENARIOS, type TournamentReport } from "@/lib/trainer/tournament";
 import { ACTIVE_CELL_KEYS, type CellKey } from "@/lib/trainer/universe";
 import { HORIZON_LABEL, KIND_LABEL, type AssetKind, type Horizon } from "@/lib/types";
 
@@ -71,6 +71,12 @@ function Ranking({ rep }: { rep: TournamentReport }) {
                 {SCENARIOS.map((s) => `${SHORT[s]} ${c.rankByScenario[s]}.`).join(" · ")}
                 {c.broke ? ` · ${c.broke}× pleite` : ""}
               </span>
+              {c.years != null && (
+                <span className="block truncate text-[12px] text-stone-400">
+                  500 Trades in ≈ {formatDuration(c.years)}
+                  {perYear(c) != null ? ` · ${(perYear(c)! * 100).toFixed(1).replace(".", ",")} % pro Jahr` : ""}
+                </span>
+              )}
             </span>
             <span className="text-right">
               <span className={`num block text-[15px] ${c.median >= RULES.start ? "text-up" : "text-down"}`}>{eur(c.median)}</span>

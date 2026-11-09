@@ -98,6 +98,7 @@ export async function runTournament(io: TournamentIO, before: Params, after: Par
   // Gemeinsames Zeitfenster für alle Teilnehmer: ab dem Tag, an dem die Marktlage feststeht
   const from = spx[200].time;
   const inWindow = (p: PoolTrade[]) => p.filter((t) => t.entry >= from);
+  const spanYears = (spx[spx.length - 1].time - from) / (365.25 * 86400);
 
   // 2) Die 7 Gegner (Tageskerzen)
   const data: Series[] = assets.map((a) => ({ symbol: a.symbol, candles: a.daily }));
@@ -107,19 +108,19 @@ export async function runTournament(io: TournamentIO, before: Params, after: Par
     const o = OPPONENTS[k];
     io.onProgress(0.3 + (0.1 * k) / OPPONENTS.length, `${o.name} handelt`);
     await tick();
-    results.push(evaluate(o.id, o.name, o.desc, inWindow(o.build(data)), regimeOf));
+    results.push(evaluate(o.id, o.name, o.desc, inWindow(o.build(data)), regimeOf, undefined, spanYears));
   }
 
   // 3) Blacktrader vor und nach dem Training
   const desc = "Elliott-Wellen + Fundamental/News + Volumen/RSI, ein Einstieg pro Wert (blau/grün), keine Shorts, Sektor-Regel";
   const afterPool = await blacktraderPool(assets, after, techWeakAt, io, from, [0.4, sameParams ? 0.95 : 0.68], "Blacktrader handelt");
   if (!afterPool) return null;
-  const bt = evaluate("blacktrader", "Blacktrader", desc, afterPool, regimeOf);
+  const bt = evaluate("blacktrader", "Blacktrader", desc, afterPool, regimeOf, undefined, spanYears);
   let beforeRes = bt;
   if (!sameParams) {
     const beforePool = await blacktraderPool(assets, before, techWeakAt, io, from, [0.68, 0.95], "Blacktrader vor dem Training");
     if (!beforePool) return null;
-    beforeRes = evaluate("blacktrader", "Blacktrader", desc, beforePool, regimeOf);
+    beforeRes = evaluate("blacktrader", "Blacktrader", desc, beforePool, regimeOf, undefined, spanYears);
   }
   io.onProgress(0.97, "Rangliste erstellen");
   const ranking = rank([bt, ...results]);

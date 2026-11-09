@@ -282,7 +282,8 @@ export interface RunResult {
   wins: number;
 }
 
-export function simulate(byRegime: Record<Regime, number[]>, seed: number, scenario: Scenario): RunResult {
+export function simulate(byRegime: Record<Regime, number[]>, seed: number, scenario: Scenario, tradesPerYear: number = RULES.tradesPerYear): RunResult {
+  const taxEvery = Math.max(1, Math.round(tradesPerYear));
   const r = rng(seed * 7919 + 13);
   let cap: number = RULES.start;
   let low: number = cap;
@@ -306,7 +307,7 @@ export function simulate(byRegime: Record<Regime, number[]>, seed: number, scena
         taken++;
         if (pick > 0) wins++;
       }
-      if (done % RULES.tradesPerYear === 0) {
+      if (done % taxEvery === 0) {
         cap -= Math.max(0, ypnl) * RULES.tax;
         ypnl = 0;
       }
@@ -347,6 +348,41 @@ export interface ContestantResult {
   /** Rang je Szenario (1 = bester) */
   rankByScenario: Record<Scenario, number>;
   rank: number;
+  /** Wie lange 500 Trades im Schnitt dauern (Jahre) – aus Signalen pro Jahr und Haltedauer */
+  years?: number | null;
+  /** Trades pro Jahr, die mit 5.000 € (höchstens 10 gleichzeitig) tatsächlich möglich sind */
+  tradesPerYear?: number | null;
+  /** Durchschnittliche Haltedauer in Tagen */
+  holdDays?: number | null;
+}
+
+/**
+ * Tempo eines Teilnehmers: Signale pro Jahr (über alle Werte) – begrenzt durch das Geld: mit 5.000 € und 500 € je Trade
+ * laufen höchstens 10 Trades gleichzeitig. Daraus: wie lange 500 Trades im Schnitt dauern.
+ */
+export function pace(pool: PoolTrade[], spanYears: number): { years: number; tradesPerYear: number; holdDays: number } | null {
+  if (!pool.length || spanYears <= 0) return null;
+  const holdDays = Math.max(1, pool.reduce((a, t) => a + (t.exit - t.entry) / 86400, 0) / pool.length);
+  const signals = pool.length / spanYears;
+  const slots = RULES.start / RULES.stake;
+  const tradesPerYear = Math.min(signals, (slots * 365) / holdDays);
+  return { years: RULES.trades / tradesPerYear, tradesPerYear, holdDays };
+}
+
+/** Rendite pro Jahr (aus Median-Endkapital und Dauer der 500 Trades) */
+export function perYear(c: Pick<ContestantResult, "median" | "years">): number | null {
+  if (c.years == null || !(c.years > 0) || c.median <= 0) return null;
+  return Math.pow(c.median / RULES.start, 1 / c.years) - 1;
+}
+
+/** z. B. „5 Monate“, „1 Jahr“, „4 Jahre 3 Monate“ */
+export function formatDuration(years: number | null | undefined): string {
+  if (years == null || !Number.isFinite(years)) return "–";
+  const months = Math.max(1, Math.round(years * 12));
+  if (months < 12) return `${months} ${months === 1 ? "Monat" : "Monate"}`;
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  return `${y} ${y === 1 ? "Jahr" : "Jahre"}${m ? ` ${m} ${m === 1 ? "Monat" : "Monate"}` : ""}`;
 }
 
 export interface TournamentReport {
@@ -362,7 +398,9 @@ export interface TournamentReport {
 }
 
 /** Wertet einen Teilnehmer über alle Durchgänge aus. */
-export function evaluate(id: string, name: string, desc: string, pool: PoolTrade[], regimeOf: (t: number) => Regime | null, reps = RULES.reps): ContestantResult {
+export function evaluate(id: string, name: string, desc: string, pool: PoolTrade[], regimeOf: (t: number) => Regime | null, reps = RULES.reps, spanYears = 0): ContestantResult {
+  // KESt einmal pro Jahr: nach so vielen Trades, wie dieser Teilnehmer in einem Jahr schafft
+  const pc = pace(pool, spanYears);
   const byRegime: Record<Regime, number[]> = { bullisch: [], neutral: [], baerisch: [] };
   for (const t of pool) {
     const g = regimeOf(t.entry);
@@ -375,7 +413,7 @@ export function evaluate(id: string, name: string, desc: string, pool: PoolTrade
   let wins = 0;
   for (let k = 0; k < reps; k++) {
     const sc = SCENARIOS[k % SCENARIOS.length];
-    const res = simulate(byRegime, k + 1, sc);
+    const res = simulate(byRegime, k + 1, sc, pc?.tradesPerYear ?? RULES.tradesPerYear);
     ends.push(res.end);
     per[sc].push(res.end);
     if (res.broke != null) broke++;
@@ -383,7 +421,7 @@ export function evaluate(id: string, name: string, desc: string, pool: PoolTrade
     wins += res.wins;
   }
   const byScenario = Object.fromEntries(SCENARIOS.map((s) => [s, median(per[s])])) as Record<Scenario, number>;
-  return { id, name, desc, pool: pool.length, median: median(ends), p10: quantile(ends, 0.1), p90: quantile(ends, 0.9), broke, winRate: taken ? wins / taken : 0, byScenario, rankByScenario: { bullisch: 0, neutral: 0, baerisch: 0, gemischt: 0 }, rank: 0 };
+  return { id, name, desc, pool: pool.length, median: median(ends), p10: quantile(ends, 0.1), p90: quantile(ends, 0.9), broke, winRate: taken ? wins / taken : 0, byScenario, rankByScenario: { bullisch: 0, neutral: 0, baerisch: 0, gemischt: 0 }, rank: 0, years: pc?.years ?? null, tradesPerYear: pc?.tradesPerYear ?? null, holdDays: pc?.holdDays ?? null };
 }
 
 /** Rangliste: nach Median-Endkapital, je Szenario ebenso. */
@@ -403,12 +441,21 @@ export function rankAgainst(c: ContestantResult, others: ContestantResult[]): Co
 // ---------------------------------------------------------------------------------------------
 // Auswertung in Worten
 
+const pctY = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1).replace(".", ",")} % pro Jahr`;
+
 export function reportLines(rep: TournamentReport, previous?: TournamentReport | null): string[] {
   const bt = rep.ranking.find((c) => c.id === "blacktrader");
   if (!bt) return [];
   const eur = (x: number) => `${Math.round(x).toLocaleString("de-DE")} €`;
   const lines: string[] = [];
   lines.push(`Blacktrader belegt Platz ${bt.rank} von ${rep.ranking.length} (Median ${eur(bt.median)} aus 5.000 € nach KESt).`);
+  if (bt.years != null) {
+    const fastest = [...rep.ranking].filter((c) => c.years != null).sort((a, b) => a.years! - b.years!)[0];
+    lines.push(`Für 500 Trades brauchte Blacktrader im Schnitt ${formatDuration(bt.years)} (Ø ${Math.round(bt.holdDays ?? 0)} Tage je Trade).${fastest && fastest.id !== "blacktrader" ? ` Am schnellsten: ${fastest.name} mit ${formatDuration(fastest.years)}.` : ""}`);
+    const py = rep.ranking.map((c) => ({ c, y: perYear(c) })).filter((x) => x.y != null).sort((a, b) => b.y! - a.y!);
+    const me = py.findIndex((x) => x.c.id === "blacktrader");
+    if (me >= 0) lines.push(`Pro Jahr gerechnet: Blacktrader ${pctY(py[me].y!)} – Platz ${me + 1} von ${py.length}${me > 0 ? ` (bester: ${py[0].c.name} ${pctY(py[0].y!)})` : ""}.`);
+  }
   const best = SCENARIOS.filter((s) => bt.rankByScenario[s] === 1).map((s) => SCENARIO_LABEL[s]);
   if (best.length) lines.push(`Platz 1 im Szenario ${best.join(", ")}.`);
   const weak = SCENARIOS.filter((s) => bt.rankByScenario[s] > 3).map((s) => `${SCENARIO_LABEL[s]} (Platz ${bt.rankByScenario[s]})`);
