@@ -102,3 +102,16 @@ describe("Kauf über dem Kurs und Korrektur", () => {
     expect(n.corrections![0].tranches[0].price).toBe(105.61);
   });
 });
+
+describe("Nachkauf-Sicherheitsregel: erst wenn die Zone des letzten Kaufs nach oben verlassen wurde", () => {
+  it("Zone in der Zone (neues Hoch vor dem Kauf oder unter der alten Oberkante) → kein Nachkauf", async () => {
+    const { nachkaufState } = await import("../src/lib/client/nachkauf");
+    const held = [{ id: "z", strategy: "longterm", status: "open", symbol: "SOL", openedAt: Date.UTC(2026, 10, 10), lt: { zoneTop: 76, zoneBottom: 60, invalidation: 54, targets: [180], key: "k1" } }] as never;
+    // neuer Bereich, dessen Hoch VOR dem Kauf entstand (Solana-Fall) → nein
+    expect(nachkaufState("SOL", { key: "k2", high: { time: Date.UTC(2026, 0, 1) / 1000, price: 290 } }, held).allowed).toBe(false);
+    // Hoch nach dem Kauf, aber nicht über der alten Oberkante → nein
+    expect(nachkaufState("SOL", { key: "k3", high: { time: Date.UTC(2026, 11, 20) / 1000, price: 74 } }, held).allowed).toBe(false);
+    // Hoch nach dem Kauf und über der alten Oberkante → ja
+    expect(nachkaufState("SOL", { key: "k4", high: { time: Date.UTC(2026, 11, 20) / 1000, price: 120 } }, held).allowed).toBe(true);
+  });
+});

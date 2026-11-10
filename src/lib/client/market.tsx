@@ -219,7 +219,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         try {
           const r = await api.candles(item, interval, candleRefreshMs(interval) / 2);
           if (cancelled) return;
-          raw.current[item.id] = { ...(raw.current[item.id] ?? { fundamentals: null, news: [] }), candles: r.candles, source: r.source, error: undefined, version: Date.now(), horizon, interval, longterm: r.candles.length >= 150 ? findLongTermZone(r.candles) : null };
+          raw.current[item.id] = { ...(raw.current[item.id] ?? { fundamentals: null, news: [] }), candles: r.candles, source: r.source, error: undefined, version: Date.now(), horizon, interval, longterm: interval === "1w" && r.candles.length >= 150 ? findLongTermZone(r.candles) : null };
         } catch (e) {
           if (cancelled) return;
           raw.current[item.id] = { ...(raw.current[item.id] ?? { fundamentals: null, news: [], candles: [] }), error: (e as Error).message, version: Date.now(), horizon, interval } as never;

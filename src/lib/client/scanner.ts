@@ -153,8 +153,9 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
       if (res && res.decision.level !== "neutral" && personal.has(key)) res = (await fullAnalysis(asset, horizon, candles)) ?? res;
       if (res) entry.horizons[horizon] = { res, candles: candles.slice(-150) };
       entry.full[horizon] = candles;
-      // Langfristiger Einstieg: auf dem langfristigen Zeitraum, sonst auf dem mittelfristigen
-      if ((horizon === "long" || (horizon === "medium" && entry.ltHorizon !== "long")) && candles.length >= 150) {
+      // Langfristiger Einstieg (blau): NUR auf Wochenkerzen – wie im Turnier und Härtetest getestet
+      // (früher ersatzweise auf Tageskerzen; das ergab ungetestete Bereiche, z. B. „Zone in der Zone“ bei Solana)
+      if (horizon === "long" && candles.length >= 150) {
         const z = findLongTermZone(candles);
         if (z && z.status !== "invalidiert") {
           entry.longterm = z;

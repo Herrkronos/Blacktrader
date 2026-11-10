@@ -131,7 +131,8 @@ export function AssetDetailView({ asset, initialHorizon, hideTake = false }: { a
     return [...candles.slice(0, -1), { ...last, close: live.price, high: Math.max(last.high, live.price), low: Math.min(last.low, live.price) }];
   }, [candles, live?.price, source]);
 
-  const ltZone = useMemo(() => (candles.length >= 150 ? findLongTermZone(candles) : null), [candles]);
+  // Blau nur aus Wochenkerzen (wie getestet)
+  const ltZone = useMemo(() => (interval === "1w" && candles.length >= 150 ? findLongTermZone(candles) : null), [candles, interval]);
   const myLt = useAppData((d) => d.trades.find((t) => t.strategy === "longterm" && t.status !== "closed" && t.symbol === asset.symbol));
   // Alle offenen Käufe dieses Werts (Zentraldepot, 2. Kauf …) – im Chart: neuester blau, ältere grau
   const allTrades = useAppData((d) => d.trades);

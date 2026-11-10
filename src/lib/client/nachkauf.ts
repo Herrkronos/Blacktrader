@@ -20,7 +20,7 @@ export interface NachkaufState {
   reason?: string;
 }
 
-export function nachkaufState(symbol: string, lt: Pick<LongTermZone, "key"> | null | undefined, trades: Trade[] = getData().trades, weakFinance = false): NachkaufState {
+export function nachkaufState(symbol: string, lt: (Pick<LongTermZone, "key"> & Partial<Pick<LongTermZone, "high">>) | null | undefined, trades: Trade[] = getData().trades, weakFinance = false): NachkaufState {
   const pos = openPositions(symbol, trades);
   const held = pos.length > 0;
   const done = pos.filter((t) => t.nachkauf).length;
@@ -29,6 +29,12 @@ export function nachkaufState(symbol: string, lt: Pick<LongTermZone, "key"> | nu
   if (!lt) return { held, done, left, allowed: false, reason: "Nachkauf nur bei einem blauen Einstieg." };
   if (pos.some((t) => t.lt?.key === lt.key)) return { held, done, left, allowed: false, reason: "Diesen blauen Bereich hast du schon gekauft." };
   if (left <= 0) return { held, done, left, allowed: false, reason: `Schon ${ADD.max} Nachkäufe – mehr nicht (Klumpenrisiko).` };
+  // Sicherheitsregel: Nachkauf nur, wenn der Kurs die Zone des letzten Kaufs nach oben verlassen hat – also das Hoch des
+  // neuen Bereichs NACH dem letzten Kauf entstand und über dessen Oberkante liegt (im Test immer erfüllt, verhindert live
+  // „Zone in der Zone“)
+  const last = [...pos].filter((t) => t.lt).sort((a, b) => b.openedAt - a.openedAt)[0];
+  if (last?.lt && lt.high && !(lt.high.time * 1000 > last.openedAt && lt.high.price > last.lt.zoneTop))
+    return { held, done, left, allowed: false, reason: "Nachkauf erst, wenn der Kurs die Zone des letzten Kaufs nach oben verlassen hat." };
   if (weakFinance) return { held, done, left, allowed: false, reason: "Finanzen schwach – kein Nachkauf." };
   return { held, done, left, allowed: true };
 }
