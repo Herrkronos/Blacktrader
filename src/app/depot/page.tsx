@@ -22,7 +22,6 @@ import { BuyHold } from "@/components/BuyHold";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { ProposalBox } from "@/components/ProposalBox";
 import { PositionCard } from "@/components/PositionCard";
-import { DepotBadge } from "@/components/DepotPicker";
 import { blueGroups } from "@/lib/client/position";
 
 const eur = (x: number, sign = false) => `${sign && x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
@@ -90,7 +89,6 @@ function TradeCard({ t, price, onAction, onOpenAsset, nachkauf }: { t: Trade; pr
             </div>
             <div className="text-[13px] text-stone-400">
               {t.symbol} · {HORIZON_LABEL[t.horizon]}
-              <DepotBadge depot={t.depot} />
             </div>
           </button>
           <div className="text-right">

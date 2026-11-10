@@ -20,7 +20,7 @@ import { MiniChart } from "./MiniChart";
 import { miniView } from "./miniView";
 import { waveCaption } from "./waveText";
 import { ConfirmSheet } from "./Sheet";
-import { DepotPicker, MarketNote } from "./DepotPicker";
+import { MarketNote } from "./DepotPicker";
 import { StatusPill } from "./StatusPill";
 
 const RISK_LIMIT = 15; // % Abstand Einstieg–Stop, ab dem "Hohes Risiko" angezeigt wird
@@ -116,7 +116,10 @@ export function AssetCard({
   const isNachkauf = !!nk?.allowed;
   // Finanz-Prüfung: hoch verschuldet und Geld verbrennen/Verluste/Umsatzeinbruch → kein Einstieg
   const weak = !!entry?.financeWeak;
+  // Ältere eigene Käufe (Zentraldepot, 2. Kauf …) grau; der neueste bleibt der aktuelle Einstieg
+  const buys = trades.filter((t) => t.strategy === "longterm" && t.status !== "closed" && t.symbol === asset.symbol && t.lt).sort((a, b) => a.openedAt - b.openedAt);
   const past = (entry?.history.past ?? []).slice(0, 10);
+  const pastChart = [...buys.slice(0, -1).map((t, k) => ({ from: Math.floor(t.openedAt / 1000), to: Math.floor(buys[k + 1].openedAt / 1000), zoneTop: t.lt!.zoneTop, zoneBottom: t.lt!.zoneBottom })), ...past];
   const openHorizon: Horizon = b?.horizon ?? entry?.ltHorizon ?? "medium";
 
   // Alle Charts in Tageskerzen (Wellenpunkte aus Wochenkerzen auf die passende Tageskerze gelegt)
@@ -157,7 +160,7 @@ export function AssetCard({
       ) : (
         <>
           {/* Zeile 2: Chart mit aktuellem Einstieg, alte Einstiege grau */}
-          <MiniChart candles={mv?.candles ?? view.candles} plan={plan} best={wave} longterm={ltMini} past={past} from={mv?.from} />
+          <MiniChart candles={mv?.candles ?? view.candles} plan={plan} best={wave} longterm={ltMini} past={pastChart} from={mv?.from} />
           {lt ? (
             <p className="-mt-1 text-[13px] text-sky-200">Welle 1 fertig – erwartet: Rücksetzer (Welle 2) in den blauen Bereich, danach Welle 3.</p>
           ) : (
@@ -328,7 +331,6 @@ export function AssetCard({
           plan ? (
             <div className="space-y-2">
               <p>{asset.name}: {isShort ? "Short – Trade auf fallende Kurse." : "Trade auf steigende Kurse."}</p>
-              <DepotPicker />
               <p className="num">
                 Einstieg {money(plan.entry, cur)} · Stop {money(plan.stop, cur)} · Ziel {money(plan.targets[0], cur)}
               </p>
@@ -352,7 +354,6 @@ export function AssetCard({
         text={
           lt ? (
             <div className="space-y-2">
-              <DepotPicker />
               <p>{asset.name}: Einstieg in drei Teilen bei</p>
               <p className="num text-sky-200">{lt.tranches.map((t) => money(t, cur)).join(" · ")}</p>
               <MarketNote price={lastPrice} top={lt.tranches[0]} cur={cur} />
@@ -377,7 +378,6 @@ export function AssetCard({
         text={
           lt && nk ? (
             <div className="space-y-2">
-              <DepotPicker />
               <p>{asset.name}: Nachkauf zu deiner Position im neuen blauen Bereich – eine Order zu 250 € an der Oberkante ({nk.left} von 4 Nachkäufen noch möglich).</p>
               <MarketNote price={lastPrice} top={lt.zoneTop} cur={cur} />
               <OrderSlip kind={asset.kind} symbol={asset.symbol} name={asset.name} currency={cur} direction="long" entry={lt.zoneTop} tranches={effectiveLevels([lt.zoneTop], lastPrice ?? 0)} invalidation={lt.invalidation} targets={[...lt.targets]} budget={250} />

@@ -133,6 +133,9 @@ export function AssetDetailView({ asset, initialHorizon, hideTake = false }: { a
 
   const ltZone = useMemo(() => (candles.length >= 150 ? findLongTermZone(candles) : null), [candles]);
   const myLt = useAppData((d) => d.trades.find((t) => t.strategy === "longterm" && t.status !== "closed" && t.symbol === asset.symbol));
+  // Alle offenen Käufe dieses Werts (Zentraldepot, 2. Kauf …) – im Chart: neuester blau, ältere grau
+  const allTrades = useAppData((d) => d.trades);
+  const buys = useMemo(() => allTrades.filter((t) => t.strategy === "longterm" && t.status !== "closed" && t.symbol === asset.symbol && t.lt).sort((a, b) => a.openedAt - b.openedAt), [allTrades, asset.symbol]);
   const currency = displayCurrency(asset, live?.currency ?? asset.currency);
   const deQuote = useGermanQuote(asset, live?.currency ?? asset.currency ?? analysisCurrencyGuess(asset));
   const trainerV = useTrainerVersion();
@@ -150,8 +153,16 @@ export function AssetDetailView({ asset, initialHorizon, hideTake = false }: { a
     const out: ChartEntry[] = [];
     const fmtD = (t: number) => new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
     const STATUS = { erledigt: "erledigt", ungültig: "ungültig", abgelöst: "abgelöst" } as const;
+    const near = (a: number, b: number) => Math.abs(a - b) / Math.max(1e-9, Math.abs(b)) < 0.005;
+    const bought = (top: number, bottom: number) => buys.some((t) => near(t.lt!.zoneTop, top) && near(t.lt!.zoneBottom, bottom));
     for (const p of (best?.history.past ?? []).slice(0, 10))
-      if (p.zoneTop != null && p.zoneBottom != null) out.push({ color: "grau", from: p.from, to: p.to, top: p.zoneTop, bottom: p.zoneBottom, label: `${p.status ? STATUS[p.status] : "alt"} ${p.to ? fmtD(p.to) : ""}`.trim() });
+      if (p.zoneTop != null && p.zoneBottom != null && !bought(p.zoneTop, p.zoneBottom)) out.push({ color: "grau", from: p.from, to: p.to, top: p.zoneTop, bottom: p.zoneBottom, label: `${p.status ? STATUS[p.status] : "alt"} ${p.to ? fmtD(p.to) : ""}`.trim() });
+    // Deine Käufe: neuester blau, ältere grau (bis zum nächsten Kauf)
+    buys.forEach((t, k) => {
+      const latest = k === buys.length - 1;
+      const name = k === 0 ? "Zentraldepot" : `${k + 1}. Kauf`;
+      out.push({ color: latest ? "blau" : "grau", from: Math.floor(t.openedAt / 1000), to: latest ? undefined : Math.floor(buys[k + 1].openedAt / 1000), top: t.lt!.zoneTop, bottom: t.lt!.zoneBottom, invalidation: latest ? t.lt!.invalidation : undefined, target: latest ? t.lt!.targets[0] : undefined, label: name });
+    });
     const b = best?.best;
     const lastT = chartCandles[chartCandles.length - 1]?.time ?? 0;
     if ((b?.color === "gruen" || b?.color === "rot") && b.zoneTop != null && b.zoneBottom != null) {
@@ -159,7 +170,9 @@ export function AssetDetailView({ asset, initialHorizon, hideTake = false }: { a
       const from = piv?.length ? piv[piv.length - 1].time : chartCandles[Math.max(0, chartCandles.length - 20)]?.time ?? lastT;
       out.push({ color: b.color, from, top: b.zoneTop, bottom: b.zoneBottom, stop: b.stop, target: b.targets?.[0], label: b.color === "rot" ? "Short-Zone" : "Zielzone" });
     } else if (b?.color === "blau" && b.lt) {
-      out.push({ color: "blau", from: b.lt.high.time, top: b.lt.zoneTop, bottom: b.lt.zoneBottom, invalidation: b.lt.invalidation, target: b.lt.targets[0], label: "Langfrist-Einstieg (3 Teile)" });
+      // schon gekaufter Bereich steht oben als dein Kauf; ein neuer Bereich = Nachkauf möglich
+      if (!buys.some((t) => t.lt!.key === b.lt!.key) && !bought(b.lt.zoneTop, b.lt.zoneBottom))
+        out.push({ color: "blau", from: b.lt.high.time, top: b.lt.zoneTop, bottom: b.lt.zoneBottom, invalidation: b.lt.invalidation, target: b.lt.targets[0], label: buys.length ? "Neuer Bereich – Nachkauf möglich" : "Langfrist-Einstieg (3 Teile)" });
     } else if (!best) {
       // Ohne Blacktrader-Suche: Einstieg aus der Analyse dieses Charts
       const p = analysis?.plan;
@@ -173,7 +186,7 @@ export function AssetDetailView({ asset, initialHorizon, hideTake = false }: { a
       }
     }
     return out;
-  }, [best, chartCandles, analysis, ltZone]);
+  }, [best, chartCandles, analysis, ltZone, buys]);
   // Anzeige: Tageskerzen (mit Live-Kurs); Wellenpunkte und Zonen-Beginn auf die passende Tageskerze legen
   const dayCandles = useMemo(() => {
     if (interval === "1d") return chartCandles;

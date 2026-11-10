@@ -178,21 +178,6 @@ export default function SettingsPage() {
         </button>
       </Section>
 
-      <Section title="flatex-Depots" hint="Namen deiner getrennten flatex-Depots. Beim Übernehmen eines Einstiegs wählst du das Depot; im Depot steht es bei jedem Kauf.">
-        <div className="grid grid-cols-2 gap-2">
-          {s.depotNames.map((n, i) => (
-            <input
-              key={i}
-              className="input"
-              value={n}
-              maxLength={24}
-              aria-label={`Name von Depot ${i + 1}`}
-              onChange={(e) => actions.setSettings({ depotNames: s.depotNames.map((x, k) => (k === i ? e.target.value : x)) })}
-            />
-          ))}
-        </div>
-      </Section>
-
       <Section title="Zeithorizonte & Kerzen" hint="Fest wie im Turnier getestet: mittelfristig Tageskerzen, langfristig Wochenkerzen (Rohstoffe kurzfristig: Stundenkerzen). Andere Kerzengrößen sind nicht geprüft und daher abgeschaltet.">
         <p className="text-sm text-stone-300">Mittelfristig: 1d · Langfristig: 1w · Kurzfristig (nur Rohstoffe): 1h</p>
       </Section>

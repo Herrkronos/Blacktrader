@@ -7,8 +7,7 @@ import { correctFill, heldShares, sharesExact, trancheRows } from "@/lib/client/
 import { investedOf } from "@/lib/client/account";
 import { clearPositionStop, positionSummary, sellPosition, setPositionStop, updateWaitingOrder } from "@/lib/client/position";
 import { eurPerUnit } from "@/lib/fx";
-import { actions, type Trade } from "@/lib/store/store";
-import { DepotBadge, DepotPicker } from "./DepotPicker";
+import type { Trade } from "@/lib/store/store";
 import { ProposalBox } from "./ProposalBox";
 import { Sheet } from "./Sheet";
 
@@ -38,7 +37,8 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
   };
   // gewählte Käufe immer frisch aus der Gruppe (z. B. nach Depot-Änderung)
   const sel = lots ? lots.map((l) => group.find((g) => g.id === l.id)).filter((x): x is Trade => !!x) : null;
-  const lotName = (t: Trade, k: number) => (k === 0 && !t.nachkauf ? "Erstkauf" : `Nachkauf ${t.nachkauf ? group.slice(0, k + 1).filter((x) => x.nachkauf).length : k}`);
+  // Namen der Käufe der Reihe nach (Wunsch des Nutzers): Zentraldepot, 2. Kauf, 3. Kauf …
+  const lotName = (_t: Trade, k: number) => (k <= 0 ? "Zentraldepot" : `${k + 1}. Kauf`);
   const pending = group.every((t) => t.status === "pending");
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -103,7 +103,6 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
               <div className="mb-1 flex items-center justify-between font-semibold text-sky-300">
                 <span>
                   {lotName(t, k)} · {eur(rows.reduce((a, x) => a + x.eur, 0))}
-                  <DepotBadge depot={t.depot} showMissing />
                 </span>
                 <span className="flex items-center gap-2 font-normal text-stone-400">
                   {new Date(t.openedAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" })}
@@ -139,7 +138,7 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
             </div>
           );
         })}
-      {showBuys && group.length > 0 && <p className="mt-1 text-right text-[12px] text-stone-500">Kauf antippen → Verkaufen, Stop, Orders für diesen Kauf</p>}
+      {showBuys && group.length > 0 && <p className="mt-1 text-right text-[12px] text-stone-500">Antippen: verkaufen, Stop, korrigieren</p>}
       {s.reserved > 0 && (
         <div className="num mt-2 flex justify-between rounded-xl bg-white/5 px-2.5 py-2 text-[14px] text-stone-300">
           <span>Wartende Order (reserviert)</span>
@@ -181,8 +180,7 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
                 <button key={t.id} disabled={!has} className="flex w-full items-center justify-between rounded-xl bg-white/5 p-3 text-left disabled:opacity-40" onClick={() => (setChoose(null), openFor(choose!, [t]))}>
                   <span>
                     <b>{lotName(t, k)}</b>
-                    <DepotBadge depot={t.depot} showMissing />
-                    <span className="num block text-[13px] text-stone-400">
+                      <span className="num block text-[13px] text-stone-400">
                       {choose === "orders" ? `wartend ${eur(ls.reserved)}` : `${qtyStr(heldShares(t))} ${unit} · Einstieg ${ls.avgEur != null ? eur(ls.avgEur) : "–"}`}
                     </span>
                   </span>
@@ -244,7 +242,6 @@ function LotTitle({ lots, group, name, lotName }: { lots: Trade[]; group: Trade[
   return (
     <span>
       {name} · {lotName(t, group.findIndex((x) => x.id === t.id))}
-      <DepotBadge depot={t.depot} showMissing />
     </span>
   );
 }
@@ -278,7 +275,6 @@ function LotTabs({ lots, active, onTab }: { lots: Trade[]; active: Tab; onTab: (
           </button>
         )}
       </div>
-      {t && <DepotPicker value={t.depot} noDefault label="flatex-Depot dieses Kaufs" onChange={(d) => actions.updateTrade(t.id, { depot: d })} />}
     </div>
   );
 }
