@@ -121,7 +121,8 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
               </div>
               {rows.map((x, i) => (
                 <div key={i} className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-2 py-0.5">
-                  <span className="text-sky-300">Teil {i + 1}</span>
+                  {/* „Teil“ nur im Zentraldepot (mehrere Teil-Orders); 2., 3. … Kauf ist eine einzige Order */}
+                  <span className="text-sky-300">{rows.length > 1 ? `Teil ${i + 1}` : "Kauf"}</span>
                   <span>
                     {money(x.price, cur)} · {qtyStr(x.qty)} {unit} · {eur(x.eur)}
                   </span>
@@ -306,7 +307,7 @@ function FixRow({ t, index, priceEur, qty, unit }: { t: Trade; index: number; pr
   const [msg, setMsg] = useState<string | null>(null);
   return (
     <div className="space-y-2 rounded-xl bg-white/5 p-3">
-      <div className="text-[14px] text-sky-300">Teil {index + 1} · gekauft</div>
+      <div className="text-[14px] text-sky-300">{(t.tranches?.length ?? 0) > 1 ? `Teil ${index + 1} · ` : ""}gekauft</div>
       <div className="grid grid-cols-2 gap-2">
         <label className="text-[13px] text-stone-400">
           Kaufpreis (€ je Stück)
@@ -496,7 +497,7 @@ function OrderRow({ t, index, priceEur, qty, unit, onSaved }: { t: Trade; index:
   return (
     <div className="space-y-2 rounded-xl bg-white/5 p-3">
       <div className="text-[14px] text-sky-300">
-        {t.nachkauf ? "Nachkauf" : "Erstkauf"} · Teil {index + 1}
+        {t.nachkauf ? "Nachkauf" : "Zentraldepot"}{(t.tranches?.length ?? 0) > 1 ? ` · Teil ${index + 1}` : ""}
       </div>
       <div className="grid grid-cols-2 gap-2">
         <label className="text-[13px] text-stone-400">
