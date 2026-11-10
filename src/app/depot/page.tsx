@@ -1,5 +1,6 @@
 "use client";
 // Depot (früher Journal): nur selbst übernommene Papier-Trades, als Karten-Liste.
+import { closeLongTerm } from "@/lib/client/longterm";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { EquityChart } from "@/components/EquityChart";
@@ -335,7 +336,9 @@ function BlacktraderDepot() {
                     // Eingabe in Euro → Börsenkurs in der Originalwährung; Ergebnis in Euro (mit Wechselkurs)
                     const fx = eurPerUnit(tradeCurrency(action)) ?? 1;
                     const exit = exitEur / fx;
-                    actions.updateTrade(action.id, { status: "closed", exit, closedAt: Date.now(), closeReason: "manual", returnPct: tradeReturnEur(action, exit), fxExit: fx });
+                    // Langfrist: Ø-Einstieg der gekauften Teile und bereits verkaufte Teile mitrechnen
+                    if (action.strategy === "longterm") closeLongTerm(action, exit, "manual");
+                    else actions.updateTrade(action.id, { status: "closed", exit, closedAt: Date.now(), closeReason: "manual", returnPct: tradeReturnEur(action, exit), fxExit: fx });
                     setAction(null);
                   }}
                 >
