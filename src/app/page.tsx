@@ -11,7 +11,7 @@ import { money } from "@/lib/analysis/persona";
 import { ACCOUNT, computeAccount } from "@/lib/client/account";
 import { tradeReturnEur } from "@/lib/client/eur";
 import { instrumentKey, useMarket } from "@/lib/client/market";
-import { isChance, isTopChance, potential, runScan, useScan } from "@/lib/client/scanner";
+import { isChance, isTopChance, notHeld, potential, runScan, useHeldKeys, useScan } from "@/lib/client/scanner";
 import { useAppData } from "@/lib/store/store";
 import { HORIZON_LABEL, type NewsItem } from "@/lib/types";
 
@@ -62,16 +62,18 @@ export default function Uebersicht() {
     })
     .filter((x): x is number => x != null);
 
-  const chanceCount = useMemo(() => Math.min(20, scan.entries.filter((e) => isChance(e) && isTopChance(e) && potential(e) != null).length), [scan.entries]);
+  // Werte im Depot zählen nicht als neue Chance (Live-Bilanz läuft im Hintergrund weiter)
+  const held = useHeldKeys();
+  const chanceCount = useMemo(() => Math.min(20, scan.entries.filter((e) => isChance(e) && isTopChance(e) && notHeld(held)(e) && potential(e) != null).length), [scan.entries, held]);
   const top = useMemo(() => {
     // Wie bei den Chancen: aus den Trainings-Werten die 3 mit dem größten Potenzial
     return scan.entries
-      .filter((e) => isChance(e) && isTopChance(e))
+      .filter((e) => isChance(e) && isTopChance(e) && notHeld(held)(e))
       .map((e) => ({ e, p: potential(e) }))
       .filter((x) => x.p != null)
       .sort((a, b) => b.p!.score - a.p!.score)
       .slice(0, 3);
-  }, [scan.entries]);
+  }, [scan.entries, held]);
 
   const news = useMemo(() => {
     const all: (NewsItem & { sym: string })[] = [];

@@ -9,7 +9,7 @@ import { updateChanceLog, type ChanceCandidate } from "./chanceLog";
 import { isFxPair } from "./eur";
 import { basePotential, BLUE_RULE, MIN_POTENTIAL, passesBlueRule, type PotentialColor } from "../analysis/potential";
 import { effectiveWeights, learnedParams, refreshTrainerParams } from "./trainerParams";
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { analyze, type AnalysisResult } from "../analysis/analyze";
 import { findLongTermZone, type LongTermZone } from "../analysis/longterm";
 import { HORIZON_RANK, longTermOutcome, marketContext, pickBestEntry, type BestEntry, type HistEntry, type MarketContext } from "../analysis/bestEntry";
@@ -17,7 +17,7 @@ import { money } from "../analysis/persona";
 import { applyPromotions } from "./promote";
 import { refreshFx } from "./fx";
 import { assetKey, closeEntry, doneFor, getHistory, recordEntry, type EntryHistory } from "./entries";
-import { getData } from "../store/store";
+import { getData, useAppData } from "../store/store";
 import type { Candle, Horizon, ResolvedAsset } from "../types";
 import { api } from "./api";
 import { inMarket, MARKET_ASSETS } from "./marketList";
@@ -364,3 +364,11 @@ export function entryDistance(res: AnalysisResult): number {
   if (!p || p.orderType !== "limit") return 0;
   return (Math.abs(res.price - p.entry) / res.price) * 100;
 }
+
+/** Werte, die offen im Blacktrader-Depot liegen (Art:Symbol) – erscheinen nicht mehr in Chancen/Top 3.
+ *  Die Live-Bilanz läuft im Hintergrund unverändert weiter (sie wird in runScan vor dieser Anzeige-Filterung erfasst). */
+export function useHeldKeys(): Set<string> {
+  const trades = useAppData((d) => d.trades);
+  return useMemo(() => new Set(trades.filter((t) => t.status !== "closed").map((t) => `${t.kind}:${t.symbol}`)), [trades]);
+}
+export const notHeld = (held: Set<string>) => (e: ScanEntry) => !held.has(`${e.asset.kind}:${e.asset.symbol}`);

@@ -14,7 +14,7 @@ import { Legend } from "@/components/Legend";
 import { ConfirmSheet } from "@/components/Sheet";
 import { haptic } from "@/lib/client/alerts";
 import { openPaperTrade } from "@/lib/client/autotrade";
-import { isChance, isTopChance, potential, runScan, useScan, type SignalKind } from "@/lib/client/scanner";
+import { isChance, isTopChance, notHeld, potential, runScan, useHeldKeys, useScan, type SignalKind } from "@/lib/client/scanner";
 import { MARKET_GROUPS } from "@/lib/client/marketList";
 import { getData } from "@/lib/store/store";
 import type { AssetKind } from "@/lib/types";
@@ -36,6 +36,8 @@ export default function ChancenPage() {
   const [group, setGroup] = useState<AssetKind | "all">("all");
   const [confirmAll, setConfirmAll] = useState(false);
   const { open, sheet } = useAssetSheet();
+  // Was schon im Depot liegt, erscheint hier nicht mehr (die Live-Bilanz zählt es im Hintergrund weiter)
+  const held = useHeldKeys();
 
   useEffect(() => {
     runScan();
@@ -44,24 +46,24 @@ export default function ChancenPage() {
   const list = useMemo(
     () =>
       scan.entries
-        .filter((e) => isChance(e) && isTopChance(e) && (group === "all" || e.asset.kind === group) && (kind === "all" || e.best.color === kind))
+        .filter((e) => isChance(e) && isTopChance(e) && notHeld(held)(e) && (group === "all" || e.asset.kind === group) && (kind === "all" || e.best.color === kind))
         .map((e) => ({ e, p: potential(e) }))
         .filter((x) => x.p != null)
         .sort((a, b) => b.p!.score - a.p!.score)
         .slice(0, TOP)
         .map((x) => x.e),
-    [scan.entries, kind, group],
+    [scan.entries, kind, group, held],
   );
   const counts = useMemo(() => {
     const c: Record<KindFilter, number> = { all: 0, blau: 0, gruen: 0, rot: 0 };
     for (const e of scan.entries) {
-      if (!isChance(e) || !isTopChance(e) || (group !== "all" && e.asset.kind !== group)) continue;
+      if (!isChance(e) || !isTopChance(e) || !notHeld(held)(e) || (group !== "all" && e.asset.kind !== group)) continue;
       if (e.best.color === "gelb") continue;
       c.all++;
       c[e.best.color]++;
     }
     return c;
-  }, [scan.entries, group]);
+  }, [scan.entries, group, held]);
 
   const tradable = list.filter((e) => (e.best.color === "gruen" || e.best.color === "rot") && e.best.res).map((e) => ({ asset: e.asset, res: e.best.res! }));
 
