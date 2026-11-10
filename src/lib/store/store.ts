@@ -17,6 +17,21 @@ export interface WatchItem extends ResolvedAsset {
   horizon?: Horizon;
 }
 
+export interface LongTermProposal {
+  key: string;
+  kind: "ausstieg" | "teilausstieg" | "stop";
+  reason: string;
+  /** Anteil der noch gehaltenen Position, der verkauft werden soll */
+  fraction?: number;
+  /** neuer Stop (Währung des Werts) */
+  stop?: number;
+  /** Kurs beim Vorschlag (Währung des Werts) */
+  price: number;
+  at: number;
+  /** Erinnerung am nächsten Handelstag schon gesendet */
+  reminded?: boolean;
+}
+
 export interface Trade {
   id: string;
   symbol: string;
@@ -67,6 +82,11 @@ export interface Trade {
   /** Letzte Meldung von Blacktrader zu dieser Position (wird nur einmal gesendet) */
   lastActionKey?: string;
   lastActionText?: string;
+  /**
+   * Vorschlag von Blacktrader zu einer Langfrist-Position (geänderte Zählung), der erst nach Bestätigung gilt –
+   * so wie bei flatex: Verkaufen, Stop-Loss setzen oder wartende Orders löschen macht dort nur der Nutzer.
+   */
+  proposal?: LongTermProposal;
   /** "manual" = vom Nutzer selbst übernommen (nur solche Trades gehören ins Journal) */
   source?: "manual";
   /** Herkunft unklar (vor dem Update angelegt) – Nutzer entscheidet einmalig */

@@ -20,6 +20,7 @@ import { ACCOUNT, ADD, computeAccount } from "@/lib/client/account";
 import { makeOrderSlip } from "@/lib/client/orderSlip";
 import { BuyHold } from "@/components/BuyHold";
 import { useAssetSheet } from "@/components/AssetSheet";
+import { ProposalBox } from "@/components/ProposalBox";
 
 const eur = (x: number, sign = false) => `${sign && x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const signed = (x: number, d = 2) => `${x >= 0 ? "+" : ""}${x.toFixed(d).replace(".", ",")} %`;
@@ -114,6 +115,7 @@ function TradeCard({ t, price, onAction, onOpenAsset, nachkauf }: { t: Trade; pr
             )}
           </div>
         )}
+        {t.proposal && t.status !== "closed" && <ProposalBox t={t} price={price} />}
         {nachkauf}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {kind}

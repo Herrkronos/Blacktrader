@@ -1,13 +1,14 @@
 "use client";
 // Langfrist-Positionen (blau) als Papier-Trades: Einstieg in drei Teilen, kein fester Stop.
-// Teilausstieg / Stop / Ausstieg NUR, wenn Blacktrader eine geänderte Zählung meldet (assessLongTerm).
+// Teilausstieg / Stop / Ausstieg NUR, wenn Blacktrader eine geänderte Zählung meldet (assessLongTerm) –
+// und erst, wenn der Nutzer den Vorschlag bei flatex umgesetzt und bestätigt hat (wie bei flatex selbst).
 import { makeOrderSlip } from "./orderSlip";
 import { toEurReturn, tradeCurrency } from "./eur";
 import { eurPerUnit } from "../fx";
 import { analyzeElliott } from "../analysis/elliott";
 import { assessLongTerm, blendedReturn, type LongTermAction, type LongTermZone } from "../analysis/longterm";
 import { money } from "../analysis/persona";
-import { actions, getData, type Trade } from "../store/store";
+import { actions, getData, type LongTermProposal, type Trade } from "../store/store";
 import { ADD, canAfford, freeCash, noMoney, noTwice } from "./account";
 import { nachkaufState, openPositions } from "./nachkauf";
 import type { Candle, Horizon, Interval, ResolvedAsset } from "../types";
@@ -83,7 +84,8 @@ export function trackLongTerm(t: Trade, price: number): string | null {
   const now = Date.now();
   let changed = false;
   const tranches = (t.tranches ?? []).map((x) => {
-    if (!x.filledAt && t.lastActionKey == null && price <= x.price) {
+    // Wartende Teil-Orders liegen bei flatex als Limit-Order – sie werden ausgeführt, bis der Nutzer sie löscht
+    if (!x.filledAt && price <= x.price) {
       changed = true;
       return { ...x, filledAt: now, price: Math.min(x.price, price) };
     }
@@ -132,11 +134,85 @@ export function applyLongTermAction(t: Trade, a: LongTermAction, price: number):
   return `${a.reason} Stop ${money(a.stop, tradeCurrency(t))}.`;
 }
 
-/** Bewertung mit Kerzen der Positions-Kerzengröße (Wellenzählung auf denselben Kerzen). */
+/** Bewertung mit Kerzen der Positions-Kerzengröße (Wellenzählung auf denselben Kerzen).
+ * Blacktrader handelt NICHT mehr selbst: Er macht einen Vorschlag (Order-Zettel für flatex), der erst nach
+ * „Bei flatex erledigt“ gebucht wird. Unbestätigt → Erinnerung am nächsten Tag. */
 export function checkLongTermWithCandles(t: Trade, candles: Candle[]): string | null {
   if (t.strategy !== "longterm" || t.status === "closed" || !t.lt || candles.length < 60) return null;
   const elliott = analyzeElliott(candles.slice(-600));
   const a = assessLongTerm({ direction: "long", entry: avgEntry(t), invalidation: t.lt.invalidation, stop: t.stop || undefined, remaining: t.remaining ?? 1, lastActionKey: t.lastActionKey }, candles, elliott);
-  if (!a) return null;
-  return applyLongTermAction(t, a, candles[candles.length - 1].close);
+  const price = candles[candles.length - 1].close;
+  if (a && a.key !== t.proposal?.key) {
+    const p = makeProposal(a, price);
+    actions.updateTrade(t.id, { proposal: p });
+    return `Vorschlag: ${proposalSteps({ ...t, proposal: p }).join(" · ")}. Bei flatex umsetzen und im Depot bestätigen.`;
+  }
+  if (t.proposal && !t.proposal.reminded && Date.now() - t.proposal.at > 20 * 3600e3) {
+    actions.updateTrade(t.id, { proposal: { ...t.proposal, reminded: true } });
+    return `Erinnerung – noch offen: ${proposalSteps(t).join(" · ")}. Im Depot bestätigen oder ablehnen.`;
+  }
+  return null;
+}
+
+/** Abstand, den ein Stop-Loss bei flatex mindestens unter dem Kurs haben muss (sonst sofort ausgeführt) */
+export const MIN_STOP_GAP = 0.005;
+
+/** Aus einer Meldung einen Vorschlag machen. Läge der Stop nicht sicher unter dem Kurs, geht das bei flatex nicht → jetzt verkaufen. */
+export function makeProposal(a: LongTermAction, price: number, now = Date.now()): LongTermProposal {
+  if (a.kind !== "ausstieg" && a.stop >= price * (1 - MIN_STOP_GAP))
+    return { key: a.key, kind: "ausstieg", reason: `${a.reason} Der Stop läge über dem Kurs – bei flatex nicht möglich, deshalb jetzt verkaufen.`, price, at: now };
+  if (a.kind === "teilausstieg") return { key: a.key, kind: a.kind, reason: a.reason, fraction: a.fraction, stop: a.stop, price, at: now };
+  if (a.kind === "stop") return { key: a.key, kind: a.kind, reason: a.reason, stop: a.stop, price, at: now };
+  return { key: a.key, kind: "ausstieg", reason: a.reason, price, at: now };
+}
+
+/** Gehaltene Stück (gekaufte Teile, abzüglich Teilverkäufe) */
+export function heldShares(t: Trade): number {
+  const tr = t.tranches ?? [];
+  const slip = tr.some((x) => x.qty == null) && tr.length ? makeOrderSlip({ kind: t.kind, symbol: t.symbol, name: t.name, currency: t.currency, direction: "long", entry: tr[0].price, tranches: tr.map((x) => x.price), budget: t.nachkauf ? ADD.stake : 500 }) : null;
+  const bought = tr.reduce((a, x, i) => a + (x.filledAt ? x.qty ?? slip?.orders[i]?.qty ?? 0 : 0), 0);
+  const q = bought * (t.remaining ?? 1);
+  return t.kind === "crypto" ? Math.floor(q * 1e4) / 1e4 : Math.round(q);
+}
+
+/** Die Schritte bei flatex in Worten */
+export function proposalSteps(t: Trade): string[] {
+  const p = t.proposal;
+  if (!p) return [];
+  const fx = eurPerUnit(tradeCurrency(t)) ?? 1;
+  const eur = (x: number) => `${(x * fx).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+  const held = heldShares(t);
+  const fmt = (q: number) => q.toLocaleString("de-DE", { maximumFractionDigits: 4 });
+  const waiting = (t.tranches ?? []).filter((x) => !x.filledAt);
+  const steps: string[] = [];
+  if (p.kind === "ausstieg") {
+    if (held > 0) steps.push(`Verkauf ${fmt(held)} Stück (bestens)`);
+    if (t.stop > 0 && held > 0) steps.push("bisherigen Stop-Loss löschen");
+  } else if (p.kind === "teilausstieg") {
+    const sell = t.kind === "crypto" ? Math.floor(held * (p.fraction ?? 0.5) * 1e4) / 1e4 : Math.round(held * (p.fraction ?? 0.5));
+    if (sell > 0) steps.push(`Verkauf ${fmt(sell)} Stück (bestens)`);
+    if (held - sell > 0) steps.push(`Stop-Loss für die restlichen ${fmt(held - sell)} Stück: ${eur(p.stop!)}`);
+  } else if (held > 0) steps.push(`Stop-Loss für ${fmt(held)} Stück: ${eur(p.stop!)}`);
+  if (waiting.length) steps.push(`wartende Kauf-Order${waiting.length > 1 ? "s" : ""} ${waiting.map((x) => eur(x.price)).join(", ")} löschen`);
+  return steps;
+}
+
+/** „Bei flatex erledigt“: Vorschlag buchen, Verkauf zum eingegebenen Kurs (in €). */
+export function acceptProposal(t: Trade, sellPriceEur?: number): string | null {
+  const p = t.proposal;
+  if (!p) return null;
+  const fx = eurPerUnit(tradeCurrency(t)) ?? 1;
+  const price = sellPriceEur && sellPriceEur > 0 ? sellPriceEur / fx : p.price;
+  const a: LongTermAction = p.kind === "teilausstieg" ? { kind: "teilausstieg", key: p.key, fraction: p.fraction ?? 0.5, stop: p.stop!, reason: p.reason } : p.kind === "stop" ? { kind: "stop", key: p.key, stop: p.stop!, reason: p.reason } : { kind: "ausstieg", key: p.key, reason: p.reason };
+  const msg = applyLongTermAction({ ...t, proposal: undefined }, a, price);
+  // Stop ist jetzt bei flatex eingetragen → keine Erinnerung „Stop anpassen“
+  actions.updateTrade(t.id, { proposal: undefined, ...(p.stop && p.kind !== "ausstieg" ? { brokerStopEur: p.stop * fx, brokerStopNotified: undefined } : {}) });
+  return msg;
+}
+
+/** „Ablehnen“: nichts ändern, Meldung merken (kommt nicht wieder) */
+export function declineProposal(t: Trade) {
+  const p = t.proposal;
+  if (!p) return;
+  actions.updateTrade(t.id, { proposal: undefined, lastActionKey: p.key, lastActionText: `Vorschlag abgelehnt: ${p.reason}` });
 }

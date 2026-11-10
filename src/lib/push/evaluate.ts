@@ -47,7 +47,8 @@ export async function evaluatePush(rec: PushRecord, load: CandleLoader, deadline
       const a = assessLongTerm({ direction: "long", entry, invalidation: t.lt.invalidation, stop: t.stop || undefined, remaining: t.remaining ?? 1, lastActionKey: t.lastActionKey }, c, analyzeElliott(c.slice(-600)));
       if (a) {
         const what = a.kind === "ausstieg" ? "Komplett aussteigen" : a.kind === "teilausstieg" ? "Teilausstieg" : "Stop setzen";
-        add({ key: `act:${t.id}:${a.key}`, title: `${what}: ${t.name}`, body: a.kind === "ausstieg" ? a.reason : `${a.reason} Stop ${fmtPrice(a.stop)}.`, url });
+        // Nur ein Vorschlag: der Nutzer setzt ihn bei flatex um und bestätigt im Depot
+        add({ key: `act:${t.id}:${a.key}`, title: `Vorschlag – ${what}: ${t.name}`, body: `${a.kind === "ausstieg" ? a.reason : `${a.reason} Stop ${fmtPrice(a.stop)}.`} Bei flatex umsetzen und im Depot bestätigen.`, url });
       }
       continue;
     }
