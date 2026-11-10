@@ -32,7 +32,6 @@ export function ChanceRecord() {
               </div>
             ) : null;
           })}
-          <p className="pt-1 text-stone-500">Jede Chance wird ab dem ersten Erscheinen mitgeschrieben – auch wenn du sie nicht übernimmst. Treffer = Ziel erreicht nach dem Einstieg, gegen Stop (Blau: Schlusskurs unter der Ungültig-Grenze). Verpasst = Ziel ohne Einstieg. Ausgewertet wird bei jeder Suche, also wenn du die App öffnest.</p>
         </div>
       )}
     </button>
