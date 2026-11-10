@@ -26,3 +26,4 @@
 - Vercel: Live-Version kommt NUR vom Branch claude/black-ship-trading-app-a74mmo (Production). Nur noch dorthin pushen (main/blacktrader-update nur auf Wunsch) – sonst zu viele Builds (Tageslimit).
 - Chancen/Top 3: Werte mit offener Position im Blacktrader-Depot ausgeblendet (useHeldKeys/notHeld); Live-Bilanz erfasst sie unverändert weiter (scanner inTop vor der Anzeige).
 - Vercel übernimmt manchmal einen Push nicht (Version fehlt ganz in der Liste). Dann einen weiteren kleinen Commit auf den Production-Branch schieben und live prüfen.
+- Kerzen fest wie getestet (1d mittel, 1w lang, 1h Rohstoffe kurz) – Auswahl in den Einstellungen entfernt, gespeicherte Einstellungen (z. B. 1M) werden beim Laden überschrieben (Nutzerfund: 1M ergab Stops wie −15 €). Stop ≤ 0 → „kein sinnvoller Stop“, ab 50 % klare Warnung. Feste Stop-Grenze getestet und NICHT eingebaut: ≤50 % → 12,7 % p. a., ≤35 % → 9,3 %, ≤25 % → 9,6 % statt 19,0 %.

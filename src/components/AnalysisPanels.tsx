@@ -80,7 +80,7 @@ export function SignalCard({ a, onTrade, shortAllowed = true, main }: { a: Analy
             {money(a.plan.entry, a.currency)} {a.plan.orderType === "limit" ? <span className="text-xs text-amber-300">(wartet, bis der Kurs dort ist)</span> : a.plan.orderType === "market" ? <span className="text-xs text-emerald-300">(jetzt in der Zone)</span> : null}
           </dd>
           <dt className="text-stone-400">{expert ? "Stop-Loss" : "Stop (Verlustgrenze)"}</dt>
-          <dd className="num text-down">{money(a.plan.stop, a.currency)}</dd>
+          <dd className="num text-down">{a.plan.stop > 0 ? money(a.plan.stop, a.currency) : "kein sinnvoller Stop (Welle zu groß)"}</dd>
           <dt className="text-stone-400">Kursziele</dt>
           <dd className="num text-up">{a.plan.targets.map((x) => money(x, a.currency)).join(" / ")}</dd>
           <dt className="text-stone-400">{expert ? "CRV" : "Chance : Risiko"}</dt>

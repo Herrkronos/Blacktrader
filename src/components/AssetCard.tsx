@@ -170,8 +170,8 @@ export function AssetCard({
               </div>
               <div className="rounded-xl bg-white/5 px-1 py-2">
                 <div className="label">Stop</div>
-                <div className="num text-[17px] font-semibold text-red-300">{money(plan.stop, cur)}</div>
-                <div className="num text-[13px] text-red-300/80">{isShort ? "+" : "−"}{pctStr(plan.entry, plan.stop)}</div>
+                <div className="num text-[17px] font-semibold text-red-300">{plan.stop > 0 ? money(plan.stop, cur) : "keiner"}</div>
+                <div className="num text-[13px] text-red-300/80">{plan.stop > 0 ? `${isShort ? "+" : "−"}${pctStr(plan.entry, plan.stop)}` : "kein sinnvoller Stop"}</div>
               </div>
               <div className="rounded-xl bg-white/5 px-1 py-2">
                 <div className="label">Ziel</div>
@@ -248,7 +248,15 @@ export function AssetCard({
                   Hochgestuft zu Blau am {new Date(myTrade.promotedAt).toLocaleDateString("de-DE")}: {myTrade.promoteReason}
                 </p>
               )}
-              {plan && riskPct > RISK_LIMIT && <p className="text-red-300">Stop {pctStr(plan.entry, plan.stop)} entfernt – nur mit kleiner Positionsgröße.</p>}
+              {plan && riskPct > RISK_LIMIT && (
+                <p className="text-red-300">
+                  {plan.stop <= 0
+                    ? "Kein sinnvoller Stop möglich (die Welle ist zu groß) – Totalverlust des Einsatzes möglich."
+                    : riskPct >= 50
+                      ? `Stop ${pctStr(plan.entry, plan.stop)} entfernt – bei flatex kaum sinnvoll umsetzbar, ein Großteil des Einsatzes kann verloren gehen.`
+                      : `Stop ${pctStr(plan.entry, plan.stop)} entfernt – nur mit kleiner Positionsgröße.`}
+                </p>
+              )}
             </div>
           )}
 

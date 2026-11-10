@@ -178,21 +178,8 @@ export default function SettingsPage() {
         </button>
       </Section>
 
-      <Section title="Zeithorizonte & Kerzen" hint="Blacktrader rechnet die Zeiträume im Hintergrund und zeigt je Wert nur den besten Einstieg. Hier legst du die Kerzengröße je Zeitraum fest (für Fortgeschrittene).">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {(Object.keys(HORIZON_INTERVALS) as Horizon[]).map((h) => (
-            <div key={h} className="text-sm">
-              <div className="mb-1 text-stone-300">{HORIZON_LABEL[h]}</div>
-              <div className="flex gap-1">
-                {HORIZON_INTERVALS[h].map((iv: Interval) => (
-                  <button key={iv} onClick={() => actions.setSettings({ intervals: { ...s.intervals, [h]: iv } })} className={`chip ${s.intervals[h] === iv ? "border-gold bg-gold/20 text-gold-light" : "border-stone-700 text-stone-400"}`}>
-                    {iv}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+      <Section title="Zeithorizonte & Kerzen" hint="Fest wie im Turnier getestet: mittelfristig Tageskerzen, langfristig Wochenkerzen (Rohstoffe kurzfristig: Stundenkerzen). Andere Kerzengrößen sind nicht geprüft und daher abgeschaltet.">
+        <p className="text-sm text-stone-300">Mittelfristig: 1d · Langfristig: 1w · Kurzfristig (nur Rohstoffe): 1h</p>
       </Section>
 
       <Section title="Echtzeit & Alarme">

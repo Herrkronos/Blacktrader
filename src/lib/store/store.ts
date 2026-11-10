@@ -214,7 +214,8 @@ function sanitize(raw: unknown): AppData {
       ...DEFAULT_SETTINGS,
       ...s,
       ...normalizeWeightSettings(s),
-      intervals: { ...DEFAULT_SETTINGS.intervals, ...(s.intervals ?? {}) },
+      // Kerzen fest wie getestet (Tag mittelfristig, Woche langfristig) – andere Größen (z. B. 1M) ergaben ungeprüfte Einstiege mit absurden Stops
+      intervals: { ...DEFAULT_SETTINGS.intervals },
       keys: { ...DEFAULT_SETTINGS.keys, ...(s.keys ?? {}) },
       pollSeconds: Math.min(60, Math.max(15, Number(s.pollSeconds) || DEFAULT_SETTINGS.pollSeconds)),
       autoTrade: false,
