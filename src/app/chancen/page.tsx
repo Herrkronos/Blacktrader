@@ -2,6 +2,7 @@
 // Chancen: aus dem Markt (S&P 100, DAX 40, ATX, 20 Krypto, 10 Rohstoffe) die 20 Einstiege mit dem größten Potenzial –
 // Blau (langfristig), Grün (Trade auf steigende Kurse) oder Rot (Short). Werte nur aus der Watchlist kommen nicht hierher.
 // Gelb (kein Einstieg) erscheint nur in der Watchlist.
+import { openPositions } from "@/lib/client/nachkauf";
 import { ChanceRecord } from "@/components/ChanceRecord";
 import { ACCOUNT, canAfford, freeCash, noMoney } from "@/lib/client/account";
 import { OVER_BUDGET } from "@/lib/client/orderSlip";
@@ -142,6 +143,7 @@ export default function ChancenPage() {
               noMoney(freeCash(d.trades, d.accountResets));
               break;
             }
+            if (openPositions(t.asset.symbol).length) continue; // schon im Depot – kein zweiter Trade
             if (openPaperTrade(t.asset, t.res)) n++;
           }
           if (n && getData().settings.haptics) haptic(30);

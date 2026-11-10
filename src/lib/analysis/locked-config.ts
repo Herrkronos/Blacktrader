@@ -29,7 +29,7 @@ export const LOCKED = deepFreeze({
   ],
   elliottPatterns: ["impulse", "leading-diagonal", "ending-diagonal", "zigzag", "double-zigzag", "triple-zigzag", "flat-regular", "flat-expanded", "flat-running", "triangle-contracting", "triangle-expanding", "combination-wxy", "combination-wxyxz"],
   /** Zielzonen-Einstieg: Einstieg, Zone, Stop, Ziel (Risiko-Logik) */
-  zone: { entryRetrace: 0.618, zoneDeep: 0.786, stopBufferAtr: 0.25, minWaveAtr: 4, target1Ext: 0.272, trendFilter: true },
+  zone: { entryRetrace: 0.618, zoneDeep: 0.786, bottomAboveStop: 0.01, stopBufferAtr: 0.25, minWaveAtr: 4, target1Ext: 0.272, trendFilter: true },
   /** Trade-Verwaltung: Gewinne laufen lassen */
   trade: { exitMode: "trail", trailAtr: 4, maxWaitBars: 60, maxHoldBars: 200 },
   /**

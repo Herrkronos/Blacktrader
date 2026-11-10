@@ -8,24 +8,34 @@ import { analyzeElliott } from "../analysis/elliott";
 import { assessLongTerm, blendedReturn, type LongTermAction, type LongTermZone } from "../analysis/longterm";
 import { money } from "../analysis/persona";
 import { actions, getData, type Trade } from "../store/store";
-import { canAfford, freeCash, noMoney } from "./account";
+import { ADD, canAfford, freeCash, noMoney, noTwice } from "./account";
+import { nachkaufState, openPositions } from "./nachkauf";
 import type { Candle, Horizon, Interval, ResolvedAsset } from "../types";
 
 type Asset = Pick<ResolvedAsset, "symbol" | "name" | "kind" | "binanceSymbol" | "yahooSymbol" | "currency" | "isin" | "exchange" | "coingeckoId">;
 
 export const openLongTerm = (symbol: string) => getData().trades.find((t) => t.strategy === "longterm" && t.status !== "closed" && t.symbol === symbol);
 
-/** Langfristigen Einstieg übernehmen: drei wartende Teil-Orders im Bereich. */
-export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizon, interval: Interval, price: number): boolean {
-  if (openLongTerm(asset.symbol)) return false;
-  const slip = makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: "long", entry: z.zoneTop, tranches: [...z.tranches] });
+/**
+ * Langfristigen Einstieg übernehmen: drei wartende Teil-Orders im Bereich (500 €).
+ * `nachkauf`: Wert liegt schon im Depot → nur ein weiterer blauer Bereich, eine Order zu 250 € an der Oberkante
+ * (höchstens 4 Nachkäufe, siehe nachkauf.ts).
+ */
+export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizon, interval: Interval, price: number, opts: { nachkauf?: boolean } = {}): boolean {
+  const nk = opts.nachkauf === true;
+  if (nk ? !nachkaufState(asset.symbol, z).allowed : openPositions(asset.symbol).length > 0) {
+    if (!nk) noTwice();
+    return false;
+  }
+  const levels = nk ? [z.zoneTop] : [...z.tranches];
+  const slip = makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: "long", entry: z.zoneTop, tranches: levels, budget: nk ? ADD.stake : undefined });
   const amount = slip.totalEur > 0 ? slip.totalEur : undefined;
   if (!canAfford(getData().trades, getData().accountResets, amount)) {
     noMoney(freeCash(getData().trades, getData().accountResets));
     return false;
   }
   const now = Date.now();
-  const tranches = z.tranches.map((p) => ({ price: p, filledAt: price <= p ? now : undefined }));
+  const tranches = levels.map((p) => ({ price: p, filledAt: price <= p ? now : undefined }));
   const filled = tranches.filter((t) => t.filledAt);
   actions.addTrade({
     strategy: "longterm",
@@ -40,11 +50,12 @@ export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizo
     direction: "long",
     horizon,
     interval,
-    entry: filled.length ? Math.min(price, ...filled.map((t) => t.price)) : z.tranches[0],
+    entry: filled.length ? Math.min(price, ...filled.map((t) => t.price)) : levels[0],
     stop: 0,
     targets: [...z.targets],
     openedAt: now,
-    reason: `Langfristiger Einstieg in drei Teilen ${money(z.zoneTop, asset.currency)} – ${money(z.zoneBottom, asset.currency)}. Kein fester Stop – ungültig bei Schlusskurs unter ${money(z.invalidation, asset.currency)}. Teilausstieg oder Stop nur, wenn sich die Wellenzählung ändert.`,
+    nachkauf: nk || undefined,
+    reason: nk ? `Nachkauf (250 €) im neuen blauen Bereich ${money(z.zoneTop, asset.currency)} – ${money(z.zoneBottom, asset.currency)}. Kein fester Stop – ungültig bei Schlusskurs unter ${money(z.invalidation, asset.currency)}.` : `Langfristiger Einstieg in drei Teilen ${money(z.zoneTop, asset.currency)} – ${money(z.zoneBottom, asset.currency)}. Kein fester Stop – ungültig bei Schlusskurs unter ${money(z.invalidation, asset.currency)}. Teilausstieg oder Stop nur, wenn sich die Wellenzählung ändert.`,
     score: 0,
     signal: "buy",
     pattern: "Langfrist-Einstiegsbereich",

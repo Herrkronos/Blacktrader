@@ -7,6 +7,8 @@ import type { Trade } from "../store/store";
 import { KestYear } from "../analysis/kest";
 
 export const ACCOUNT = { start: 8000, stake: 500, fee: 7.9, tax: 0.275 } as const;
+/** Nachkauf nur bei Blau: höchstens 4 × 250 € je Wert (zusätzlich zum ersten Einstieg mit 500 €) */
+export const ADD = { max: 4, stake: 250 } as const;
 
 const yearOf = (ms: number) => new Date(ms).getUTCFullYear();
 /** Eingesetzter Betrag eines Trades (Stück × Kurs beim Übernehmen; ältere Trades: 500 €) */
@@ -154,6 +156,8 @@ export interface SimTrade {
   exit: number;
   /** Rendite in % */
   r: number;
+  /** Blauer (langfristiger) Einstieg – nur dort ist Nachkauf erlaubt */
+  blue?: boolean;
 }
 
 export interface SimResult {
@@ -188,32 +192,41 @@ export function simulateAccount(trades: SimTrade[]): SimResult {
   let taken = 0;
   let skipped = 0;
   let broke = false;
-  const open = new Set<number>();
-  const syms = new Set<string>();
+  const open = new Map<number, number>(); // Trade → Einsatz
+  const per = new Map<string, number>();
   for (const e of ev) {
     const t = trades[e.i];
     if (e.kind === 1) {
-      if (broke || syms.has(t.sym) || cash < ACCOUNT.stake + ACCOUNT.fee) {
-        if (!broke && cash < ACCOUNT.stake + ACCOUNT.fee && open.size === 0) broke = true;
+      // Je Wert eine Position; Nachkauf nur bei Blau, höchstens ADD.max × ADD.stake
+      const have = per.get(t.sym) ?? 0;
+      const stake = have > 0 ? ADD.stake : ACCOUNT.stake;
+      if (broke || (have > 0 && (!t.blue || have > ADD.max)) || cash < stake + ACCOUNT.fee) {
+        if (!broke && cash < stake + ACCOUNT.fee && open.size === 0) broke = true;
         skipped++;
         continue;
       }
-      cash -= ACCOUNT.stake + ACCOUNT.fee;
+      cash -= stake + ACCOUNT.fee;
       fees += ACCOUNT.fee;
-      open.add(e.i);
-      syms.add(t.sym);
+      open.set(e.i, stake);
+      per.set(t.sym, have + 1);
       taken++;
       continue;
     }
     if (!open.has(e.i)) continue;
+    const st = open.get(e.i)!;
     open.delete(e.i);
-    syms.delete(t.sym);
-    const g = (ACCOUNT.stake * t.r) / 100;
-    cash += ACCOUNT.stake + g - ACCOUNT.fee;
+    per.set(t.sym, (per.get(t.sym) ?? 1) - 1);
+    const g = (st * t.r) / 100;
+    cash += st + g - ACCOUNT.fee;
     fees += ACCOUNT.fee;
     const k = kest.settle(g, yearOf(e.at));
     cash -= k;
     tax += k;
   }
   return { start: ACCOUNT.start, end: cash, profit: cash - ACCOUNT.start, profitPct: ((cash - ACCOUNT.start) / ACCOUNT.start) * 100, fees, tax, taken, skipped, broke };
+}
+
+/** Hinweis: Wert liegt schon im Depot – nachkaufen nur bei blauen Einstiegen */
+export function noTwice() {
+  if (typeof window !== "undefined" && typeof window.alert === "function") window.alert("Diesen Wert hast du schon im Depot. Nachkaufen geht nur bei einem weiteren blauen (langfristigen) Einstieg – höchstens 4 × 250 €.");
 }

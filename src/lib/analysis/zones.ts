@@ -12,8 +12,14 @@ export interface ZoneOptions {
   atrMult: number;
   /** Einstieg bei diesem Korrektur-Anteil der Welle A→B */
   entryRetrace: number;
-  /** Untere Zonengrenze (tiefste sinnvolle Korrektur) */
+  /** Untere Zonengrenze (tiefste sinnvolle Korrektur) – nur ohne `bottomAboveStop` */
   zoneDeep: number;
+  /**
+   * Untere Zonengrenze knapp über dem Stop (Anteil, 0,01 = 1 %): Die grüne Box reicht von 61,8 % bis 1 % über den Stop
+   * (Stop am Wellenstart). Getestet 1963–2026, 191 Werte: +7,9 % statt +7,8 % pro Jahr, schlechtester 5-Jahres-Zeitraum
+   * −6,8 % statt −8,1 % (vorher Unterkante bei 78,6 %).
+   */
+  bottomAboveStop?: number;
   /** Stop-Puffer jenseits von A in ATR */
   stopBufferAtr: number;
   /** Mindestgröße der Welle A→B in ATR */
@@ -31,6 +37,7 @@ export const DEFAULT_ZONE_OPTIONS: ZoneOptions = {
   // … alles andere ist Methode/Risiko und fest (locked-config.ts)
   entryRetrace: LOCKED.zone.entryRetrace,
   zoneDeep: LOCKED.zone.zoneDeep,
+  bottomAboveStop: LOCKED.zone.bottomAboveStop,
   stopBufferAtr: LOCKED.zone.stopBufferAtr,
   minWaveAtr: LOCKED.zone.minWaveAtr,
   trendFilter: LOCKED.zone.trendFilter,
@@ -97,8 +104,9 @@ export function findZoneSetup(candles: Candle[], o: ZoneOptions = DEFAULT_ZONE_O
     // Korrektur darf A nicht verletzt haben
     if (after.some((c) => (dir === 1 ? c.low <= a.price : c.high >= a.price))) continue;
     const zoneStart = b.price - dir * L * o.entryRetrace;
-    const zoneEnd = b.price - dir * L * o.zoneDeep;
     const stop = a.price - dir * o.stopBufferAtr * a_;
+    const zoneEnd = o.bottomAboveStop != null ? stop * (1 + dir * o.bottomAboveStop) : b.price - dir * L * o.zoneDeep;
+    if ((zoneStart - zoneEnd) * dir <= 0) continue; // Box hätte keine Höhe
     // Bereits tiefer als die Zone gelaufen? Dann Einstieg zum aktuellen Kurs nur, wenn er noch in der Zone ist
     const deepest = after.length ? (dir === 1 ? Math.min(...after.map((c) => c.low)) : Math.max(...after.map((c) => c.high))) : b.price;
     const inZone = (price - zoneStart) * dir <= 0 && (price - zoneEnd) * dir >= 0;

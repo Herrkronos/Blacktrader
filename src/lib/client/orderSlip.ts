@@ -22,6 +22,8 @@ export interface SlipInput {
   tranches?: number[];
   invalidation?: number;
   limit?: boolean;
+  /** Einsatz in € (Standard 500 €, Nachkauf 250 €); erlaubter Aufschlag anteilig (500 € → 50 €, 250 € → 25 €) */
+  budget?: number;
 }
 
 export interface OrderSlip {
@@ -56,9 +58,11 @@ export function makeOrderSlip(i: SlipInput): OrderSlip {
   const fx = eurPerUnit(tradeCurrency({ symbol: i.symbol, kind: i.kind as never, currency: i.currency })) ?? 1;
   const e = (x: number) => x * fx;
   const prices = i.tranches?.length ? i.tranches : [i.entry];
-  const budget = ACCOUNT.stake / prices.length;
+  const total = i.budget ?? ACCOUNT.stake;
+  const budget = total / prices.length;
+  const over = (OVER_BUDGET * total) / ACCOUNT.stake;
   const orders = prices.map((p) => {
-    const qty = qtyFor(i.kind, budget, e(p), budget + OVER_BUDGET / prices.length);
+    const qty = qtyFor(i.kind, budget, e(p), budget + over / prices.length);
     return { qty, limitEur: e(p), amountEur: qty * e(p) };
   });
   const stopEur = i.stop != null && i.stop > 0 ? e(i.stop) : undefined;

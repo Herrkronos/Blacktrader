@@ -5,7 +5,8 @@ import type { AnalysisResult } from "../analysis/analyze";
 import { plainSetup } from "../analysis/persona";
 import { tradeReturnPct } from "../analysis/stats";
 import { actions, getData } from "../store/store";
-import { canAfford, freeCash, noMoney } from "./account";
+import { canAfford, freeCash, noMoney, noTwice } from "./account";
+import { openPositions } from "./nachkauf";
 import type { ResolvedAsset } from "../types";
 
 const INTERVAL_MS = { "5m": 300e3, "15m": 900e3, "1h": 3600e3, "4h": 14400e3, "1d": 86400e3, "1w": 604800e3, "1M": 2592000e3 } as const;
@@ -20,6 +21,11 @@ export function hasOpenTrade(symbol: string, horizon: AnalysisResult["horizon"])
 export function openPaperTrade(asset: Asset, res: AnalysisResult): boolean {
   const plan = res.plan;
   if (!plan || res.decision.level === "neutral" || hasOpenTrade(asset.symbol, res.horizon)) return false;
+  // Eine Position je Wert (wie im Test); nachkaufen geht nur bei blauen Einstiegen
+  if (openPositions(asset.symbol).length > 0) {
+    noTwice();
+    return false;
+  }
   const slip = makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: plan.direction, entry: plan.entry, stop: plan.stop });
   const amount = slip.totalEur > 0 ? slip.totalEur : undefined;
   if (!canAfford(getData().trades, getData().accountResets, amount)) {

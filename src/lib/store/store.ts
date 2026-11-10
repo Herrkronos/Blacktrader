@@ -80,6 +80,8 @@ export interface Trade {
   shares?: number;
   /** Tatsächlich eingesetzter Betrag in € (Stück × Kurs); ohne Angabe 500 € */
   stakeEur?: number;
+  /** Nachkauf (nur bei Blau, 250 €) zu einer bestehenden Position */
+  nachkauf?: boolean;
   /** Stop, wie er bei flatex in Euro eingetragen ist (für die Erinnerung bei Wechselkurs-Änderung) */
   brokerStopEur?: number;
   /** Zuletzt gemeldeter Vorschlag für den flatex-Stop (nur einmal melden) */

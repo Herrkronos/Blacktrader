@@ -13,3 +13,6 @@
 - Szenario-Prozente sind NICHT kalibriert (Ziel vor Ungültig ~46 % unabhängig vom Anteil, 84.034 Fälle) – nicht als Wahrscheinlichkeit verkaufen.
 - Zonen-Alarm nur für Watchlist-Werte (nicht für Chancen – Wunsch des Nutzers, zu viele Meldungen).
 - KESt-Rechnung überall über analysis/kest.ts (KestYear: sofort auf Gewinne, Verlusttopf im Kalenderjahr, kein Vortrag).
+- Update (getestet, Nutzer-OK): ein Signal wie in den Chancen auch in Turnier/EchoChart (tradeRules.suppressedBy); grüne Box bis 1 % über dem Stop (LOCKED.zone.bottomAboveStop); Nachkauf NUR bei Blau, max. 4 × 250 € (ADD / RULES.addMax/addStake, nachkauf.ts); eine Position je Wert sonst.
+- Finanz-Filter (analysis/finance.ts) nur live, nicht im Turnier/EchoChart (keine historischen Firmenzahlen → kein Look-ahead).
+- Härtetest-Skripte liegen nur im Scratchpad; Ergebnis: +7,4 %/J netto vs. bisher +5,5 %, ETF-Modell +7,9 %.

@@ -1,10 +1,12 @@
 "use client";
 // Depot (früher Journal): nur selbst übernommene Papier-Trades, als Karten-Liste.
+import { NachkaufBox } from "@/components/NachkaufBox";
+import { runScan, useScan } from "@/lib/client/scanner";
 import { TaxOverview } from "@/components/TaxOverview";
 import { brokerStop } from "@/lib/client/brokerStop";
 import { closeLongTerm } from "@/lib/client/longterm";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EquityChart } from "@/components/EquityChart";
 import { Legend } from "@/components/Legend";
 import { Sheet } from "@/components/Sheet";
@@ -39,13 +41,13 @@ function statusText(t: Trade) {
   };
 }
 
-function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction: (t: Trade) => void }) {
+function TradeCard({ t, price, onAction, nachkauf }: { t: Trade; price?: number; onAction: (t: Trade) => void; nachkauf?: ReactNode }) {
   const [dx, setDx] = useState(0);
   const start = useRef<number | null>(null);
   const [open, setOpen] = useState(false);
   const isLt = t.strategy === "core" || t.strategy === "longterm" || !!t.promotedAt;
   const edge = isLt ? "edge-core" : t.direction === "long" ? "edge-trade" : "edge-short";
-  const kind = t.promotedAt ? <span className="badge-core">Blau (hochgestuft)</span> : t.strategy === "longterm" || t.strategy === "core" ? <span className="badge-core">Langfristig</span> : t.direction === "long" ? <span className="badge-trade">Trade</span> : <span className="badge-short">Short</span>;
+  const kind = t.nachkauf ? <span className="badge-core">Nachkauf (Blau)</span> : t.promotedAt ? <span className="badge-core">Blau (hochgestuft)</span> : t.strategy === "longterm" || t.strategy === "core" ? <span className="badge-core">Langfristig</span> : t.direction === "long" ? <span className="badge-trade">Trade</span> : <span className="badge-short">Short</span>;
   const cur = t.status === "closed" ? t.exit : price ?? t.lastPrice;
   const ret = t.status === "closed" ? t.returnPct : t.status === "open" && cur ? tradeReturnEur(t, cur) : undefined;
   const st = statusText(t);
@@ -102,6 +104,7 @@ function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction:
             )}
           </div>
         )}
+        {nachkauf}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {kind}
           <span className={st.cls}>{st.text}</span>
@@ -208,6 +211,16 @@ function BlacktraderDepot() {
   );
   const acc = rounds[rounds.length - 1];
   const roundStart = acc.from;
+  // „Nachkauf möglich“ nur einmal je Wert (bei der ältesten offenen Position)
+  const scan = useScan();
+  useEffect(() => {
+    void runScan();
+  }, []);
+  const firstOpen = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of [...trades].filter((x) => x.status !== "closed" && x.strategy !== "core").sort((a, b) => a.openedAt - b.openedAt)) if (!m.has(`${t.kind}:${t.symbol}`)) m.set(`${t.kind}:${t.symbol}`, t.id);
+    return m;
+  }, [trades]);
   const filtered = useMemo(
     () =>
       trades
@@ -332,6 +345,7 @@ function BlacktraderDepot() {
         <div className="space-y-3">
           {filtered.map((t) => (
             <TradeCard
+              nachkauf={t.status !== "closed" && firstOpen.get(`${t.kind}:${t.symbol}`) === t.id ? <NachkaufBox entry={scan.entries.find((e) => e.asset.kind === t.kind && e.asset.symbol === t.symbol)} /> : null}
               key={t.id}
               t={t}
               price={live[instrumentKey(t)]?.price}

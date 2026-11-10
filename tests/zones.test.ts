@@ -8,13 +8,14 @@ import { candlesFromWaypoints } from "./helpers";
 const up = candlesFromWaypoints([100, 130, 118, 160, 145, 190, 172, 200, 260, 250], 14, 0.002, 4);
 
 describe("Zielzonen", () => {
-  it("findet im Aufwärtstrend eine Kaufzone bei 61,8–78,6 % der letzten Welle", () => {
+  it("findet im Aufwärtstrend eine Kaufzone von 61,8 % der Welle bis 1 % über den Stop", () => {
     const z = findZoneSetup(up)!;
     expect(z).not.toBeNull();
     expect(z.direction).toBe("long");
     const L = z.b.price - z.a.price;
     expect(z.zoneStart).toBeCloseTo(z.b.price - 0.618 * L, 5);
-    expect(z.zoneEnd).toBeCloseTo(z.b.price - 0.786 * L, 5);
+    expect(z.zoneEnd).toBeCloseTo(z.stop * 1.01, 5);
+    expect(z.zoneEnd).toBeLessThan(z.b.price - 0.786 * L); // tiefer als die alte Unterkante
     expect(z.stop).toBeLessThan(z.a.price);
     expect(z.targets[0]).toBeGreaterThan(z.b.price);
     expect(z.inZone).toBe(false);

@@ -55,3 +55,20 @@ export function makeTechWeakAt(ndx: Candle[] | null | undefined): (t: number) =>
     return cl[i] < m / 200;
   };
 }
+
+/**
+ * Ein Signal wie in den Chancen: Läuft beim selben Wert ein wichtigeres Signal, wird ein schwächeres nicht gehandelt.
+ * Reihenfolge wie pickBestEntry: Blau im Bereich zuerst, dann die Zeiträume nach HORIZON_RANK
+ * (Aktien/Rohstoffe: Woche vor Tag, Krypto: Tag vor Woche). Getestet 1963–2026: +7,2 % statt +5,5 % pro Jahr.
+ */
+export type SignalSource = "blau" | "1d" | "1w";
+const HIGHER: Record<string, Record<"1d" | "1w", SignalSource[]>> = {
+  stock: { "1d": ["blau", "1w"], "1w": ["blau"] },
+  commodity: { "1d": ["blau", "1w"], "1w": ["blau"] },
+  crypto: { "1d": ["blau"], "1w": ["blau", "1d"] },
+};
+/** Zeiträume [von, bis), in denen ein Signal aktiv ist (Blau: im Bereich; Tag/Woche: Setup bis zum Ergebnis) */
+export type ActiveIntervals = Record<SignalSource, number[][]>;
+export function suppressedBy(kind: string, src: "1d" | "1w", t: number, active: ActiveIntervals): boolean {
+  return (HIGHER[kind] ?? HIGHER.stock)[src].some((h) => active[h].some(([a, b]) => a <= t && t < b));
+}

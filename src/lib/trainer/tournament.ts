@@ -45,7 +45,8 @@ export interface Series {
 }
 
 /** fee: Gebühr je Order in € (flatex 7,90 €); KESt in Österreich auf den Gewinn ohne Abzug der Spesen */
-export const RULES = { start: 8000, years: 5, reps: 50, stake: 500, fee: 7.9, tax: 0.275, rounds: 5 } as const;
+/** addMax/addStake: Nachkauf nur bei Blau, höchstens 4× zu je 250 € (getestet: weniger Risiko, Klumpenrisiko begrenzt) */
+export const RULES = { start: 8000, years: 5, reps: 50, stake: 500, fee: 7.9, tax: 0.275, rounds: 5, addMax: 4, addStake: 250 } as const;
 
 // ---------------------------------------------------------------------------------------------
 // Marktlage aus dem S&P 500 (nur Vergangenheit)
@@ -371,7 +372,7 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
   ev.sort((a, b) => a.t - b.t || a.kind - b.kind || trades[a.i].sym.localeCompare(trades[b.i].sym));
   let cash: number = RULES.start;
   const open = new Map<number, number>(); // Trade-Index → Einsatz
-  const openSym = new Set<string>();
+  const perSym = new Map<string, number>(); // offene Positionen je Wert (1 + Nachkäufe)
   const kest = new KestYear(RULES.tax);
   let tax = 0;
   let fees = 0;
@@ -391,22 +392,26 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
     cash -= k;
     tax += k;
     open.delete(i);
-    openSym.delete(trades[i].sym);
+    perSym.set(trades[i].sym, (perSym.get(trades[i].sym) ?? 1) - 1);
   };
   for (const e of ev) {
     if (e.kind === 0) {
       if (open.has(e.i)) close(e.i, trades[e.i].r, e.t);
     } else if (!broke) {
       const p = trades[e.i];
-      if (openSym.has(p.sym) || cash < RULES.stake + RULES.fee) {
+      // Je Wert eine Position; Nachkauf nur bei Blau (höchstens addMax × addStake)
+      const have = perSym.get(p.sym) ?? 0;
+      if (have > 0 && (p.color !== "blau" || have > RULES.addMax)) continue;
+      const stake = have > 0 ? RULES.addStake : RULES.stake;
+      if (cash < stake + RULES.fee) {
         // ohne Geld und ohne offene Position: ausgeschieden
-        if (cash < RULES.stake + RULES.fee && open.size === 0) broke = true;
+        if (open.size === 0) broke = true;
         continue;
       }
-      cash -= RULES.stake + RULES.fee;
+      cash -= stake + RULES.fee;
       fees += RULES.fee;
-      open.set(e.i, RULES.stake);
-      openSym.add(p.sym);
+      open.set(e.i, stake);
+      perSym.set(p.sym, have + 1);
       taken++;
     }
     let eq = cash;

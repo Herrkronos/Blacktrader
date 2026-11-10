@@ -1,6 +1,7 @@
 "use client";
 // Analyse-Karte (Chancen, Watchlist): GENAU EIN aktueller Einstieg pro Wert – Blacktrader rechnet im Hintergrund.
 // Zeile 1 Name/Kurs · Zeile 2 Mini-Chart (alte Einstiege grau) · Zeile 3 Einstieg/Stop/Ziel · Grund · Verlauf · max. 2 Buttons.
+import { nachkaufState, openPositions } from "@/lib/client/nachkauf";
 import { OrderSlip } from "./OrderSlip";
 import { displayCurrency } from "@/lib/client/eur";
 import { useState } from "react";
@@ -90,7 +91,7 @@ export function AssetCard({
   /** In der Detailansicht: ohne „Analyse ansehen“ (die Analyse steht darunter) */
   hideOpen?: boolean;
 }) {
-  const [confirm, setConfirm] = useState<null | "trade" | "longterm">(null);
+  const [confirm, setConfirm] = useState<null | "trade" | "longterm" | "nachkauf">(null);
   const [showPast, setShowPast] = useState(false);
   const trades = useAppData((d) => d.trades);
   const expert = useAppData((d) => d.settings.expertMode);
@@ -107,7 +108,12 @@ export function AssetCard({
   const myLong = trades.find((t) => t.status !== "closed" && (t.strategy === "longterm" || t.strategy === "core") && t.symbol === asset.symbol);
   const myTrade = trades.find((t) => t.status !== "closed" && t.symbol === asset.symbol && t.strategy !== "core");
   const tradeOpen = plan && b?.horizon ? hasOpenTrade(asset.symbol, b.horizon) : false;
-  const isNachkauf = !!plan && !isShort && !!myLong;
+  // Nachkauf nur bei Blau: Wert liegt schon im Depot und Blacktrader zeigt einen weiteren blauen Bereich
+  const held = openPositions(asset.symbol, trades).length > 0;
+  const nk = lt ? nachkaufState(asset.symbol, lt, trades, !!entry?.financeWeak) : null;
+  const isNachkauf = !!nk?.allowed;
+  // Finanz-Prüfung: hoch verschuldet und Geld verbrennen/Verluste/Umsatzeinbruch → kein Einstieg
+  const weak = !!entry?.financeWeak;
   const past = (entry?.history.past ?? []).slice(0, 10);
   const openHorizon: Horizon = b?.horizon ?? entry?.ltHorizon ?? "medium";
 
@@ -197,6 +203,7 @@ export function AssetCard({
 
           {b.color !== "gelb" && <ScenarioBar elliott={res?.elliott} />}
 
+          {weak && <p className="rounded-xl bg-red-500/15 px-3 py-2 text-[14px] text-red-200">{entry?.financeReason} Kein Einstieg – kann pleitegehen.</p>}
           {(b.color === "gruen" || b.color === "rot") && <p className="text-[14px] text-stone-300">{b.reason}</p>}
 
           {expert && res && (
@@ -234,7 +241,7 @@ export function AssetCard({
 
           {(myLine || isNachkauf || myTrade?.promotedAt || (plan && riskPct > RISK_LIMIT)) && (
             <div className="space-y-1.5 text-[14px]">
-              {isNachkauf && <p className="text-sky-200">Nachkauf-Zone zur bestehenden Langfrist-Position.</p>}
+              {isNachkauf && <p className="text-sky-200">Nachkauf möglich: neuer blauer Bereich zu deiner Position – 250 € (noch {nk!.left} von 4).</p>}
               {myLine && <p className="text-sky-200">{myLine}</p>}
               {myTrade?.promotedAt && (
                 <p className="text-sky-200">
@@ -271,11 +278,15 @@ export function AssetCard({
             Analyse ansehen
           </button>
         )}
-        {plan && b?.res && !tradeOpen ? (
+        {weak ? null : plan && b?.res && !tradeOpen && !held ? (
           <button className="btn-primary flex-1" onClick={() => setConfirm("trade")}>
-            {isNachkauf ? "Nachkauf übernehmen" : "Als Papier-Trade übernehmen"}
+            Als Papier-Trade übernehmen
           </button>
-        ) : lt && !myLong ? (
+        ) : isNachkauf ? (
+          <button className="btn-primary flex-1" onClick={() => setConfirm("nachkauf")}>
+            Nachkauf übernehmen (250 €)
+          </button>
+        ) : lt && !held ? (
           <button className="btn-primary flex-1" onClick={() => setConfirm("longterm")}>
             Langfristig übernehmen
           </button>
@@ -293,7 +304,7 @@ export function AssetCard({
 
       <ConfirmSheet
         open={confirm === "trade"}
-        title={isNachkauf ? "Nachkauf als Papier-Trade" : isShort ? "Short als Papier-Trade" : "Papier-Trade übernehmen"}
+        title={isShort ? "Short als Papier-Trade" : "Papier-Trade übernehmen"}
         confirm={plan?.orderType === "limit" ? "Order legen" : "Trade eröffnen"}
         onClose={() => setConfirm(null)}
         onConfirm={() => {
@@ -334,6 +345,25 @@ export function AssetCard({
               <p className="text-stone-400">
                 Kein fester Stop. Ungültig, wenn ein Schlusskurs unter {money(lt.invalidation, cur)} liegt. Teilausstieg oder Stop gibt es nur, wenn sich die Wellenzählung ändert – du bekommst dann eine Nachricht von Blacktrader.
               </p>
+            </div>
+          ) : null
+        }
+      />
+      <ConfirmSheet
+        open={confirm === "nachkauf"}
+        title="Nachkauf (250 €)"
+        confirm="Order legen"
+        onClose={() => setConfirm(null)}
+        onConfirm={() => {
+          if (lt && openLongTermTrade({ ...asset, currency: cur }, lt, entry?.ltHorizon ?? "long", intervalFor(entry?.ltHorizon), lastPrice ?? lt.zoneTop, { nachkauf: true })) {
+            if (getData().settings.haptics) haptic(30);
+          }
+        }}
+        text={
+          lt && nk ? (
+            <div className="space-y-2">
+              <p>{asset.name}: Nachkauf zu deiner Position im neuen blauen Bereich – eine Order zu 250 € an der Oberkante ({nk.left} von 4 Nachkäufen noch möglich).</p>
+              <OrderSlip kind={asset.kind} symbol={asset.symbol} name={asset.name} currency={cur} direction="long" entry={lt.zoneTop} tranches={[lt.zoneTop]} invalidation={lt.invalidation} targets={[...lt.targets]} budget={250} />
             </div>
           ) : null
         }

@@ -281,3 +281,13 @@ Turnier in Euro (10 Teilnehmer, 50 Versuche à 5 Jahre, KESt sofort je Gewinn, S
 - **Prüfung der Szenario-Prozente** (84.034 Fälle, 191 Werte, Tag und Woche): Das Hauptszenario erreicht sein Ziel vor der Ungültig-Grenze in rund 46 % der Fälle – unabhängig vom angezeigten Anteil (50–55 %: 46,4 %; 60–70 %: 45,2 %; 80–90 %: 40,4 %). Die Prozente sind Regel-Passung, keine Eintrittswahrscheinlichkeit; die Leiste sagt das jetzt dazu.
 
 **Zonen-Alarm (nur Watchlist):** Läuft der Kurs eines Watchlist-Werts in seinen Einstiegsbereich (blau, grün oder rot), kommt einmal eine Nachricht – nicht für Chancen (die ändern sich täglich) und nicht, wenn der Wert schon im Depot liegt. Beim allerersten Einschalten werden Werte, die schon in der Zone sind, still gemerkt.
+
+## Update: ein Signal, neue grüne Box, Nachkauf nur Blau, Finanz-Prüfung
+
+Getestet (Härtetest, 191 Werte, 1963–2026, 10 Mio. Durchgänge à 5 Jahre, 8.000 €, 500 € je Trade, 7,90 € je Order, KESt mit Verlusttopf, zweimal gerechnet – identisch): **+7,4 % statt +5,5 % pro Jahr netto**, schlechtester Durchgang −7,3 % statt −8,8 %, nie pleite; in Corona-Crash und Zinsschock 2022 Platz 1 von 15. ETF S&P 500 (Modell mit Dividenden): +7,9 %.
+
+1. **Ein Signal wie in den Chancen** – auch im Turnier und im EchoChart: Läuft beim selben Wert ein wichtigeres Signal (Blau im Bereich, dann Woche vor Tag; Krypto Tag vor Woche), wird ein schwächeres nicht gehandelt. Das EchoChart rechnet Tages- und Wochenkerzen plus Blau im Hintergrund (keine Auswahl Kurz/Mittel/Lang mehr).
+2. **Neue grüne Box:** von 61,8 % Rücksetzer bis 1 % über den Stop (Stop am Wellenstart). Gekauft wird an der Oberkante; tiefer in der Box günstiger.
+3. **Nachkauf nur bei Blau:** Liegt ein Wert im Depot, gibt es keinen zweiten grünen/roten Trade. Bei einem weiteren blauen Bereich höchstens 4 Nachkäufe zu je 250 € (eine Order an der Oberkante).
+4. **Finanz-Prüfung (Filter):** Aktien mit Schulden über dem Doppelten des Eigenkapitals UND (Geld verbrennen ODER Gewinnmarge schlechter als −20 % ODER Umsatz −30 % und mehr) kommen nicht in Chancen/Top 3 und bekommen keinen Einstieg; in Watchlist und Depot steht „Finanzen schwach“. Nur live – im Turnier/EchoChart nicht, weil es keine alten Firmenzahlen gibt (sonst Blick in die Zukunft).
+5. **„Nachkauf möglich“ im Depot:** blaues Abzeichen bei der Position, mit neuem Bereich, „noch X von 4“ und Order-Zettel für 250 €.

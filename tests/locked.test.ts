@@ -13,7 +13,7 @@ const EXPECTED = {
   minStrengthOnlyUp: true,
   acceptance: { minSignals: 200, maxSignalDrop: 0.4, profitFactorNotLower: true, drawdownNotWorse: true },
   minRiskReward: 1.5,
-  zone: { entryRetrace: 0.618, zoneDeep: 0.786, stopBufferAtr: 0.25, minWaveAtr: 4, target1Ext: 0.272, trendFilter: true },
+  zone: { entryRetrace: 0.618, zoneDeep: 0.786, bottomAboveStop: 0.01, stopBufferAtr: 0.25, minWaveAtr: 4, target1Ext: 0.272, trendFilter: true },
   trade: { exitMode: "trail", trailAtr: 4, maxWaitBars: 60, maxHoldBars: 200 },
   longterm: { atrMult: 6, minMoveAtr: 8, zoneTop: 0.618, zoneBottom: 0.886, tranches: 3 },
   riskBadgePct: 15,
@@ -48,7 +48,7 @@ describe("Feste Werte (locked-config)", () => {
     expect(DEFAULT_LONGTERM.zoneBottom).toBe(LOCKED.longterm.zoneBottom);
   });
   it("lernbare Werte überschneiden sich nicht mit festen Werten", () => {
-    const lockedKeys = ["weightBounds", "acceptance", "minRiskReward", "entryRetrace", "zoneDeep", "stopBufferAtr", "minWaveAtr", "target1Ext", "trendFilter", "trailAtr", "exitMode", "maxWaitBars", "maxHoldBars", "minQuality", "riskBadgePct"];
+    const lockedKeys = ["weightBounds", "acceptance", "minRiskReward", "entryRetrace", "zoneDeep", "bottomAboveStop", "stopBufferAtr", "minWaveAtr", "target1Ext", "trendFilter", "trailAtr", "exitMode", "maxWaitBars", "maxHoldBars", "minQuality", "riskBadgePct"];
     for (const k of lockedKeys) expect(LEARNABLE_KEYS as string[]).not.toContain(k);
     expect(validateParams({ weightBounds: { elliottMin: 40 } } as never)).toContain("Nicht lernbar: weightBounds");
     // Gewichtung ist lernbar, aber nur innerhalb der festen Grenzen

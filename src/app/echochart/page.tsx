@@ -2,7 +2,6 @@
 // EchoChart: Hätte Blacktrader früher richtig gelegen? Einfach gehalten – eine große Zahl, ein Bild, Details zum Aufklappen.
 import { useMemo, useState } from "react";
 import { ZoneHistoryChart } from "@/components/ZoneHistoryChart";
-import { HorizonToggle } from "@/components/ui";
 import { runEcho, summarize, type EchoKind, type EchoZone } from "@/lib/analysis/echoZones";
 import { fmtPrice } from "@/lib/analysis/persona";
 import { INTERVAL_SECONDS, LOOKBACKS, loadHistory, planHistory, YAHOO_MAX_DAYS } from "@/lib/client/history";
@@ -10,9 +9,9 @@ import { SCAN_GROUPS } from "@/lib/client/presets";
 import { learnedParams } from "@/lib/client/trainerParams";
 import { useAppData } from "@/lib/store/store";
 import { ACCOUNT, simulateAccount, type SimTrade } from "@/lib/client/account";
-import { blueTrade, greenRedTrade, makeTechWeakAt } from "@/lib/analysis/tradeRules";
+import { blueTrade, greenRedTrade, makeTechWeakAt, suppressedBy, type ActiveIntervals } from "@/lib/analysis/tradeRules";
 import { regimeIndex } from "@/lib/trainer/tournament";
-import { HORIZON_LABEL, type AssetKind, type Candle, type Horizon, type ResolvedAsset } from "@/lib/types";
+import { type AssetKind, type Candle, type ResolvedAsset } from "@/lib/types";
 
 const fmtDate = (t: number) => new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
 const pct = (x: number) => `${Math.round(x * 100)} %`;
@@ -35,15 +34,14 @@ interface AssetResult {
 
 export default function EchoChartPage() {
   const watchlist = useAppData((d) => d.watchlist);
-  const intervals = useAppData((d) => d.settings.intervals);
   const [key, setKey] = useState<string>("");
-  const [horizon, setHorizon] = useState<Horizon>("medium");
   const [days, setDays] = useState(365);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ label: string; p: number } | null>(null);
   const [results, setResults] = useState<AssetResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const interval = intervals[horizon];
+  // Wie in den Chancen: Tages- und Wochenkerzen laufen im Hintergrund – geprüft wird, ob der Zeitraum mit Tageskerzen geht
+  const interval = "1d" as const;
 
   const options = useMemo(() => {
     const groups: { title: string; assets: ResolvedAsset[] }[] = [];
@@ -84,37 +82,49 @@ export default function EchoChartPage() {
     for (const [i, a] of targets.entries()) {
       const step = (p: number, what: string) => setProgress({ label: targets.length > 1 ? `${a.name} (${i + 1} von ${targets.length}) – ${what}` : what, p: (i + p) / targets.length });
       try {
+        // Wie in den Chancen: Tages- und Wochenkerzen im Hintergrund, pro Wert immer nur ein Signal (das wichtigste).
         // Vorlauf automatisch dazuladen: Blacktrader braucht ca. 200 Kerzen, um die Wellen zu zählen.
-        // Gezählt werden danach nur Zonen im gewählten Zeitraum.
         const periodStart = Date.now() / 1000 - days * 86400;
-        let loadDays = days + Math.ceil((220 * INTERVAL_SECONDS[interval]) / 86400);
-        let pl = planHistory(a, interval, loadDays);
-        if (!pl.ok && YAHOO_MAX_DAYS[interval] < loadDays) {
-          loadDays = Math.max(days, YAHOO_MAX_DAYS[interval]);
-          pl = planHistory(a, interval, loadDays);
-        }
-        if (!pl.ok) throw new Error(pl.reason);
+        const loadSeries = async (iv: "1d" | "1w", share: [number, number]) => {
+          let loadDays = days + Math.ceil((220 * INTERVAL_SECONDS[iv]) / 86400);
+          let pl = planHistory(a, iv, loadDays);
+          if (!pl.ok && YAHOO_MAX_DAYS[iv] < loadDays) {
+            loadDays = Math.max(days, YAHOO_MAX_DAYS[iv]);
+            pl = planHistory(a, iv, loadDays);
+          }
+          if (!pl.ok) return null;
+          return loadHistory(pl, iv, loadDays, (p) => step(share[0] + p * (share[1] - share[0]), "Kurse laden"));
+        };
         step(0, "Kurse laden");
-        const candles = await loadHistory(pl, interval, loadDays, (p) => step(p * 0.3, "Kurse laden"));
-        if (candles.length < 200)
-          throw new Error(
-            `Zu kurze Kursgeschichte: ${a.name} hat für „${HORIZON_LABEL[horizon]}“ erst ${candles.length} Kerzen, Blacktrader braucht etwa 200, um die Wellen zu zählen. Tipp: einen kürzeren Zeitraum wählen (z. B. Mittelfristig).`,
-          );
-        const r = await runEcho(candles, { kind: a.kind, horizon, interval, params: learnedParams(a.kind, horizon) }, (p) => step(0.3 + p * 0.7, "Blacktrader spielt die Vergangenheit durch"));
+        const [dc, wc] = await Promise.all([loadSeries("1d", [0, 0.15]), loadSeries("1w", [0.15, 0.3])]);
+        if ((!dc || dc.length < 200) && (!wc || wc.length < 200))
+          throw new Error(`Zu kurze Kursgeschichte: ${a.name} hat zu wenige Kerzen – Blacktrader braucht etwa 200, um die Wellen zu zählen. Tipp: einen kürzeren Zeitraum wählen.`);
+        const rd = dc && dc.length >= 200 ? await runEcho(dc, { kind: a.kind, horizon: "medium", interval: "1d", params: learnedParams(a.kind, "medium") }, (p) => step(0.3 + p * 0.4, "Blacktrader spielt die Vergangenheit durch (Tageskerzen)")) : null;
+        const rw = wc && wc.length >= 200 ? await runEcho(wc, { kind: a.kind, horizon: "long", interval: "1w", params: learnedParams(a.kind, "long") }, (p) => step(0.7 + p * 0.3, "Blacktrader spielt die Vergangenheit durch (Wochenkerzen)")) : null;
+        // Aktive Signale je Quelle (für „ein Signal wie in den Chancen“)
+        const active: ActiveIntervals = {
+          blau: (rw?.ltTrades ?? []).map((x) => [x.entryTime, x.exitTime]),
+          "1d": (rd?.zones ?? []).filter((z) => z.kind !== "core").map((z) => [z.t, z.at]),
+          "1w": (rw?.zones ?? []).filter((z) => z.kind !== "core").map((z) => [z.t, z.at]),
+        };
         // Gleiche Regeln wie Chancen und Turnier: Grün/Rot (Sektor-Regel, Short nur im Bärenmarkt, Chance ≥ 15 %,
         // obere Hälfte nach Potenzial) und Blau (Blau-Regel)
         const ctx = { symbol: a.symbol, techWeakAt, regimeAt };
-        const gr = r.trades.trades.filter((x) => x.entryTime >= periodStart && greenRedTrade(x, ctx));
-        const bl = r.ltTrades.filter((x) => x.entryTime >= periodStart && x.result !== "offen" && blueTrade(x).ok);
-        const t = [...gr.map((x) => ({ entryTime: x.entryTime, exitTime: x.exitTime, returnPct: x.returnPct })), ...bl.map((x) => ({ entryTime: x.entryTime, exitTime: x.exitTime, returnPct: x.returnPct }))];
+        const gr = ([["1d", rd], ["1w", rw]] as const).flatMap(([src, r]) =>
+          (r?.trades.trades ?? []).filter((x) => x.entryTime >= periodStart && !suppressedBy(a.kind, src, x.entryTime, active) && greenRedTrade(x, ctx)),
+        );
+        const bl = (rw?.ltTrades ?? []).filter((x) => x.entryTime >= periodStart && x.result !== "offen" && blueTrade(x).ok);
+        const t = [...gr.map((x) => ({ entryTime: x.entryTime, exitTime: x.exitTime, returnPct: x.returnPct, blue: false })), ...bl.map((x) => ({ entryTime: x.entryTime, exitTime: x.exitTime, returnPct: x.returnPct, blue: true }))];
+        const zones = [...(rd?.zones ?? []).filter((z) => z.kind !== "core"), ...(rw?.zones ?? [])].filter((z) => z.t >= periodStart).sort((x, y) => x.t - y.t);
+        const chartCandles = (dc && dc.length >= 200 ? dc : wc!).filter((c) => c.time >= periodStart);
         out.push({
           asset: a,
-          zones: r.zones.filter((z) => z.t >= periodStart),
-          candles: candles.filter((c) => c.time >= periodStart),
+          zones,
+          candles: chartCandles,
           trades: t.length,
           tradeHit: t.length ? t.filter((x) => x.returnPct > 0).length / t.length : null,
           tradeReturn: t.length ? (t.reduce((e, x) => e * (1 + x.returnPct / 100), 1) - 1) * 100 : null,
-          sim: t.map((x) => ({ sym: a.symbol, entry: x.entryTime * 1000, exit: x.exitTime * 1000, r: x.returnPct })),
+          sim: t.map((x) => ({ sym: a.symbol, entry: x.entryTime * 1000, exit: x.exitTime * 1000, r: x.returnPct, blue: x.blue })),
         });
       } catch (e) {
         out.push({ asset: a, zones: [], candles: [], trades: 0, tradeHit: null, tradeReturn: null, sim: [], error: (e as Error).message });
@@ -126,7 +136,7 @@ export default function EchoChartPage() {
     if (out.every((r) => r.error)) setError(out[0]?.error ?? "Keine Daten");
     // Ergebnis still für den Trainer aufbewahren
     const zs = out.flatMap((r) => r.zones.map((z) => ({ symbol: r.asset.symbol, ...z })));
-    void fetch("/api/trainer/echo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label, horizon, interval, days, summary: summarize(zs), zones: zs }) }).catch(() => {});
+    void fetch("/api/trainer/echo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label, horizon: "tag+woche", interval, days, summary: summarize(zs), zones: zs }) }).catch(() => {});
   };
 
   const allZones = results?.flatMap((r) => r.zones) ?? [];
@@ -171,17 +181,6 @@ export default function EchoChartPage() {
           ))}
         </select>
         <div>
-          <div className="label mb-1">Zeitraum</div>
-          <HorizonToggle
-            value={horizon}
-            onChange={(h) => {
-              if (!h) return;
-              setHorizon(h);
-              reset();
-            }}
-          />
-        </div>
-        <div>
           <div className="label mb-1">Wie weit zurück?</div>
           <div className="flex flex-wrap gap-1.5">
             {LOOKBACKS.map((l) => {
@@ -222,7 +221,7 @@ export default function EchoChartPage() {
         <section className="card space-y-3 p-4">
           <div className="text-center">
             <div className="text-[14px] text-stone-400">
-              {label} · {HORIZON_LABEL[horizon]}
+              {label} · Tag, Woche und Blau (ein Signal wie in den Chancen)
             </div>
             <div className={`num text-[44px] font-semibold leading-tight ${sum.rate != null && sum.rate >= 0.7 ? "text-up" : "text-gold"}`}>{sum.rate != null ? pct(sum.rate) : "–"}</div>
             <p className="text-[15px] text-stone-200">{sum.zones ? `Von ${sum.zones} Zonen haben ${sum.held} gehalten.` : "In diesem Zeitraum gab es keine Zone."}</p>

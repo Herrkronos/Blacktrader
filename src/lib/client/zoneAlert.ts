@@ -42,7 +42,7 @@ export function checkWatchZones(watchlist: WatchItem[], live: Record<string, Liv
   for (const w of watchlist) {
     const e = entries.find((x) => x.asset.kind === w.kind && x.asset.symbol === w.symbol);
     const b = e?.best;
-    if (!e || !b || b.color === "gelb" || b.zoneTop == null || b.zoneBottom == null) continue;
+    if (!e || !b || b.color === "gelb" || b.zoneTop == null || b.zoneBottom == null || e.financeWeak) continue;
     const lv = live[keyOf(w)];
     if (!lv?.price || lv.status === "offline") continue;
     const short = b.color === "rot";

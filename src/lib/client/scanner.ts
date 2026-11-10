@@ -2,6 +2,7 @@
 // Chancen-Scanner (geteilt von Übersicht, Chancen und Watchlist): Blacktrader rechnet die Zeiträume im Hintergrund
 // und wählt GENAU EINEN aktuellen Einstieg pro Wert (blau / grün / rot / gelb). Shorts nur bei bärischem Gesamtmarkt, Aktien und Krypto ohne
 // kurzfristige Signale, Rohstoffe kurzfristig nur bei bullischem Gesamtmarkt (S&P 500).
+import { financeCheck } from "../analysis/finance";
 import { summarizeHolding } from "./holdings";
 import { checkHoldings } from "./holdingWatch";
 import { updateChanceLog, type ChanceCandidate } from "./chanceLog";
@@ -38,6 +39,9 @@ export interface ScanEntry {
   best: BestEntry;
   /** Verlauf: aktueller + alte (graue) Einstiege */
   history: EntryHistory;
+  /** Finanz-Prüfung (nur Aktien mit geladenen Firmenzahlen): hohe Schulden und Geld verbrennen/Verluste/Umsatzeinbruch */
+  financeWeak?: boolean;
+  financeReason?: string;
 }
 
 export interface ScanState {
@@ -188,6 +192,16 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
     done2++;
     emit({ progress: 0.85 + (0.15 * done2) / Math.max(1, enrich.length) });
   });
+  // Finanz-Prüfung für Aktien: die aussichtsreichsten Markt-Werte und alle eigenen (Watchlist, Depot, Buy & Hold)
+  const finance = new Map<string, { weak: boolean; reason?: string }>();
+  const finAssets = [...new Map([...prelim.map(({ e }) => e.asset), ...[...byAsset.values()].filter((e) => personal.has(assetKey(e.asset))).map((e) => e.asset)].filter((a) => a.kind === "stock").map((a) => [assetKey(a), a])).values()];
+  await pool(finAssets, 6, async (a) => {
+    try {
+      finance.set(assetKey(a), financeCheck((await api.fundamentals(a)).fundamentals));
+    } catch {
+      /* ohne Firmenzahlen keine Prüfung */
+    }
+  });
 
   const entries: ScanEntry[] = [...byAsset.values()].map(({ full, ...e }) => {
     const key = assetKey(e.asset);
@@ -218,7 +232,8 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
       best = pick();
       history = recordEntry(key, best, []);
     }
-    return { ...e, best, history };
+    const fin = finance.get(key);
+    return { ...e, best, history, financeWeak: fin?.weak || undefined, financeReason: fin?.reason };
   });
   emit({ busy: false, at: Date.now(), entries, checked: jobs.length, failed, ctx });
   try {
@@ -324,6 +339,8 @@ export const CHANCE_RULES = {
 
 /** Erfüllt der Einstieg die Mindestanforderungen für die Chancen? */
 export function isTopChance(e: ScanEntry): boolean {
+  // Finanz-Prüfung: hoch verschuldet und Geld verbrennen/Verluste/Umsatzeinbruch → nicht in die Chancen
+  if (e.financeWeak) return false;
   const p = potential(e);
   if (!p || p.chancePct < CHANCE_RULES.minChancePct) return false;
   const b = e.best;
