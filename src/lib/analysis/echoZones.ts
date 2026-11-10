@@ -2,7 +2,7 @@
 // Jede Zone wird nur mit Kerzen bis zu ihrem Entstehen gefunden und danach mit den folgenden Kerzen bewertet.
 import type { Candle, Horizon, Interval, AssetKind } from "../types";
 import type { BacktestResult } from "./backtest";
-import { findLongTermZone } from "./longterm";
+import { findLongTermZone, runLongTermEcho, type LongTermEcho } from "./longterm";
 import { LOCKED } from "./locked-config";
 import { DEFAULT_PARAMS, type LearnableParams } from "./params";
 import { runZoneBacktestAsync } from "./zoneBacktest";
@@ -24,6 +24,8 @@ export interface EchoZone {
 export interface EchoResult {
   zones: EchoZone[];
   trades: BacktestResult;
+  /** Blaue Langfrist-Trades */
+  ltTrades: LongTermEcho["trades"];
   from: number;
   to: number;
   bars: number;
@@ -54,13 +56,12 @@ export async function runEcho(
   const zones: EchoZone[] = [];
   const seen = new Set<string>();
   const params = o.params ?? DEFAULT_PARAMS;
-  const learned = JSON.stringify(params) !== JSON.stringify(DEFAULT_PARAMS);
-  // Grün / Rot: dieselben Zonen wie in der App
+  // Grün / Rot: dieselben Signale wie in der App und im Turnier (Analyse mit allen Prüfungen, auch ohne gelernte Werte)
   const trades = await runZoneBacktestAsync(
     candles,
     {
       warmup: 200,
-      ...(learned ? { signalAt: (h: Candle[]) => signalFromAnalysis(h, { kind: o.kind, horizon: o.horizon, interval: o.interval }, params) } : {}),
+      signalAt: (h: Candle[]) => signalFromAnalysis(h, { kind: o.kind, horizon: o.horizon, interval: o.interval }, params),
       onSignal: ({ index, time, setup }) => {
         const key = `${setup.zoneStart}:${setup.zoneEnd}`;
         if (seen.has(key)) return;
@@ -86,7 +87,9 @@ export async function runEcho(
     const r = zoneOutcome(candles, i, { top: z.zoneTop, bottom: z.zoneBottom, dir: 1, cancel: z.high.price, maxWait: Number.MAX_SAFE_INTEGER });
     if (r) zones.push({ kind: "core", t: candles[i].time, at: r.at, top: z.zoneTop, bottom: z.zoneBottom, ok: r.result === "erfolg" ? 1 : 0 });
   }
+  // Blaue Trades (Einstieg in drei Teilen, wie im Turnier) für die Kontorechnung
+  const ltTrades = runLongTermEcho(candles, undefined, step).trades;
   onProgress?.(1);
   zones.sort((a, b) => a.t - b.t);
-  return { zones, trades, from: candles[0].time, to: candles[candles.length - 1].time, bars: candles.length };
+  return { zones, trades, ltTrades, from: candles[0].time, to: candles[candles.length - 1].time, bars: candles.length };
 }

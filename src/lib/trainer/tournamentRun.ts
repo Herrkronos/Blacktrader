@@ -1,12 +1,11 @@
 // Turnier rechnen (im Web Worker): Kursdaten laden, Trades aller 8 Teilnehmer erzeugen und 50 Versuche à 5 Jahre
 // in echter Zeit durchspielen. Blacktrader spielt in 5 Runden zu je 10 Versuchen; zwischen den Runden lernt er
 // (Strenge-Regeln unverändert) und spielt die nächste Runde mit seinem neuesten gespeicherten Stand.
-import { TECH_SYMBOLS } from "../analysis/bestEntry";
 import { runLongTermEcho } from "../analysis/longterm";
 import type { LearnableParams } from "../analysis/params";
 import type { AssetKind, Candle, Horizon } from "../types";
 import { backtestSeries } from "./engine";
-import { basePotential, MIN_POTENTIAL, passesBlueRule } from "../analysis/potential";
+import { blueTrade, greenRedTrade } from "../analysis/tradeRules";
 import { benchmarkRun, makeWindows, OPPONENTS, regimeIndex, rank, RULES, runWindow, SCENARIOS, summarizeRuns, type ContestantResult, type PoolTrade, type RunResult, type Scenario, type Series, type TournamentReport, type Window } from "./tournament";
 import { universe, type CellKey, type SeriesSpec } from "./universe";
 
@@ -144,17 +143,12 @@ export async function blacktraderPool(prep: Prepared, params: Params, io: Tourna
     if (io.shouldStop()) return null;
     const a = assets[k];
     io.onProgress(span[0] + ((span[1] - span[0]) * k) / assets.length, `${label}: ${a.symbol}`);
-    const tech = TECH_SYMBOLS.has(a.symbol);
     const green = (t: { direction: string; reason: string; entryTime: number; exitTime: number; returnPct: number; entry: number; stop?: number; target?: number; score?: number }) => {
       if (t.reason === "end" || t.entryTime < from) return;
-      const short = t.direction === "short";
-      if (!short && tech && techWeakAt(t.entryTime)) return; // Sektor-Regel (nur grüne Tech-Trades)
-      if (short && regimeAt(t.entryTime) !== "baerisch") return; // Shorts nur bei bärischem Gesamtmarkt (wie in der App)
-      const riskPct = t.stop != null ? (Math.abs(t.entry - t.stop) / t.entry) * 100 : undefined;
-      const chancePct = t.target != null ? (Math.abs(t.target - t.entry) / t.entry) * 100 : undefined;
-      if (chancePct != null && chancePct < 15) return; // wie in den Chancen: Chance bis zum Ziel mindestens 15 %
-      if (basePotential(chancePct, riskPct, short ? "rot" : "gruen") < MIN_POTENTIAL) return; // nur die obere Hälfte (wie in den Chancen)
-      out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, color: short ? "rot" : "gruen", short, riskPct, chancePct });
+      // Regeln wie in Chancen und EchoChart (analysis/tradeRules.ts)
+      const ok = greenRedTrade(t, { symbol: a.symbol, techWeakAt, regimeAt });
+      if (!ok) return;
+      out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, ...ok });
     };
     try {
       if (a.daily.length > 300) for (const t of backtestSeries({ name: a.symbol, kind: a.kind, horizon: "medium", interval: "1d", candles: a.daily }, params(a.kind, "medium"), { step: 1 }).trades) green(t);
@@ -162,10 +156,8 @@ export async function blacktraderPool(prep: Prepared, params: Params, io: Tourna
         for (const t of backtestSeries({ name: a.symbol, kind: a.kind, horizon: "long", interval: "1w", candles: a.weekly }, params(a.kind, "long"), { step: 1 }).trades) green(t);
         for (const t of runLongTermEcho(a.weekly, undefined, 1).trades) {
           if (t.result === "offen" || t.entryTime < from) continue;
-          // Ungültig-Grenze und Chance, gemessen ab der Oberkante des Bereichs
-          const riskPct = t.invalidation != null && t.zoneTop ? ((t.zoneTop - t.invalidation) / t.zoneTop) * 100 : undefined;
-          const chancePct = t.target != null && t.zoneTop ? ((t.target - t.zoneTop) / t.zoneTop) * 100 : undefined;
-          out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, color: "blau", riskPct, chancePct, ...(passesBlueRule(chancePct, riskPct) ? {} : { blueRuleOut: true }) });
+          const { riskPct, chancePct, ok } = blueTrade(t);
+          out.push({ sym: a.symbol, entry: t.entryTime, exit: t.exitTime, r: t.returnPct, px: t.entry, color: "blau", riskPct, chancePct, ...(ok ? {} : { blueRuleOut: true }) });
         }
       }
     } catch {

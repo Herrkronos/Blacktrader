@@ -10,6 +10,8 @@ import { SCAN_GROUPS } from "@/lib/client/presets";
 import { learnedParams } from "@/lib/client/trainerParams";
 import { useAppData } from "@/lib/store/store";
 import { ACCOUNT, simulateAccount, type SimTrade } from "@/lib/client/account";
+import { blueTrade, greenRedTrade, makeTechWeakAt } from "@/lib/analysis/tradeRules";
+import { regimeIndex } from "@/lib/trainer/tournament";
 import { HORIZON_LABEL, type AssetKind, type Candle, type Horizon, type ResolvedAsset } from "@/lib/types";
 
 const fmtDate = (t: number) => new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
@@ -65,6 +67,20 @@ export default function EchoChartPage() {
     setBusy(true);
     reset();
     const out: AssetResult[] = [];
+    // Marktlage für die Regeln (Shorts nur im Bärenmarkt, Sektor-Regel): S&P 500 und NASDAQ 100, Tageskerzen
+    setProgress({ label: "Marktlage laden (S&P 500, NASDAQ 100)", p: 0 });
+    const ctxDays = days + 420;
+    const idx = async (sym: string) => {
+      try {
+        const pl = planHistory({ kind: "stock", yahooSymbol: sym }, "1d", ctxDays);
+        return pl.ok ? await loadHistory(pl, "1d", ctxDays) : null;
+      } catch {
+        return null;
+      }
+    };
+    const [spx, ndx] = await Promise.all([idx("^GSPC"), idx("^NDX")]);
+    const regimeAt = spx && spx.length > 250 ? regimeIndex(spx) : () => null;
+    const techWeakAt = makeTechWeakAt(ndx);
     for (const [i, a] of targets.entries()) {
       const step = (p: number, what: string) => setProgress({ label: targets.length > 1 ? `${a.name} (${i + 1} von ${targets.length}) – ${what}` : what, p: (i + p) / targets.length });
       try {
@@ -85,7 +101,12 @@ export default function EchoChartPage() {
             `Zu kurze Kursgeschichte: ${a.name} hat für „${HORIZON_LABEL[horizon]}“ erst ${candles.length} Kerzen, Blacktrader braucht etwa 200, um die Wellen zu zählen. Tipp: einen kürzeren Zeitraum wählen (z. B. Mittelfristig).`,
           );
         const r = await runEcho(candles, { kind: a.kind, horizon, interval, params: learnedParams(a.kind, horizon) }, (p) => step(0.3 + p * 0.7, "Blacktrader spielt die Vergangenheit durch"));
-        const t = r.trades.trades.filter((x) => x.entryTime >= periodStart);
+        // Gleiche Regeln wie Chancen und Turnier: Grün/Rot (Sektor-Regel, Short nur im Bärenmarkt, Chance ≥ 15 %,
+        // obere Hälfte nach Potenzial) und Blau (Blau-Regel)
+        const ctx = { symbol: a.symbol, techWeakAt, regimeAt };
+        const gr = r.trades.trades.filter((x) => x.entryTime >= periodStart && greenRedTrade(x, ctx));
+        const bl = r.ltTrades.filter((x) => x.entryTime >= periodStart && x.result !== "offen" && blueTrade(x).ok);
+        const t = [...gr.map((x) => ({ entryTime: x.entryTime, exitTime: x.exitTime, returnPct: x.returnPct })), ...bl.map((x) => ({ entryTime: x.entryTime, exitTime: x.exitTime, returnPct: x.returnPct }))];
         out.push({
           asset: a,
           zones: r.zones.filter((z) => z.t >= periodStart),
@@ -219,7 +240,7 @@ export default function EchoChartPage() {
           {single && single.candles.length > 0 && <ZoneHistoryChart candles={single.candles} zones={single.zones} />}
           {tradeHit != null && (
             <p className="text-center text-[13px] text-stone-400">
-              Trades bis zum Ziel: {pct(tradeHit)} Treffer{single?.tradeReturn != null ? ` · Ergebnis ${single.tradeReturn >= 0 ? "+" : ""}${single.tradeReturn.toFixed(1).replace(".", ",")} %` : ""}
+              Trades nach allen Regeln (Grün, Rot, Blau): {pct(tradeHit)} im Gewinn{single?.tradeReturn != null ? ` · Ergebnis ${single.tradeReturn >= 0 ? "+" : ""}${single.tradeReturn.toFixed(1).replace(".", ",")} %` : ""}
             </p>
           )}
 
@@ -284,6 +305,7 @@ export default function EchoChartPage() {
           <details className="text-[13px] text-stone-400">
             <summary className="cursor-pointer">Wie wird gezählt?</summary>
             <p className="mt-1">
+              Trades und Konto nach denselben Regeln wie Chancen und Turnier: Shorts nur bei bärischem Gesamtmarkt, Sektor-Regel für Tech-Werte, Chance bis zum Ziel mindestens 15 %, nur die obere Hälfte nach Potenzial, Blau mit Blau-Regel. Die Zonen-Quote oben zählt dagegen alle Zonen (Qualität der Zonen).{" "}
               Konto: {ACCOUNT.start.toLocaleString("de-DE")} € Start, {ACCOUNT.stake} € je Trade (nur wenn genug Geld frei ist, je Wert eine Position), 7,90 € Gebühr je Order, 27,5 % KESt sofort auf Gewinne mit Verlustausgleich im selben Jahr – alles netto. Wechselkurs-Schwankungen sind hier nicht eingerechnet.{" "}
               Wie bei HKCM: Eine Zone hat gehalten, wenn der Kurs hineinläuft, vor der Unterkante dreht und oben wieder herausläuft (bei Short umgekehrt). Fällt er vorher unter die Unterkante, ist sie gescheitert. Zonen, die der Kurs nie erreicht hat, zählen nicht. Blacktrader kennt dabei immer nur die Kurse bis zum jeweiligen Tag. Gute Ergebnisse von früher sind keine Garantie für die Zukunft.
             </p>
