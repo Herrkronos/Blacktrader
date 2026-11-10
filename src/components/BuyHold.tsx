@@ -171,6 +171,16 @@ export function BuyHold() {
         )}
       </div>
 
+      {holdings.length > 0 && (
+        <button
+          className="btn-danger w-full"
+          onClick={() => {
+            if (window.confirm("Alle Buy-&-Hold-Einträge löschen? Was Blacktrader gelernt hat, bleibt erhalten.")) actions.clearHoldings();
+          }}
+        >
+          Buy & Hold löschen
+        </button>
+      )}
       <p className="text-[13px] text-stone-500">KESt geschätzt wie in Österreich: 27,5 % auf verkaufte Gewinne (gleitender Durchschnittspreis, Gebühren nicht abziehbar, Gewinne und Verluste eines Jahres verrechnet). Maßgeblich ist die Abrechnung deiner Bank.</p>
 
       <TxSheet form={form} onClose={() => setForm(null)} />
@@ -200,6 +210,17 @@ function HoldingDetail({ id, onBuy, onSell, onDiv, onClose }: { id: string; onBu
         </button>
         <button className="btn col-span-2" onClick={() => onDiv(h)}>
           Dividende eintragen
+        </button>
+        <button
+          className="btn-danger col-span-2"
+          onClick={() => {
+            if (window.confirm(`${h.name} mit allen Käufen und Verkäufen löschen?`)) {
+              onClose();
+              actions.removeHolding(h.id);
+            }
+          }}
+        >
+          Wert löschen
         </button>
       </div>
       <div className="label">Käufe und Verkäufe</div>

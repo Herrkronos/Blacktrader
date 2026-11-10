@@ -2,7 +2,7 @@
 // Live-Bilanz aller Chancen (ab dem ersten Erscheinen mitgeschrieben – auch nicht übernommene).
 import { useState } from "react";
 import { chanceStats } from "@/lib/client/chanceLog";
-import { useAppData } from "@/lib/store/store";
+import { actions, useAppData } from "@/lib/store/store";
 
 export function ChanceRecord() {
   const log = useAppData((d) => d.chanceLog);
@@ -11,7 +11,7 @@ export function ChanceRecord() {
   if (!s.total) return null;
   const rate = (r: number | null) => (r == null ? "–" : `${Math.round(r * 100)} %`);
   return (
-    <button className="card w-full p-3 text-left" onClick={() => setOpen(!open)}>
+    <div role="button" tabIndex={0} className="card w-full cursor-pointer p-3 text-left" onClick={() => setOpen(!open)}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[14px] text-stone-300">
           Live-Bilanz seit {s.since ? new Date(s.since * 1000).toLocaleDateString("de-DE") : "–"}
@@ -32,8 +32,17 @@ export function ChanceRecord() {
               </div>
             ) : null;
           })}
+          <button
+            className="btn-danger mt-2 w-full"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm("Live-Bilanz löschen und neu beginnen? Was Blacktrader gelernt hat, bleibt erhalten.")) actions.setChanceLog([]);
+            }}
+          >
+            Live-Bilanz löschen
+          </button>
         </div>
       )}
-    </button>
+    </div>
   );
 }

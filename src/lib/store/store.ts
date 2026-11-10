@@ -417,6 +417,14 @@ export const actions = {
   setHoldingTrend(id: string, trend: 1 | -1 | 0) {
     update((d) => ({ ...d, holdings: d.holdings.map((x) => (x.id === id ? { ...x, trend } : x)) }));
   },
+  /** Blacktrader-Depot leeren: alle Trades weg, Konto startet wieder mit 8.000 € (Gelerntes bleibt – liegt woanders) */
+  clearTrades() {
+    update((d) => ({ ...d, trades: [], accountResets: [] }));
+  },
+  /** Buy & Hold leeren */
+  clearHoldings() {
+    update((d) => ({ ...d, holdings: [] }));
+  },
   removeHolding(id: string) {
     update((d) => ({ ...d, holdings: d.holdings.filter((x) => x.id !== id) }));
   },

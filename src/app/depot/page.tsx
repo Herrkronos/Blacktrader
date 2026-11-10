@@ -358,6 +358,17 @@ function BlacktraderDepot() {
         </div>
       )}
 
+      {trades.length > 0 && (
+        <button
+          className="btn-danger w-full"
+          onClick={() => {
+            if (window.confirm("Alle Blacktrader-Trades löschen? Das Konto startet wieder mit 8.000 €. Was Blacktrader gelernt hat, bleibt erhalten.")) actions.clearTrades();
+          }}
+        >
+          Blacktrader-Depot löschen
+        </button>
+      )}
+
       <Sheet open={!!action} onClose={() => setAction(null)} title={action ? `${action.name} – Aktionen` : ""}>
         {action && (
           <div className="space-y-3">
