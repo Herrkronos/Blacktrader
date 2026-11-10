@@ -244,6 +244,11 @@ export default function EchoChartPage() {
             </p>
           )}
 
+          {!acc && (
+            <p className="rounded-xl border border-gold/30 bg-black/30 p-3 text-center text-[14px] text-stone-300">
+              Nach den Regeln (wie in den Chancen) gab es hier keinen Trade – das Konto wäre bei {ACCOUNT.start.toLocaleString("de-DE")} € geblieben.
+            </p>
+          )}
           {acc && (
             <div className="rounded-xl border border-gold/30 bg-black/30 p-3 text-center">
               <div className="text-[14px] text-stone-300">Mit {ACCOUNT.start.toLocaleString("de-DE")} € und {ACCOUNT.stake} € je Trade (netto)</div>
