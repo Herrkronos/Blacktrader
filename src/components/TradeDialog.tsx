@@ -1,6 +1,7 @@
 "use client";
 // Bestätigung eines Papier-Trades. Einstieg, Stop und Ziele kommen unverändert aus der Analyse –
 // sie können nicht angepasst werden, und ohne Signal gibt es keinen Trade.
+import { OrderSlip } from "./OrderSlip";
 import { useState } from "react";
 import type { AnalysisResult } from "@/lib/analysis/analyze";
 import { money } from "@/lib/analysis/persona";
@@ -60,6 +61,9 @@ export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; anal
                 Wartende Order: Der Trade startet erst, wenn der Kurs {money(plan.entry, item.currency)} erreicht. Läuft der Kurs vorher über {money(plan.cancelAbove ?? plan.entry, item.currency)} oder passiert 60 Kerzen lang nichts, verfällt sie.
               </p>
             )}
+            <div className="mt-3">
+              <OrderSlip kind={item.kind} symbol={item.symbol} name={item.name} currency={item.currency ?? analysis.currency} direction={plan.direction} entry={plan.entry} stop={plan.stop} targets={plan.targets} limit={plan.orderType === "limit"} />
+            </div>
             <p className="mt-3 text-[13px] text-stone-500">Einstieg, Stop und Ziele sind von Blacktrader festgelegt und werden unverändert übernommen.</p>
           </>
         )}

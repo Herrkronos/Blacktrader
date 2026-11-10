@@ -1,6 +1,7 @@
 "use client";
 // Langfrist-Positionen (blau) als Papier-Trades: Einstieg in drei Teilen, kein fester Stop.
 // Teilausstieg / Stop / Ausstieg NUR, wenn Blacktrader eine geänderte Zählung meldet (assessLongTerm).
+import { makeOrderSlip } from "./orderSlip";
 import { toEurReturn, tradeCurrency } from "./eur";
 import { eurPerUnit } from "../fx";
 import { analyzeElliott } from "../analysis/elliott";
@@ -51,6 +52,7 @@ export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizo
     partials: [],
     remaining: 1,
     source: "manual",
+    shares: makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: "long", entry: z.zoneTop, tranches: [...z.tranches] }).orders.reduce((s, o) => s + o.qty, 0),
   });
   actions.addWatch(asset as ResolvedAsset); // überwachen, damit Blacktrader Meldungen geben kann
   return true;

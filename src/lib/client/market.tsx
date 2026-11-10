@@ -1,6 +1,8 @@
 "use client";
 // Zentrale Echtzeit-Überwachung: Live-Kurse (Binance-WebSocket bzw. Polling), Analysen der Watchlist,
 // Signal-Alarme und automatische Verfolgung offener Papier-Trades.
+import { startAutoBackup } from "./autoBackup";
+import { brokerStop } from "./brokerStop";
 import { exhaustionAt, rsi } from "../analysis/indicators";
 import { resumeTraining } from "./trainingSession";
 import { syncPush } from "./push";
@@ -129,6 +131,8 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       clearInterval(t);
     };
   }, []);
+
+  useEffect(() => startAutoBackup(), []);
 
   useEffect(() => {
     void refreshTrainerParams();
@@ -324,6 +328,12 @@ function trackTrades(trades: Trade[], live: Record<string, LiveState>) {
   const s = getData().settings;
   for (const t of trades) {
     if (t.status === "closed") continue;
+    // Stop bei flatex (Euro) weicht ab – Wechselkurs oder nachgezogener Stop: einmal melden
+    const hint = brokerStop(t);
+    if (hint?.adjust && t.brokerStopNotified == null) {
+      actions.updateTrade(t.id, { brokerStopNotified: hint.nowEur });
+      notify(`Stop bei flatex anpassen: ${t.symbol}`, `Neuer Stop ${hint.nowEur.toFixed(2).replace(".", ",")} € statt ${hint.setEur.toFixed(2).replace(".", ",")} € (Wechselkurs bzw. nachgezogener Stop). Im Depot auf „Erledigt“ tippen, sobald geändert.`, { sound: s.sound, notifications: s.notifications, kind: "info" });
+    }
     const lv = live[instrumentKey(t)];
     if (!lv?.price || lv.status === "offline") continue;
     const price = lv.price;

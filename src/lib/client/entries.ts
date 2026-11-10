@@ -58,3 +58,9 @@ export function closeEntry(key: string, e: HistEntry, status: PastStatus, at: nu
 
 /** Alle Verläufe (für das Backup) */
 export const allHistories = () => ({ ...load() });
+
+/** Verlauf aus einer Sicherung zurückholen */
+export function restoreHistories(h: Record<string, EntryHistory>) {
+  cache = { ...load(), ...h };
+  save();
+}

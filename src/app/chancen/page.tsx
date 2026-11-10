@@ -2,6 +2,7 @@
 // Chancen: aus dem Markt (S&P 100, DAX 40, ATX, 20 Krypto, 10 Rohstoffe) die 20 Einstiege mit dem größten Potenzial –
 // Blau (langfristig), Grün (Trade auf steigende Kurse) oder Rot (Short). Werte nur aus der Watchlist kommen nicht hierher.
 // Gelb (kein Einstieg) erscheint nur in der Watchlist.
+import { ChanceRecord } from "@/components/ChanceRecord";
 import { canAfford, freeCash, noMoney } from "@/lib/client/account";
 import { useEffect, useMemo, useState } from "react";
 import { signalStrength } from "@/components/AssetCard";
@@ -70,6 +71,8 @@ export default function ChancenPage() {
         </div>
         <Legend />
       </div>
+
+      <ChanceRecord />
 
       <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none]">
         {KIND_FILTERS.map((f) => (

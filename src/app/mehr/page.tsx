@@ -1,8 +1,9 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconChart, IconChevron, IconDownload, IconGear, IconShield, IconSpark } from "@/components/Icons";
-import { actions, listBackups, readBackup } from "@/lib/store/store";
+import { actions, listBackups, readBackup, useAppData } from "@/lib/store/store";
+import { downloadBackup, lastAutoBackup } from "@/lib/client/autoBackup";
 
 function Row({ href, icon, title, text }: { href: string; icon: React.ReactNode; title: string; text: string }) {
   return (
@@ -20,7 +21,13 @@ function Row({ href, icon, title, text }: { href: string; icon: React.ReactNode;
 export default function MehrPage() {
   const [backups, setBackups] = useState<{ key: string; date: string }[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => setBackups(listBackups()), []);
+  const [lastFile, setLastFile] = useState<number | null>(null);
+  const auto = useAppData((d) => d.settings.autoBackupFile);
+  const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    setBackups(listBackups());
+    setLastFile(lastAutoBackup());
+  }, []);
 
   const download = (key: string) => {
     const raw = readBackup(key);
@@ -46,9 +53,47 @@ export default function MehrPage() {
           <IconDownload className="h-5 w-5 text-gold" />
           <h2 className="text-[17px] text-gold-light">Backups</h2>
         </div>
-        {backups.length === 0 ? (
-          <p className="text-[15px] text-stone-400">Keine automatischen Backups vorhanden. Eigene Sicherung: Einstellungen → Export.</p>
-        ) : (
+        <p className="text-[15px] text-stone-300">Deine Daten liegen nur auf diesem Gerät. Damit nichts verloren geht, wenn der Browser-Speicher gelöscht wird, speichert die App bei jedem neuen, geschlossenen oder geänderten Trade und bei Buy & Hold automatisch eine Sicherungsdatei in deinen Ordner „Downloads“.</p>
+        <label className="flex min-h-[44px] items-center justify-between gap-3 rounded-xl bg-white/5 px-3 text-[15px] text-stone-200">
+          <span>
+            Automatisch als Datei sichern
+            <span className="block text-[13px] text-stone-400">Letzte Datei: {lastFile ? new Date(lastFile).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }) : "noch keine"}</span>
+          </span>
+          <input type="checkbox" className="h-6 w-6 accent-[#C9A24A]" checked={auto} onChange={(e) => actions.setSettings({ autoBackupFile: e.target.checked })} />
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="btn-primary"
+            onClick={() => {
+              downloadBackup();
+              setLastFile(lastAutoBackup());
+              setMsg("Sicherungsdatei gespeichert (Ordner „Downloads“).");
+            }}
+          >
+            Jetzt sichern
+          </button>
+          <button className="btn" onClick={() => fileRef.current?.click()}>
+            Aus Datei wiederherstellen
+          </button>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            if (!window.confirm("Sicherung wiederherstellen? Der aktuelle Stand wird durch die Datei ersetzt.")) return;
+            try {
+              actions.importJson(await f.text());
+              setMsg("Sicherung wiederhergestellt.");
+            } catch (err) {
+              setMsg(`Wiederherstellen fehlgeschlagen: ${(err as Error).message}`);
+            }
+          }}
+        />
+        {backups.length === 0 ? null : (
           <ul className="space-y-2">
             {backups.map((b) => (
               <li key={b.key} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white/5 p-3">

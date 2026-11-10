@@ -7,6 +7,8 @@ import { HORIZON_DEFAULT_INTERVAL, type Horizon, type Interval, type ResolvedAss
 import { eurPerUnit } from "../fx";
 import { tradeCurrency } from "../client/eur";
 import type { Holding, HoldingTx } from "../client/holdings";
+import type { ChanceLogEntry } from "../client/chanceLog";
+import { allHistories, restoreHistories } from "../client/entries";
 
 export interface WatchItem extends ResolvedAsset {
   id: string;
@@ -74,6 +76,12 @@ export interface Trade {
   /** Wert von 1 Einheit der Währung in Euro beim Kauf bzw. Verkauf */
   fxEntry?: number;
   fxExit?: number;
+  /** Order-Zettel: Stückzahl (für 500 €) */
+  shares?: number;
+  /** Stop, wie er bei flatex in Euro eingetragen ist (für die Erinnerung bei Wechselkurs-Änderung) */
+  brokerStopEur?: number;
+  /** Zuletzt gemeldeter Vorschlag für den flatex-Stop (nur einmal melden) */
+  brokerStopNotified?: number;
   /** Hochstufung GRÜN → BLAU (Blacktrader): Zeitpunkt und Grund */
   promotedAt?: number;
   promoteReason?: string;
@@ -96,6 +104,8 @@ export interface Settings {
   autoTrade: boolean;
   /** Vibration bei Alarm und Trade-Übernahme */
   haptics: boolean;
+  /** Bei jeder Änderung an Trades/Depot automatisch eine Sicherungsdatei auf dem Gerät speichern */
+  autoBackupFile: boolean;
   keys: {
     finnhub: string;
     alphavantage: string;
@@ -121,6 +131,8 @@ export interface AppData {
   accountResets: number[];
   /** Buy & Hold: eigene Käufe (Aktien, ETFs) */
   holdings: Holding[];
+  /** Live-Bilanz aller Chancen (ab dem ersten Erscheinen mitgeschrieben) */
+  chanceLog: ChanceLogEntry[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -135,10 +147,11 @@ export const DEFAULT_SETTINGS: Settings = {
   expertMode: false,
   autoTrade: false,
   haptics: true,
+  autoBackupFile: true,
   keys: { finnhub: "", alphavantage: "", openfigi: "", llm: "", llmProvider: "anthropic", llmModel: "" },
 };
 
-const DEFAULT_DATA: AppData = { version: 1, watchlist: [], trades: [], settings: DEFAULT_SETTINGS, signals: {}, migrations: [], migrationNotice: null, accountResets: [], holdings: [] };
+const DEFAULT_DATA: AppData = { version: 1, watchlist: [], trades: [], settings: DEFAULT_SETTINGS, signals: {}, migrations: [], migrationNotice: null, accountResets: [], holdings: [], chanceLog: [] };
 export const BACKUP_PREFIX = "black-ship-trading-analyst:backup:";
 const KEY = "black-ship-trading-analyst:v1";
 
@@ -167,6 +180,7 @@ function sanitize(raw: unknown): AppData {
     migrations: Array.isArray(d.migrations) ? d.migrations : [],
     migrationNotice: d.migrationNotice ?? null,
     accountResets: Array.isArray(d.accountResets) ? d.accountResets.filter((x) => Number.isFinite(x)) : [],
+    chanceLog: Array.isArray(d.chanceLog) ? d.chanceLog.filter((x) => x && x.key && x.symbol) : [],
     holdings: Array.isArray(d.holdings) ? d.holdings.filter((h) => h && h.id && h.symbol).map((h) => ({ ...h, txs: Array.isArray(h.txs) ? h.txs.filter((t) => t && t.qty > 0 && t.price > 0) : [] })) : [],
     settings: {
       ...DEFAULT_SETTINGS,
@@ -298,6 +312,8 @@ function subscribe(l: () => void) {
   listeners.add(l);
   return () => listeners.delete(l);
 }
+/** Änderungen am Datenstand beobachten (z. B. automatische Sicherung) */
+export const subscribeData = subscribe;
 
 /** Selektor-Hook. Das Ergebnis wird je Datenstand gecacht, damit abgeleitete Arrays stabil bleiben. */
 export function useAppData<T>(selector: (d: AppData) => T): T {
@@ -366,6 +382,9 @@ export const actions = {
     // Wiederhergestellt: Trades gelten als selbst übernommen, Migration nicht erneut ausführen
     update(() => ({ ...parsed, trades: parsed.trades.map((t) => ({ ...t, source: "manual" as const, unverified: false })), migrations: [...new Set([...parsed.migrations, "v2-manual-journal", "v3-blacktrader"])], migrationNotice: null }));
   },
+  setChanceLog(log: ChanceLogEntry[]) {
+    update((d) => ({ ...d, chanceLog: log }));
+  },
   /** Blacktrader-Konto nach einer Pleite mit 8.000 € neu starten (alte Trades bleiben als frühere Runde) */
   resetAccount() {
     update((d) => ({ ...d, accountResets: [...d.accountResets, Date.now()] }));
@@ -397,10 +416,13 @@ export const actions = {
   exportJson(includeKeys = false): string {
     const d = getData();
     const out = includeKeys ? d : { ...d, settings: { ...d.settings, keys: { ...DEFAULT_SETTINGS.keys, llmProvider: d.settings.keys.llmProvider } } };
-    return JSON.stringify({ app: "black-ship-trading-analyst", exportedAt: new Date().toISOString(), ...out }, null, 2);
+    // Auch den Einstiegs-Verlauf (alte/graue Einstiege) mitsichern
+    return JSON.stringify({ app: "black-ship-trading-analyst", exportedAt: new Date().toISOString(), ...out, entryHistory: allHistories() }, null, 2);
   },
   importJson(json: string, keepKeys = true) {
-    const parsed = sanitize(JSON.parse(json));
+    const raw = JSON.parse(json);
+    const parsed = sanitize(raw);
+    if (raw && typeof raw.entryHistory === "object" && raw.entryHistory) restoreHistories(raw.entryHistory);
     update((d) => ({ ...parsed, settings: keepKeys && !parsed.settings.keys.llm && !parsed.settings.keys.finnhub ? { ...parsed.settings, keys: d.settings.keys } : parsed.settings }));
   },
   reset() {

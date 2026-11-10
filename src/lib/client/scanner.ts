@@ -2,6 +2,7 @@
 // Chancen-Scanner (geteilt von Übersicht, Chancen und Watchlist): Blacktrader rechnet die Zeiträume im Hintergrund
 // und wählt GENAU EINEN aktuellen Einstieg pro Wert (blau / grün / rot / gelb). Shorts nur bei bärischem Gesamtmarkt, Aktien und Krypto ohne
 // kurzfristige Signale, Rohstoffe kurzfristig nur bei bullischem Gesamtmarkt (S&P 500).
+import { updateChanceLog, type ChanceCandidate } from "./chanceLog";
 import { isFxPair } from "./eur";
 import { basePotential, BLUE_RULE, MIN_POTENTIAL, passesBlueRule, type PotentialColor } from "../analysis/potential";
 import { effectiveWeights, learnedParams, refreshTrainerParams } from "./trainerParams";
@@ -217,6 +218,32 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
     applyPromotions(entries);
   } catch {
     /* Hochstufung beim nächsten Durchlauf */
+  }
+  try {
+    // Live-Bilanz: die Chancen dieser Suche (wie in der Liste: höchstens 20, nach Potenzial) mitschreiben, offene prüfen
+    const top = entries
+      .filter((e) => isChance(e) && isTopChance(e))
+      .map((e) => ({ e, p: potential(e) }))
+      .filter((x) => x.p != null)
+      .sort((a, b) => b.p!.score - a.p!.score)
+      .slice(0, 20)
+      .map((x) => x.e);
+    const inTop = new Set(top.map((e) => assetKey(e.asset)));
+    const cands: ChanceCandidate[] = [];
+    for (const e of entries) {
+      const b = e.best;
+      if (b.color === "gelb" || b.zoneTop == null || b.zoneBottom == null) continue;
+      const blue = b.color === "blau";
+      const candles = blue ? e.ltCandles ?? [] : b.horizon ? e.horizons[b.horizon]?.candles ?? [] : [];
+      const stop = blue ? b.invalidation : b.stop;
+      const target = b.targets?.[0];
+      if (stop == null || target == null) continue;
+      // Neue Einträge nur aus der Chancen-Liste; Kerzen für alle Werte (damit eingetragene weiter geprüft werden)
+      cands.push({ key: `${assetKey(e.asset)}|${b.key}${inTop.has(assetKey(e.asset)) ? "" : "|nur-pruefen"}`, symbol: e.asset.symbol, name: e.asset.name, kind: e.asset.kind, color: b.color, dir: b.color === "rot" ? "short" : "long", zoneTop: b.zoneTop, zoneBottom: b.zoneBottom, stop, target, candles });
+    }
+    updateChanceLog(cands.filter((c) => !c.key.endsWith("|nur-pruefen")), undefined, cands);
+  } catch {
+    /* Bilanz beim nächsten Durchlauf */
   }
 }
 

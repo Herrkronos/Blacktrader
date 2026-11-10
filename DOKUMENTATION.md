@@ -260,3 +260,13 @@ Turnier in Euro (10 Teilnehmer, 50 Versuche à 5 Jahre, KESt sofort je Gewinn, S
 **Blacktrader-Konto:** 8.000 € Startkapital, 500 € je Trade, 7,90 € Gebühr je Order (Langfrist: je ausgeführter Teil-Order), 27,5 % KESt sofort auf Gewinne mit Verlustausgleich im selben Jahr. Angezeigt werden Kontostand, Gewinn in € und % vom Start, freies und gebundenes Geld, Gebühren, KESt, Trefferquote. Reicht das freie Geld nicht für 500 € + Gebühr, kann kein neuer Trade übernommen werden (Hinweis in der App; „Alle übernehmen“ in den Chancen nimmt nur so viele, wie das Geld reicht). Ohne Geld und ohne offene Position ist das Konto leer: Neustart mit 8.000 €, die alten Trades bleiben als frühere Runde sichtbar. Das Turnier rechnet ebenfalls mit 8.000 € Startkapital.
 
 **Buy & Hold:** eigene Käufe von Aktien und ETFs, unabhängig von Blacktrader. Eingabe je Kauf/Verkauf: Datum, Preis je Stück in €, Stückzahl, Gebühr (Standard 7,90 €). Verkauft wird nur, wenn du es einträgst. Kurs jetzt: Börsenkurs in Euro (jede Minute). KESt geschätzt wie in Österreich: gleitender Durchschnittspreis, Gebühren nicht abziehbar, Gewinne und Verluste eines Jahres verrechnet.
+
+## Order-Zettel, Stop-Erinnerung, Live-Bilanz, Sicherung
+
+**Order-Zettel für flatex:** Beim Übernehmen zeigt die App die Stückzahl für 500 € (Aktien/Rohstoffe ganze Stück, Krypto Bruchteile; Blau: drei Teile à ca. 166,67 €) und alle Preise in Euro – mit „Kopieren“.
+
+**Stop bei flatex anpassen:** Bei Dollar-Werten verschiebt sich der richtige Euro-Stop mit dem Wechselkurs, außerdem zieht Blacktrader Stops nach. Weicht der richtige Euro-Stop um mehr als 0,5 % vom eingetragenen ab, zeigt das Depot „Stop bei flatex anpassen: alt → neu“ (und meldet es einmal). „Erledigt“ antippen, sobald er bei flatex geändert ist.
+
+**Live-Bilanz der Chancen:** Jede Chance aus der Liste wird ab dem ersten Erscheinen mitgeschrieben – auch nicht übernommene. Bei jeder Suche wird geprüft: Ziel nach dem Einstieg (Treffer), Stop (Blau: Schlusskurs unter der Ungültig-Grenze), verpasst (Ziel ohne Einstieg) oder läuft noch. Anzeige oben in den Chancen.
+
+**Sicherung:** Die App fragt beim Browser dauerhaften Speicher an und speichert bei jedem neuen, geschlossenen oder geänderten Trade, beim Neustart des Kontos und bei Buy & Hold automatisch eine Sicherungsdatei in den Ordner „Downloads“ (abschaltbar unter Mehr → Backups). Dort auch „Jetzt sichern“ und „Aus Datei wiederherstellen“. Die Datei enthält Watchlist, Trades, Konto, Buy & Hold, Live-Bilanz und Einstiegs-Verlauf (ohne API-Schlüssel).

@@ -1,5 +1,6 @@
 "use client";
 // Depot (früher Journal): nur selbst übernommene Papier-Trades, als Karten-Liste.
+import { brokerStop } from "@/lib/client/brokerStop";
 import { closeLongTerm } from "@/lib/client/longterm";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
@@ -47,6 +48,7 @@ function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction:
   const cur = t.status === "closed" ? t.exit : price ?? t.lastPrice;
   const ret = t.status === "closed" ? t.returnPct : t.status === "open" && cur ? tradeReturnEur(t, cur) : undefined;
   const st = statusText(t);
+  const stopHint = brokerStop(t);
   return (
     <div className="relative">
       {/* Aktionen hinter der Karte (nur beim Wischen nach links sichtbar) */}
@@ -78,6 +80,27 @@ function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction:
             <div className="text-[13px] text-stone-400">{t.status === "closed" ? "Ergebnis" : "Stand"}</div>
           </div>
         </div>
+        {stopHint && (
+          <div className={`mt-2 rounded-lg px-2.5 py-1.5 text-[14px] ${stopHint.adjust ? "bg-amber-500/15 text-amber-100" : "bg-white/5 text-stone-300"}`}>
+            {t.shares ? `${t.shares.toLocaleString("de-DE", { maximumFractionDigits: 4 })} Stück · ` : ""}
+            {stopHint.adjust ? (
+              <>
+                Stop bei flatex anpassen: {stopHint.setEur.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € → <b>{stopHint.nowEur.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</b>{" "}
+                <button
+                  className="ml-1 underline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    actions.updateTrade(t.id, { brokerStopEur: stopHint.nowEur, brokerStopNotified: undefined });
+                  }}
+                >
+                  Erledigt
+                </button>
+              </>
+            ) : (
+              <>Stop bei flatex: {stopHint.nowEur.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</>
+            )}
+          </div>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {kind}
           <span className={st.cls}>{st.text}</span>

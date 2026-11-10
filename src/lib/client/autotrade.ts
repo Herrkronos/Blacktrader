@@ -1,5 +1,6 @@
 "use client";
 // Papier-Trades aus einem Analyse-Ergebnis anlegen (manuell oder automatisch).
+import { makeOrderSlip } from "./orderSlip";
 import type { AnalysisResult } from "../analysis/analyze";
 import { plainSetup } from "../analysis/persona";
 import { tradeReturnPct } from "../analysis/stats";
@@ -52,6 +53,9 @@ export function openPaperTrade(asset: Asset, res: AnalysisResult): boolean {
     signal: res.decision.level,
     pattern: plainSetup(res.elliott.best),
     lastPrice: res.price,
+    // Order-Zettel: Stückzahl und Stop in Euro, wie bei flatex eingegeben
+    shares: makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: plan.direction, entry: plan.entry, stop: plan.stop }).orders[0].qty,
+    brokerStopEur: makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: plan.direction, entry: plan.entry, stop: plan.stop }).stopEur,
   });
   return true;
 }

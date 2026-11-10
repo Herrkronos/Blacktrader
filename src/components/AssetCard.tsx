@@ -1,6 +1,7 @@
 "use client";
 // Analyse-Karte (Chancen, Watchlist): GENAU EIN aktueller Einstieg pro Wert – Blacktrader rechnet im Hintergrund.
 // Zeile 1 Name/Kurs · Zeile 2 Mini-Chart (alte Einstiege grau) · Zeile 3 Einstieg/Stop/Ziel · Grund · Verlauf · max. 2 Buttons.
+import { OrderSlip } from "./OrderSlip";
 import { displayCurrency } from "@/lib/client/eur";
 import { useState } from "react";
 import type { AnalysisResult } from "@/lib/analysis/analyze";
@@ -308,6 +309,7 @@ export function AssetCard({
                 Einstieg {money(plan.entry, cur)} · Stop {money(plan.stop, cur)} · Ziel {money(plan.targets[0], cur)}
               </p>
               {plan.orderType === "limit" && <p className="text-amber-300">Wartende Order: Der Trade startet erst, wenn der Kurs {money(plan.entry, cur)} erreicht.</p>}
+              <OrderSlip kind={asset.kind} symbol={asset.symbol} name={asset.name} currency={cur} direction={plan.direction} entry={plan.entry} stop={plan.stop} targets={plan.targets} limit={plan.orderType === "limit"} />
               <p className="text-[13px] text-stone-400">Einstieg, Stop und Ziele kommen unverändert von Blacktrader.{isShort ? "" : " Bestätigt der Wochenchart den Aufwärtstrend, wird der Trade zu Blau hochgestuft und der Stop nur nachgezogen."}</p>
             </div>
           ) : null
@@ -328,6 +330,7 @@ export function AssetCard({
             <div className="space-y-2">
               <p>{asset.name}: Einstieg in drei Teilen bei</p>
               <p className="num text-sky-200">{lt.tranches.map((t) => money(t, cur)).join(" · ")}</p>
+              <OrderSlip kind={asset.kind} symbol={asset.symbol} name={asset.name} currency={cur} direction="long" entry={lt.zoneTop} tranches={[...lt.tranches]} invalidation={lt.invalidation} targets={[...lt.targets]} />
               <p className="text-stone-400">
                 Kein fester Stop. Ungültig, wenn ein Schlusskurs unter {money(lt.invalidation, cur)} liegt. Teilausstieg oder Stop gibt es nur, wenn sich die Wellenzählung ändert – du bekommst dann eine Nachricht von Blacktrader.
               </p>
