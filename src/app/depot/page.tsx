@@ -21,6 +21,8 @@ import { makeOrderSlip } from "@/lib/client/orderSlip";
 import { BuyHold } from "@/components/BuyHold";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { ProposalBox } from "@/components/ProposalBox";
+import { PositionCard } from "@/components/PositionCard";
+import { blueGroups } from "@/lib/client/position";
 
 const eur = (x: number, sign = false) => `${sign && x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const signed = (x: number, d = 2) => `${x >= 0 ? "+" : ""}${x.toFixed(d).replace(".", ",")} %`;
@@ -240,6 +242,8 @@ function BlacktraderDepot() {
     for (const t of [...trades].filter((x) => x.status !== "closed" && x.strategy !== "core").sort((a, b) => a.openedAt - b.openedAt)) if (!m.has(`${t.kind}:${t.symbol}`)) m.set(`${t.kind}:${t.symbol}`, t.id);
     return m;
   }, [trades]);
+  const groups = useMemo(() => blueGroups(trades), [trades]);
+  const shownGroup = new Set<string>();
   const filtered = useMemo(
     () =>
       trades
@@ -362,7 +366,27 @@ function BlacktraderDepot() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map((t) => (
+          {filtered.map((t) => {
+            // Blau: alle offenen Käufe eines Werts (Erstkauf + Nachkäufe) als eine Karte
+            const g = t.strategy === "longterm" && t.status !== "closed" ? groups.get(`${t.kind}:${t.symbol}`) : undefined;
+            if (g) {
+              if (shownGroup.has(`${t.kind}:${t.symbol}`)) return null;
+              shownGroup.add(`${t.kind}:${t.symbol}`);
+              return (
+                <PositionCard
+                  key={`g:${t.kind}:${t.symbol}`}
+                  group={g}
+                  price={live[instrumentKey(t)]?.price}
+                  nachkauf={<NachkaufBox entry={scan.entries.find((e) => e.asset.kind === t.kind && e.asset.symbol === t.symbol)} />}
+                  onOpen={() => openSheet({ kind: t.kind, symbol: t.symbol, name: t.name, binanceSymbol: t.binanceSymbol, yahooSymbol: t.yahooSymbol, currency: t.currency }, "long", { withEntry: true })}
+                  onAction={(x) => {
+                    setAction(x);
+                    setExitPrice(String(+((live[instrumentKey(x)]?.price ?? x.lastPrice ?? x.entry) * (eurPerUnit(tradeCurrency(x)) ?? 1)).toPrecision(6)));
+                  }}
+                />
+              );
+            }
+            return (
             <TradeCard
               nachkauf={t.status !== "closed" && firstOpen.get(`${t.kind}:${t.symbol}`) === t.id ? <NachkaufBox entry={scan.entries.find((e) => e.asset.kind === t.kind && e.asset.symbol === t.symbol)} /> : null}
               key={t.id}
@@ -374,7 +398,8 @@ function BlacktraderDepot() {
                 setExitPrice(String(+((live[instrumentKey(x)]?.price ?? x.lastPrice ?? x.entry) * (eurPerUnit(tradeCurrency(x)) ?? 1)).toPrecision(6)));
               }}
             />
-          ))}
+            );
+          })}
         </div>
       )}
 

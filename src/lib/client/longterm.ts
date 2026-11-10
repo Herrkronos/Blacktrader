@@ -73,9 +73,12 @@ export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizo
 }
 
 export const filledTranches = (t: Trade) => (t.tranches ?? []).filter((x) => x.filledAt);
+/** Durchschnittlicher Einstieg der gekauften Teile – gewichtet nach Stückzahl (wenn bekannt) */
 export const avgEntry = (t: Trade) => {
   const f = filledTranches(t);
-  return f.length ? f.reduce((s, x) => s + x.price, 0) / f.length : t.entry;
+  if (!f.length) return t.entry;
+  if (f.every((x) => x.qty != null && x.qty > 0)) return f.reduce((s, x) => s + x.price * x.qty!, 0) / f.reduce((s, x) => s + x.qty!, 0);
+  return f.reduce((s, x) => s + x.price, 0) / f.length;
 };
 
 /** Laufende Kurse: Teil-Orders ausführen, gesetzten Stop prüfen. Gibt eine Meldung zurück, wenn etwas passiert. */
@@ -167,12 +170,22 @@ export function makeProposal(a: LongTermAction, price: number, now = Date.now())
 }
 
 /** Gehaltene Stück (gekaufte Teile, abzüglich Teilverkäufe) */
-export function heldShares(t: Trade): number {
+/** Stückzahl je Teil (gespeichert oder wie auf dem Order-Zettel nachgerechnet) und Betrag in € */
+export function trancheRows(t: Trade): { price: number; filledAt?: number; qty: number; eur: number }[] {
   const tr = t.tranches ?? [];
-  const slip = tr.some((x) => x.qty == null) && tr.length ? makeOrderSlip({ kind: t.kind, symbol: t.symbol, name: t.name, currency: t.currency, direction: "long", entry: tr[0].price, tranches: tr.map((x) => x.price), budget: t.nachkauf ? ADD.stake : 500 }) : null;
-  const bought = tr.reduce((a, x, i) => a + (x.filledAt ? x.qty ?? slip?.orders[i]?.qty ?? 0 : 0), 0);
-  const q = bought * (t.remaining ?? 1);
-  return t.kind === "crypto" ? Math.floor(q * 1e4) / 1e4 : Math.round(q);
+  const slip = tr.some((x) => x.qty == null || x.eur == null) && tr.length ? makeOrderSlip({ kind: t.kind, symbol: t.symbol, name: t.name, currency: t.currency, direction: "long", entry: tr[0].price, tranches: tr.map((x) => x.price), budget: t.nachkauf ? ADD.stake : 500 }) : null;
+  return tr.map((x, i) => ({ ...x, qty: x.qty ?? slip?.orders[i]?.qty ?? 0, eur: x.eur ?? slip?.orders[i]?.amountEur ?? 0 }));
+}
+
+/** Gehaltene Stück (genau, ohne Runden): gekaufte Teile × noch gehaltener Anteil */
+export function sharesExact(t: Trade): number {
+  return trancheRows(t).reduce((a, x) => a + (x.filledAt ? x.qty : 0), 0) * (t.remaining ?? 1);
+}
+
+/** Gehaltene Stück (gekaufte Teile, abzüglich Teilverkäufe) */
+export function heldShares(t: Trade): number {
+  const q = sharesExact(t);
+  return t.kind === "crypto" ? Math.floor(q * 1e4 + 1e-6) / 1e4 : Math.round(q);
 }
 
 /** Die Schritte bei flatex in Worten */

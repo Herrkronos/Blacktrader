@@ -24,7 +24,7 @@ export function countsForAccount(t: Trade): boolean {
 /** Anzahl Kauf-Orders (Langfrist: ausgeführte Teile, mindestens 1) */
 const buyOrders = (t: Trade) => (t.strategy === "longterm" ? Math.max(1, (t.tranches ?? []).filter((x) => x.filledAt).length) : 1);
 /** Anzahl Verkaufs-Orders (Teilausstiege + Schlussverkauf) */
-const sellOrders = (t: Trade) => (t.partials?.length ?? 0) + 1;
+const sellOrders = (t: Trade) => (t.partials ?? []).filter((x) => !x.noFee).length + (t.sellFeeShared ? 0 : 1);
 /**
  * Tatsächlich gekaufter Betrag (Gewinn/Verlust nur darauf). Blau in drei Teilen: nur die ausgeführten Teile –
  * der Rest der 500 € ist für die wartenden Limit-Orders reserviert und bringt weder Gewinn noch Verlust.

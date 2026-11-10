@@ -67,7 +67,9 @@ export interface Trade {
   lastPrice?: number;
   exit?: number;
   closedAt?: number;
-  closeReason?: "target" | "stop" | "manual" | "cancelled" | "welle5" | "trendbruch" | "invalidiert" | "zaehlung";
+  closeReason?: "target" | "stop" | "manual" | "cancelled" | "welle5" | "trendbruch" | "invalidiert" | "zaehlung" | "verkauft";
+  /** Gemeinsamer Verkauf mehrerer Käufe desselben Werts: bei flatex EINE Order → Verkaufsgebühr nur beim ersten Kauf */
+  sellFeeShared?: boolean;
   /** "longterm" = Langfristiger Einstieg (blau); "core" = alte Kernposition (vor dem Update); sonst Zonen-Trade */
   strategy?: "zone" | "core" | "longterm";
   /** Langfrist-Bereich (nur strategy "longterm") */
@@ -76,7 +78,8 @@ export interface Trade {
   /** Teil-Orders: Limit (Währung des Werts), Stückzahl und Betrag in € (ab Nov. 2026 gespeichert) */
   tranches?: { price: number; filledAt?: number; qty?: number; eur?: number }[];
   /** Teilausstiege (Anteil der Position, Kurs, Zeitpunkt, Grund) */
-  partials?: { fraction: number; price: number; at: number; reason: string }[];
+  /** noFee: Teil eines gemeinsamen Verkaufs mehrerer Käufe (Gebühr schon beim ersten gezählt) */
+  partials?: { fraction: number; price: number; at: number; reason: string; noFee?: boolean }[];
   /** Noch gehaltener Anteil der gekauften Position (1 = alles) */
   remaining?: number;
   /** Letzte Meldung von Blacktrader zu dieser Position (wird nur einmal gesendet) */
