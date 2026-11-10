@@ -81,7 +81,7 @@ export async function yahooCandles(symbol: string, iv: Interval): Promise<Candle
 export const YAHOO_MAX_DAYS: Record<Interval, number> = { "5m": 59, "15m": 59, "1h": 729, "4h": 729, "1d": 36500, "1w": 36500, "1M": 36500 };
 
 /** Kerzen für einen Zeitraum der letzten `days` Tage (begrenzt auf YAHOO_MAX_DAYS). */
-export async function yahooHistory(symbol: string, iv: Interval, days: number): Promise<{ candles: Candle[]; days: number }> {
+export async function yahooHistory(symbol: string, iv: Interval, days: number): Promise<{ candles: Candle[]; days: number; dividends: { time: number; amount: number }[] }> {
   const m = INTERVAL_MAP[iv];
   const d = Math.min(days, YAHOO_MAX_DAYS[iv]);
   const now = Math.floor(Date.now() / 1000);
@@ -91,7 +91,7 @@ export async function yahooHistory(symbol: string, iv: Interval, days: number): 
     for (const base of BASES) {
       try {
         data = await fetchJson<ChartResponse>(
-          `${base}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${m.interval}&period1=${now - d * 86400}&period2=${now}&includePrePost=false`,
+          `${base}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${m.interval}&period1=${now - d * 86400}&period2=${now}&includePrePost=false&events=div`,
           { timeoutMs: 15000 },
         );
         if (data.chart.error) throw new UpstreamError(`Yahoo: ${data.chart.error.description ?? "Fehler"}`, 404);
@@ -111,7 +111,10 @@ export async function yahooHistory(symbol: string, iv: Interval, days: number): 
       if (o == null || h == null || l == null || c == null) return;
       out.push({ time: t, open: o, high: h, low: l, close: c, volume: q.volume[i] ?? 0 });
     });
-    return { candles: m.aggregate ? aggregateCandles(out, m.aggregate) : out, days: d };
+    // Dividenden (für Strategien wie „Dogs of the Dow“), je Ausschüttung Datum und Betrag je Aktie
+    const ev = (r as unknown as { events?: { dividends?: Record<string, { date: number; amount: number }> } }).events?.dividends ?? {};
+    const dividends = Object.values(ev).filter((x) => x && x.date && x.amount > 0).map((x) => ({ time: x.date, amount: x.amount })).sort((a, b) => a.time - b.time);
+    return { candles: m.aggregate ? aggregateCandles(out, m.aggregate) : out, days: d, dividends };
   });
 }
 
@@ -249,5 +252,31 @@ export async function yahooFundamentals(symbol: string): Promise<StockFundamenta
       currency: pr.currency,
       source: "Yahoo Finance",
     };
+  });
+}
+
+export interface AnalystAction {
+  /** Unix-Sekunden */
+  time: number;
+  firm: string;
+  toGrade: string;
+  fromGrade: string;
+  /** up, down, main (bestätigt), init (Erstbewertung), reit */
+  action: string;
+}
+
+/** Hoch-/Herabstufungen von Bank-Analysten (Yahoo, meist ab etwa 2012, vor allem US-Aktien) */
+export async function yahooAnalysts(symbol: string): Promise<AnalystAction[]> {
+  return cached(`ya:${symbol}`, 12 * 3600e3, async () => {
+    const { cookie, crumb } = await getCrumb();
+    const data = await fetchJson<{ quoteSummary: { result?: { upgradeDowngradeHistory?: { history?: { epochGradeDate?: number; firm?: string; toGrade?: string; fromGrade?: string; action?: string }[] } }[] } }>(
+      `${BASES[1]}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=upgradeDowngradeHistory&crumb=${encodeURIComponent(crumb)}`,
+      { headers: { Cookie: cookie } },
+    );
+    const h = data.quoteSummary.result?.[0]?.upgradeDowngradeHistory?.history ?? [];
+    return h
+      .filter((x) => x.epochGradeDate && x.firm && x.toGrade)
+      .map((x) => ({ time: x.epochGradeDate!, firm: x.firm!, toGrade: x.toGrade!, fromGrade: x.fromGrade ?? "", action: x.action ?? "" }))
+      .sort((a, b) => a.time - b.time);
   });
 }

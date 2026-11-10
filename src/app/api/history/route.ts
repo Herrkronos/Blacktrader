@@ -24,7 +24,7 @@ export async function GET(req: Request) {
     if (yahoo) {
       if (!(days > 0)) throw new UpstreamError("Zeitraum fehlt", 400);
       const r = await yahooHistory(yahoo, interval, days);
-      return { candles: r.candles, days: r.days, source: "Yahoo Finance" };
+      return { candles: r.candles, days: r.days, dividends: r.dividends, source: "Yahoo Finance" };
     }
     throw new UpstreamError("Kein Symbol angegeben", 400);
   });
