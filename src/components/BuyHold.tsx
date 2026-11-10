@@ -82,7 +82,7 @@ export function BuyHold() {
         <div className="label">Wert deiner Buy-&-Hold-Positionen</div>
         <div className="num text-[30px] font-semibold leading-tight text-stone-50">{eur(value)}</div>
         <div className={`num text-[16px] ${total >= 0 ? "text-up" : "text-down"}`}>
-          {eur(total, true)} gesamt nach Gebühren und KESt{cost > 0 ? ` · offen ${pct((openPl / cost) * 100)}` : ""}
+          {eur(total, true)} gesamt nach Gebühren (KESt fällt erst beim Verkauf an){cost > 0 ? ` · offen ${pct((openPl / cost) * 100)}` : ""}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 text-[14px]">
