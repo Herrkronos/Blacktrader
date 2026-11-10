@@ -71,6 +71,15 @@ const trancheEur = (t: Trade) => trancheRows(t).reduce((a, x) => a + x.eur, 0);
  */
 export function sellPosition(group: Trade[], qty: number, priceEur: number, dropWaiting: boolean, now = Date.now()): string {
   const total = group.reduce((a, t) => a + sharesExact(t), 0);
+  // Nichts zu verkaufen, nur wartende Orders löschen
+  if (!(qty > 0) && dropWaiting) {
+    for (const t of group) {
+      const filled = (t.tranches ?? []).filter((x) => x.filledAt);
+      if (!filled.length) actions.updateTrade(t.id, { status: "closed", closedAt: now, closeReason: "cancelled" });
+      else actions.updateTrade(t.id, { tranches: filled, stakeEur: trancheEur({ ...t, tranches: filled }) || t.stakeEur });
+    }
+    return "Wartende Orders gelöscht.";
+  }
   if (!(qty > 0) || !(priceEur > 0)) return "Stückzahl und Kurs eingeben.";
   if (qty > total + 1e-6) return `Du hältst nur ${total.toLocaleString("de-DE", { maximumFractionDigits: 4 })} Stück.`;
   const f = Math.min(1, qty / total);

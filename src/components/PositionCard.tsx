@@ -3,10 +3,12 @@
 import { useState, type ReactNode } from "react";
 import { money } from "@/lib/analysis/persona";
 import { tradeCurrency } from "@/lib/client/eur";
-import { heldShares, trancheRows } from "@/lib/client/longterm";
+import { heldShares, sharesExact, trancheRows } from "@/lib/client/longterm";
+import { investedOf } from "@/lib/client/account";
 import { clearPositionStop, positionSummary, sellPosition, setPositionStop, updateWaitingOrder } from "@/lib/client/position";
 import { eurPerUnit } from "@/lib/fx";
-import type { Trade } from "@/lib/store/store";
+import { actions, type Trade } from "@/lib/store/store";
+import { DepotBadge, DepotPicker } from "./DepotPicker";
 import { ProposalBox } from "./ProposalBox";
 import { Sheet } from "./Sheet";
 
@@ -27,6 +29,16 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
   const unit = first.kind === "crypto" ? first.symbol.replace(/-USD$/, "") : "Stück";
   const [showBuys, setShowBuys] = useState(true);
   const [sheet, setSheet] = useState<null | "sell" | "stop" | "orders">(null);
+  // Jeder Kauf ist bei flatex eine eigene Position (eigenes Depot): erst den Kauf wählen
+  const [lots, setLots] = useState<Trade[] | null>(null);
+  const [choose, setChoose] = useState<null | "sell" | "stop" | "orders">(null);
+  const openFor = (what: "sell" | "stop" | "orders", sel: Trade[]) => {
+    setLots(sel);
+    setSheet(what);
+  };
+  // gewählte Käufe immer frisch aus der Gruppe (z. B. nach Depot-Änderung)
+  const sel = lots ? lots.map((l) => group.find((g) => g.id === l.id)).filter((x): x is Trade => !!x) : null;
+  const lotName = (t: Trade, k: number) => (k === 0 && !t.nachkauf ? "Erstkauf" : `Nachkauf ${t.nachkauf ? group.slice(0, k + 1).filter((x) => x.nachkauf).length : k}`);
   const pending = group.every((t) => t.status === "pending");
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -72,17 +84,26 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
       <div className="num mt-2 flex flex-wrap justify-between gap-x-3 text-[14px]">
         <span>Kurs {priceEur != null ? <b>{eur(priceEur)}</b> : "–"}</span>
         {s.profit != null && <span className={s.profit >= 0 ? "text-up" : "text-down"}>{s.profit >= 0 ? "Gewinn" : "Verlust"} {eur(s.profit, true)}</span>}
-        <span className="text-stone-400">{s.stop > 0 ? `Stop ${money(s.stop, cur)}` : s.invalidation && s.invalidation > 0 ? `Ungültig ${money(s.invalidation, cur)}` : "kein Stop"}</span>
+        <span className="text-stone-400">{s.invalidation && s.invalidation > 0 ? `Ungültig ${money(s.invalidation, cur)}` : group.length === 1 && s.stop > 0 ? `Stop ${money(s.stop, cur)}` : "kein fester Stop"}</span>
       </div>
 
       {showBuys &&
         group.map((t, k) => {
           const rows = trancheRows(t);
           return (
-            <div key={t.id} className="num mt-2 rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
+            <div
+              key={t.id}
+              role="button"
+              className="num mt-2 rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100 active:bg-sky-500/20"
+              onClick={(e) => {
+                stop(e);
+                openFor("sell", [t]);
+              }}
+            >
               <div className="mb-1 flex items-center justify-between font-semibold text-sky-300">
                 <span>
-                  {k === 0 && !t.nachkauf ? "Erstkauf" : `Nachkauf ${t.nachkauf ? group.slice(0, k + 1).filter((x) => x.nachkauf).length : k}`} · {eur(rows.reduce((a, x) => a + x.eur, 0))}
+                  {lotName(t, k)} · {eur(rows.reduce((a, x) => a + x.eur, 0))}
+                  <DepotBadge depot={t.depot} />
                 </span>
                 <span className="flex items-center gap-2 font-normal text-stone-400">
                   {new Date(t.openedAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" })}
@@ -96,6 +117,7 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
                   >
                     ⋯
                   </button>
+                  <span className="text-stone-400">›</span>
                 </span>
               </div>
               {rows.map((x, i) => (
@@ -112,10 +134,12 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
                   Verkauft {Math.round(p.fraction * 100)} % bei {money(p.price, cur)} ({new Date(p.at).toLocaleDateString("de-DE")})
                 </p>
               ))}
+              <LotLine t={t} price={priceNow} fx={fx} cur={cur} />
               {t.lastActionText && <p className="mt-1 text-sky-200">Letzte Meldung: {t.lastActionText}</p>}
             </div>
           );
         })}
+      {showBuys && group.length > 0 && <p className="mt-1 text-right text-[12px] text-stone-500">Kauf antippen → Verkaufen, Stop, Orders für diesen Kauf</p>}
       {s.reserved > 0 && (
         <div className="num mt-2 flex justify-between rounded-xl bg-white/5 px-2.5 py-2 text-[14px] text-stone-300">
           <span>Wartende Order (reserviert)</span>
@@ -125,13 +149,13 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
       {nachkauf}
 
       <div className="mt-3 grid grid-cols-3 gap-2" onClick={stop}>
-        <button className="btn min-h-[44px] border-gold/50 text-gold-light" disabled={s.shares <= 0} onClick={() => setSheet("sell")}>
+        <button className="btn min-h-[44px] border-gold/50 text-gold-light" disabled={s.shares <= 0} onClick={() => (group.length > 1 ? setChoose("sell") : openFor("sell", group))}>
           Verkaufen
         </button>
-        <button className="btn min-h-[44px] border-gold/50 text-gold-light" disabled={s.shares <= 0} onClick={() => setSheet("stop")}>
+        <button className="btn min-h-[44px] border-gold/50 text-gold-light" disabled={s.shares <= 0} onClick={() => (group.length > 1 ? setChoose("stop") : openFor("stop", group))}>
           Stop
         </button>
-        <button className="btn min-h-[44px] border-gold/50 text-gold-light" disabled={s.reserved <= 0} onClick={() => setSheet("orders")}>
+        <button className="btn min-h-[44px] border-gold/50 text-gold-light" disabled={s.reserved <= 0} onClick={() => (group.length > 1 ? setChoose("orders") : openFor("orders", group))}>
           Orders
         </button>
       </div>
@@ -147,17 +171,105 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
       </button>
 
       <div onClick={stop}>
-        <Sheet open={sheet === "sell"} onClose={() => setSheet(null)} title={`${first.name} verkaufen`}>
-          {sheet === "sell" && <SellForm group={group} priceEur={priceEur} avgEur={s.avgEur} shares={s.shares} reserved={s.reserved} unit={unit} crypto={first.kind === "crypto"} onDone={() => setSheet(null)} />}
+        <Sheet open={choose != null} onClose={() => setChoose(null)} title={choose === "sell" ? "Welchen Kauf verkaufen?" : choose === "stop" ? "Stop für welchen Kauf?" : "Orders von welchem Kauf?"}>
+          <div className="space-y-2 text-[15px]">
+            <p className="text-[14px] text-stone-400">Jeder Kauf ist bei flatex eine eigene Position.</p>
+            {group.map((t, k) => {
+              const ls = positionSummary([t], priceNow);
+              const has = choose === "orders" ? ls.reserved > 0 : ls.shares > 0;
+              return (
+                <button key={t.id} disabled={!has} className="flex w-full items-center justify-between rounded-xl bg-white/5 p-3 text-left disabled:opacity-40" onClick={() => (setChoose(null), openFor(choose!, [t]))}>
+                  <span>
+                    <b>{lotName(t, k)}</b>
+                    <DepotBadge depot={t.depot} />
+                    <span className="num block text-[13px] text-stone-400">
+                      {choose === "orders" ? `wartend ${eur(ls.reserved)}` : `${qtyStr(heldShares(t))} ${unit} · Einstieg ${ls.avgEur != null ? eur(ls.avgEur) : "–"}`}
+                    </span>
+                  </span>
+                  {ls.pct != null && choose !== "orders" && <span className={`num ${ls.pct >= 0 ? "text-up" : "text-down"}`}>{`${ls.pct >= 0 ? "+" : ""}${ls.pct.toFixed(1).replace(".", ",")} %`}</span>}
+                </button>
+              );
+            })}
+            <button className="flex w-full items-center justify-between rounded-xl bg-white/5 p-3 text-left" onClick={() => (setChoose(null), openFor(choose!, group))}>
+              <span>
+                <b>Alle Käufe</b>
+                <span className="block text-[13px] text-stone-400">{choose === "sell" ? `${group.length} Verkäufe = ${group.length} × 7,90 € Gebühr` : choose === "stop" ? `${group.length} Stops – je Depot einer` : "alle wartenden Orders"}</span>
+              </span>
+            </button>
+          </div>
         </Sheet>
-        <Sheet open={sheet === "stop"} onClose={() => setSheet(null)} title={`Stop für ${qtyStr(group.reduce((a, t) => a + heldShares(t), 0))} ${unit}`}>
-          {sheet === "stop" && <StopForm group={group} priceEur={priceEur} current={s.stop > 0 ? s.stop * fx : null} invalidationEur={s.invalidation && s.invalidation > 0 ? s.invalidation * fx : null} onDone={() => setSheet(null)} />}
-        </Sheet>
-        <Sheet open={sheet === "orders"} onClose={() => setSheet(null)} title="Wartende Kauf-Orders">
-          {sheet === "orders" && <OrdersForm group={group} unit={unit} onDone={() => setSheet(null)} />}
-        </Sheet>
+        {sel && (
+          <>
+            <Sheet open={sheet === "sell"} onClose={() => setSheet(null)} title={<LotTitle lots={sel!} group={group} name={first.name} lotName={lotName} />}>
+              {sheet === "sell" && <LotTabs lots={sel!} active="sell" onTab={setSheet} />}
+              {sheet === "sell" && <SellForm group={sel!} priceEur={priceEur} avgEur={positionSummary(sel!, priceNow).avgEur} shares={positionSummary(sel!, priceNow).shares} reserved={positionSummary(sel!, priceNow).reserved} unit={unit} crypto={first.kind === "crypto"} onDone={() => setSheet(null)} />}
+            </Sheet>
+            <Sheet open={sheet === "stop"} onClose={() => setSheet(null)} title={<LotTitle lots={sel!} group={group} name={first.name} lotName={lotName} />}>
+              {sheet === "stop" && <LotTabs lots={sel!} active="stop" onTab={setSheet} />}
+              {sheet === "stop" && <StopForm group={sel!} priceEur={priceEur} current={Math.max(0, ...sel!.map((t) => t.stop || 0)) > 0 ? Math.max(0, ...sel!.map((t) => t.stop || 0)) * fx : null} invalidationEur={s.invalidation && s.invalidation > 0 ? s.invalidation * fx : null} onDone={() => setSheet(null)} />}
+            </Sheet>
+            <Sheet open={sheet === "orders"} onClose={() => setSheet(null)} title={<LotTitle lots={sel!} group={group} name={first.name} lotName={lotName} />}>
+              {sheet === "orders" && <LotTabs lots={sel!} active="orders" onTab={setSheet} />}
+              {sheet === "orders" && <OrdersForm group={sel!} unit={unit} onDone={() => setSheet(null)} />}
+            </Sheet>
+          </>
+        )}
       </div>
     </article>
+  );
+}
+
+/** Stand eines einzelnen Kaufs (eigener Einstieg) und sein Stop */
+function LotLine({ t, price, fx, cur }: { t: Trade; price: number | null; fx: number; cur: string }) {
+  const sh = sharesExact(t);
+  if (sh <= 0) return null;
+  const inv = investedOf(t) * (t.remaining ?? 1);
+  const val = price != null ? sh * price * fx : null;
+  const p = val != null ? val - inv : null;
+  return (
+    <p className={`mt-1 ${p == null ? "text-stone-400" : p >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+      {p != null ? `${p >= 0 ? "Gewinn" : "Verlust"} ${eur(p, true)} (${p >= 0 ? "+" : ""}${((p / inv) * 100).toFixed(1).replace(".", ",")} %)` : ""}
+      {t.stop > 0 ? ` · Stop ${money(t.stop, cur)}` : ""}
+    </p>
+  );
+}
+
+function LotTitle({ lots, group, name, lotName }: { lots: Trade[]; group: Trade[]; name: string; lotName: (t: Trade, k: number) => string }) {
+  if (lots.length !== 1) return <span>{name} · alle Käufe</span>;
+  const t = lots[0];
+  return (
+    <span>
+      {name} · {lotName(t, group.findIndex((x) => x.id === t.id))}
+      <DepotBadge depot={t.depot} />
+    </span>
+  );
+}
+
+/** Reiter Verkaufen / Stop / Orders; bei einem Kauf auch das Depot (nachträglich zuordnen) */
+function LotTabs({ lots, active, onTab }: { lots: Trade[]; active: "sell" | "stop" | "orders"; onTab: (x: "sell" | "stop" | "orders") => void }) {
+  const t = lots.length === 1 ? lots[0] : null;
+  return (
+    <div className="mb-3 space-y-3">
+      {t && (
+        <p className="num text-[14px] text-stone-400">
+          {qtyStr(heldShares(t))} {t.kind === "crypto" ? t.symbol.replace(/-USD$/, "") : "Stück"} · Einstieg {positionSummary([t]).avgEur != null ? eur(positionSummary([t]).avgEur!) : "–"} · gekauft {new Date(t.openedAt).toLocaleDateString("de-DE")}
+        </p>
+      )}
+      <div className="grid grid-cols-3 gap-1.5">
+        {(
+          [
+            ["sell", "Verkaufen"],
+            ["stop", "Stop"],
+            ["orders", "Orders"],
+          ] as const
+        ).map(([k, l]) => (
+          <button key={k} className={`min-h-[40px] rounded-lg text-[14px] ${active === k ? "bg-gold font-semibold text-stone-950" : "bg-white/5 text-stone-300"}`} onClick={() => onTab(k)}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {t && <DepotPicker value={t.depot} label="flatex-Depot dieses Kaufs" onChange={(d) => actions.updateTrade(t.id, { depot: d })} />}
+    </div>
   );
 }
 
@@ -172,6 +284,7 @@ function SellForm({ group, priceEur, avgEur, shares, reserved, unit, crypto, onD
   const p = num(px);
   const gain = avgEur != null && q > 0 && p > 0 ? q * (p - avgEur) : null;
   const kest = gain != null ? Math.max(0, gain) * KEST : null;
+  const lotsSold = Math.max(1, group.filter((t) => sharesExact(t) > 0).length);
   const pick = (m: "all" | "half" | "custom") => {
     setMode(m);
     if (m === "all") setQty(inputVal(round(shares), crypto ? 4 : 0));
@@ -218,12 +331,12 @@ function SellForm({ group, priceEur, avgEur, shares, reserved, unit, crypto, onD
             <span>{eur(q * p)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Gewinn (zum Ø Einstieg)</span>
+            <span>Gewinn (zum {group.length > 1 ? "Ø " : ""}Einstieg)</span>
             <span>{eur(gain, true)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Gebühr</span>
-            <span>{eur(-FEE)}</span>
+            <span>Gebühr{lotsSold > 1 ? ` (${lotsSold} Verkäufe)` : ""}</span>
+            <span>{eur(-FEE * lotsSold)}</span>
           </div>
           <div className="flex justify-between">
             <span>KESt 27,5 %</span>
@@ -231,7 +344,7 @@ function SellForm({ group, priceEur, avgEur, shares, reserved, unit, crypto, onD
           </div>
           <div className="flex justify-between font-semibold">
             <span>Netto</span>
-            <span>{eur(gain - FEE - (kest ?? 0), true)}</span>
+            <span>{eur(gain - FEE * lotsSold - (kest ?? 0), true)}</span>
           </div>
           <p className="pt-1 text-[12px] text-stone-400">KESt geschätzt – Verluste im selben Jahr werden im Depot-Konto verrechnet.</p>
         </div>
@@ -240,8 +353,16 @@ function SellForm({ group, priceEur, avgEur, shares, reserved, unit, crypto, onD
       <button
         className="btn-primary min-h-[48px] w-full"
         onClick={() => {
-          const r = sellPosition(group, q, p, drop);
-          if (/^(Verkauft|\d)/.test(r) || r.includes("verkauft")) onDone();
+          // Jeder Kauf ist eine eigene flatex-Position: getrennt verkaufen (eigene Order und Gebühr)
+          const total = group.reduce((a, t) => a + sharesExact(t), 0);
+          const f = total > 0 ? Math.min(1, q / total) : 0;
+          let r = "";
+          for (const t of group) {
+            const sh = sharesExact(t);
+            r = sh > 0 || drop ? sellPosition([t], sh > 0 ? (f > 0.9999 ? sh : sh * f) : 0, p, drop) : r;
+            if (sh > 0 && !/verkauft|Verkauft/.test(r)) break;
+          }
+          if (/verkauft|Verkauft|gelöscht/.test(r)) onDone();
           else setMsg(r);
         }}
       >
@@ -256,7 +377,7 @@ function StopForm({ group, priceEur, current, invalidationEur, onDone }: { group
   const [msg, setMsg] = useState<string | null>(null);
   return (
     <div className="space-y-3 text-[15px]">
-      <p className="text-stone-400">Bei flatex ein Stop-Loss für die ganze Position.</p>
+      <p className="text-stone-400">{group.length > 1 ? `Bei flatex in jedem Depot ein Stop-Loss (${group.length} Stops).` : "Bei flatex ein Stop-Loss für diesen Kauf."}</p>
       <label className="flex items-center justify-between gap-2">
         <span>Stop-Kurs (€)</span>
         <input className="input num w-32 text-right" inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} />
@@ -268,7 +389,9 @@ function StopForm({ group, priceEur, current, invalidationEur, onDone }: { group
       <button
         className="btn-primary min-h-[48px] w-full"
         onClick={() => {
-          const r = setPositionStop(group, num(v), priceEur);
+          // je Kauf (eigenes Depot) ein eigener Stop
+          let r: string | null = null;
+          for (const t of group) if (!r && sharesExact(t) > 0) r = setPositionStop([t], num(v), priceEur);
           if (r) setMsg(r);
           else onDone();
         }}

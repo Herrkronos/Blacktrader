@@ -49,3 +49,33 @@ describe("Depot: eine Position je Wert (Erstkauf + Nachkauf)", () => {
     expect(acc.equity).toBeCloseTo(8000 + 100 - 4 * 7.9 - 100 * 0.275, 6);
   });
 });
+
+describe("Getrennte flatex-Depots: jeder Kauf eigene Position", () => {
+  it("Verkauf je Kauf: eigene Gebühr, Gewinn zum eigenen Einstieg; Depot beim Übernehmen vorbelegt", async () => {
+    const store = new Map<string, string>();
+    const ls = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k), key: (i: number) => [...store.keys()][i] ?? null, get length() { return store.size; } };
+    vi.resetModules();
+    vi.stubGlobal("window", { localStorage: ls, addEventListener: () => {} });
+    const base = { strategy: "longterm", status: "open", symbol: "SOL", name: "Solana", kind: "crypto", currency: "EUR", horizon: "long", interval: "1w", direction: "long", stop: 0, targets: [200], source: "manual", fxEntry: 1, partials: [], remaining: 1 };
+    const a = { ...base, id: "a", depot: 1, entry: 130, openedAt: 1, stakeEur: 260, tranches: [{ price: 130, filledAt: 1, qty: 2, eur: 260 }] };
+    const b = { ...base, id: "b", depot: 2, nachkauf: true, entry: 110, openedAt: 2, stakeEur: 220, tranches: [{ price: 110, filledAt: 2, qty: 2, eur: 220 }] };
+    store.set("black-ship-trading-analyst:v1", JSON.stringify({ version: 1, watchlist: [], settings: { lastDepot: 3 }, signals: {}, migrations: ["v2-manual-journal", "v3-blacktrader"], trades: [a, b] }));
+    const { getData, actions } = await import("../src/lib/store/store");
+    const P = await import("../src/lib/client/position");
+    const { computeAccount } = await import("../src/lib/client/account");
+    // nur den Nachkauf (Depot 2) verkaufen, zu 120 €: Gewinn 2 × (120 − 110) = 20 €
+    const g = P.blueGroups(getData().trades).get("crypto:SOL")!;
+    P.sellPosition([g[1]], 2, 120, false);
+    const tr = getData().trades;
+    expect(tr.find((t) => t.id === "b")!.status).toBe("closed");
+    expect(tr.find((t) => t.id === "a")!.status).toBe("open");
+    // dann Erstkauf (Depot 1) zu 120 €: Verlust 2 × (120 − 130) = −20 € → Verlustausgleich im Jahr
+    P.sellPosition([P.blueGroups(getData().trades).get("crypto:SOL")![0]], 2, 120, false);
+    const acc = computeAccount(getData().trades, [], () => null).at(-1)!;
+    expect(acc.fees).toBeCloseTo(4 * 7.9, 6); // 2 Käufe + 2 getrennte Verkäufe
+    expect(acc.equity).toBeCloseTo(8000 - 4 * 7.9, 6);
+    // neuer Kauf bekommt das zuletzt gewählte Depot
+    actions.addTrade({ symbol: "ETH", name: "Ethereum", kind: "crypto", horizon: "long", interval: "1w", direction: "long", entry: 1, stop: 0, targets: [2], openedAt: 3, reason: "", score: 0, signal: "buy", pattern: "" } as never);
+    expect(getData().trades.find((t) => t.symbol === "ETH")!.depot).toBe(3);
+  });
+});

@@ -20,6 +20,7 @@ import { MiniChart } from "./MiniChart";
 import { miniView } from "./miniView";
 import { waveCaption } from "./waveText";
 import { ConfirmSheet } from "./Sheet";
+import { DepotPicker } from "./DepotPicker";
 import { StatusPill } from "./StatusPill";
 
 const RISK_LIMIT = 15; // % Abstand Einstieg–Stop, ab dem "Hohes Risiko" angezeigt wird
@@ -327,6 +328,7 @@ export function AssetCard({
           plan ? (
             <div className="space-y-2">
               <p>{asset.name}: {isShort ? "Short – Trade auf fallende Kurse." : "Trade auf steigende Kurse."}</p>
+              <DepotPicker />
               <p className="num">
                 Einstieg {money(plan.entry, cur)} · Stop {money(plan.stop, cur)} · Ziel {money(plan.targets[0], cur)}
               </p>
@@ -350,6 +352,7 @@ export function AssetCard({
         text={
           lt ? (
             <div className="space-y-2">
+              <DepotPicker />
               <p>{asset.name}: Einstieg in drei Teilen bei</p>
               <p className="num text-sky-200">{lt.tranches.map((t) => money(t, cur)).join(" · ")}</p>
               <OrderSlip kind={asset.kind} symbol={asset.symbol} name={asset.name} currency={cur} direction="long" entry={lt.zoneTop} tranches={[...lt.tranches]} invalidation={lt.invalidation} targets={[...lt.targets]} />
@@ -373,6 +376,7 @@ export function AssetCard({
         text={
           lt && nk ? (
             <div className="space-y-2">
+              <DepotPicker />
               <p>{asset.name}: Nachkauf zu deiner Position im neuen blauen Bereich – eine Order zu 250 € an der Oberkante ({nk.left} von 4 Nachkäufen noch möglich).</p>
               <OrderSlip kind={asset.kind} symbol={asset.symbol} name={asset.name} currency={cur} direction="long" entry={lt.zoneTop} tranches={[lt.zoneTop]} invalidation={lt.invalidation} targets={[...lt.targets]} budget={250} />
             </div>

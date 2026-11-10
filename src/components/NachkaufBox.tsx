@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { ConfirmSheet } from "./Sheet";
 import { OrderSlip } from "./OrderSlip";
+import { DepotPicker } from "./DepotPicker";
 import { money } from "@/lib/analysis/persona";
 import { displayCurrency } from "@/lib/client/eur";
 import { openLongTermTrade } from "@/lib/client/longterm";
@@ -41,7 +42,12 @@ export function NachkaufBox({ entry }: { entry: ScanEntry | undefined }) {
           const price = entry.ltCandles?.at(-1)?.close ?? lt.zoneTop;
           openLongTermTrade(a, lt, entry.ltHorizon ?? "long", getData().settings.intervals[entry.ltHorizon ?? "long"], price, { nachkauf: true });
         }}
-        text={<OrderSlip kind={a.kind} symbol={a.symbol} name={a.name} currency={cur} direction="long" entry={lt.zoneTop} tranches={[lt.zoneTop]} invalidation={lt.invalidation} targets={[...lt.targets]} budget={250} />}
+        text={
+          <div className="space-y-3">
+            <DepotPicker />
+            <OrderSlip kind={a.kind} symbol={a.symbol} name={a.name} currency={cur} direction="long" entry={lt.zoneTop} tranches={[lt.zoneTop]} invalidation={lt.invalidation} targets={[...lt.targets]} budget={250} />
+          </div>
+        }
       />
     </div>
   );

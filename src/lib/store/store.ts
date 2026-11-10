@@ -68,6 +68,8 @@ export interface Trade {
   exit?: number;
   closedAt?: number;
   closeReason?: "target" | "stop" | "manual" | "cancelled" | "welle5" | "trendbruch" | "invalidiert" | "zaehlung" | "verkauft";
+  /** flatex-Depot (1–4), in dem gekauft wurde */
+  depot?: number;
   /** Gemeinsamer Verkauf mehrerer Käufe desselben Werts: bei flatex EINE Order → Verkaufsgebühr nur beim ersten Kauf */
   sellFeeShared?: boolean;
   /** "longterm" = Langfristiger Einstieg (blau); "core" = alte Kernposition (vor dem Update); sonst Zonen-Trade */
@@ -134,6 +136,10 @@ export interface Settings {
   haptics: boolean;
   /** Bei jeder Änderung an Trades/Depot automatisch eine Sicherungsdatei auf dem Gerät speichern */
   autoBackupFile: boolean;
+  /** Namen der flatex-Depots (der Nutzer hat mehrere getrennte Depots) */
+  depotNames: string[];
+  /** Zuletzt gewähltes Depot (1-basiert) – Vorauswahl beim Übernehmen */
+  lastDepot: number;
   keys: {
     finnhub: string;
     alphavantage: string;
@@ -178,6 +184,8 @@ export const DEFAULT_SETTINGS: Settings = {
   autoTrade: false,
   haptics: true,
   autoBackupFile: true,
+  depotNames: ["Depot 1", "Depot 2", "Depot 3", "Depot 4"],
+  lastDepot: 1,
   keys: { finnhub: "", alphavantage: "", openfigi: "", llm: "", llmProvider: "anthropic", llmModel: "" },
 };
 
@@ -222,6 +230,8 @@ function sanitize(raw: unknown): AppData {
       keys: { ...DEFAULT_SETTINGS.keys, ...(s.keys ?? {}) },
       pollSeconds: Math.min(60, Math.max(15, Number(s.pollSeconds) || DEFAULT_SETTINGS.pollSeconds)),
       autoTrade: false,
+      depotNames: Array.from({ length: 4 }, (_, i) => (Array.isArray(s.depotNames) && typeof s.depotNames[i] === "string" && s.depotNames[i].trim() ? s.depotNames[i].trim().slice(0, 24) : `Depot ${i + 1}`)),
+      lastDepot: [1, 2, 3, 4].includes(Number(s.lastDepot)) ? Number(s.lastDepot) : 1,
     },
   };
 }
@@ -392,7 +402,7 @@ export const actions = {
     const currency = t.currency ?? tradeCurrency(t);
     const fxEntry = t.fxEntry ?? eurPerUnit(currency) ?? undefined;
     // Im Depot → aus der Watchlist nehmen (Wunsch des Nutzers); Kurse und Meldungen laufen über den Trade weiter
-    update((d) => ({ ...d, watchlist: d.watchlist.filter((w) => !(w.kind === t.kind && w.symbol === t.symbol)), trades: [...d.trades, { ...t, currency, fxEntry, id: uid(), status: t.status ?? "open", source: "manual" }] }));
+    update((d) => ({ ...d, watchlist: d.watchlist.filter((w) => !(w.kind === t.kind && w.symbol === t.symbol)), trades: [...d.trades, { ...t, depot: t.depot ?? d.settings.lastDepot ?? 1, currency, fxEntry, id: uid(), status: t.status ?? "open", source: "manual" }] }));
   },
   /** Werte, die offen im Depot liegen, aus der Watchlist nehmen (einmalig für ältere Daten) */
   pruneWatchHeld() {
