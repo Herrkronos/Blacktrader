@@ -1,6 +1,7 @@
 "use client";
 // Zentrale Echtzeit-Überwachung: Live-Kurse (Binance-WebSocket bzw. Polling), Analysen der Watchlist,
 // Signal-Alarme und automatische Verfolgung offener Papier-Trades.
+import { checkWatchZones } from "./zoneAlert";
 import { startAutoBackup } from "./autoBackup";
 import { brokerStop } from "./brokerStop";
 import { exhaustionAt, rsi } from "../analysis/indicators";
@@ -276,6 +277,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       }
       if (Object.keys(next).length) setAnalyses((p) => ({ ...p, ...next }));
       trackTrades(d.trades, liveRef.current);
+      checkWatchZones(d.watchlist, liveRef.current, instrumentKey);
     };
     run();
     const t = setInterval(run, 5000);

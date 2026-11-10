@@ -279,3 +279,5 @@ Turnier in Euro (10 Teilnehmer, 50 Versuche à 5 Jahre, KESt sofort je Gewinn, S
 - **Wochenbericht** (Übersicht, alle 7 Tage): Konto-Veränderung, neue Ergebnisse der Live-Bilanz, Chancen, Stops zum Anpassen, Buy-&-Hold-Warnungen; „Gelesen“ setzt die neue Vergleichsbasis.
 - **Kurs in Deutschland:** bei US-Aktien zusätzlich der Euro-Kurs an Xetra (zum Vergleich mit gettex/Tradegate); die Analyse bleibt auf der US-Börse.
 - **Prüfung der Szenario-Prozente** (84.034 Fälle, 191 Werte, Tag und Woche): Das Hauptszenario erreicht sein Ziel vor der Ungültig-Grenze in rund 46 % der Fälle – unabhängig vom angezeigten Anteil (50–55 %: 46,4 %; 60–70 %: 45,2 %; 80–90 %: 40,4 %). Die Prozente sind Regel-Passung, keine Eintrittswahrscheinlichkeit; die Leiste sagt das jetzt dazu.
+
+**Zonen-Alarm (nur Watchlist):** Läuft der Kurs eines Watchlist-Werts in seinen Einstiegsbereich (blau, grün oder rot), kommt einmal eine Nachricht – nicht für Chancen (die ändern sich täglich) und nicht, wenn der Wert schon im Depot liegt. Beim allerersten Einschalten werden Werte, die schon in der Zone sind, still gemerkt.

@@ -58,6 +58,9 @@ const emit = (patch: Partial<ScanState>) => {
   listeners.forEach((l) => l());
 };
 
+/** Aktueller Stand der Suche (außerhalb von React) */
+export const getScan = (): ScanState => state;
+
 export function useScan(): ScanState {
   return useSyncExternalStore(
     (l) => {
