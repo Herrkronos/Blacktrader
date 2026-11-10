@@ -7,3 +7,4 @@
   im Test neutral. Sie soll **wieder entfernt werden, wenn sie schlechter wird** – das Turnier meldet das automatisch
   („Achtung Blau-Regel …“ in der Auswertung). Dann dem Nutzer vorschlagen, `enabled: false` zu setzen.
 - Kein ETF im System – der S&P-500-ETF (SXR8) dient nur als Vergleich im Turnier.
+- Haupt-/Alternativszenario-Leiste ist nur Anzeige. Die Idee „45–55 % = neutral, kein Einstieg“ hat der Nutzer verworfen.

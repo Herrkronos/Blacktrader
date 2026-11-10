@@ -3,8 +3,8 @@
 // Blacktrader handelt immer nur das Hauptszenario. Wird die Alternative wahrscheinlicher, wird sie automatisch zum
 // Hauptszenario (die Zählung mit der höchsten Wahrscheinlichkeit ist immer das Hauptszenario).
 // „notfall“ = Gegenrichtung mit ≥ 85 % der Qualität (≈ Alternative ≥ 42 %). ACHTUNG: Im Zonen-Weg der Analyse (Standard
-// in App und Turnier) blockiert das KEINE Einstiege – es ist nur eine Anzeige. Eine echte Notfall-Regel (z. B. 45–55 %)
-// wäre eine neue Handelsregel: erst testen und den Nutzer fragen.
+// in App und Turnier) blockiert das KEINE Einstiege – es ist nur eine Anzeige. Eine Notfall-Regel „45–55 % = neutral,
+// kein Einstieg“ wurde getestet (S&P 500 1928–2026: zu wenige Fälle) und vom Nutzer verworfen – nicht wieder vorschlagen.
 import type { ElliottResult } from "./elliott";
 
 export type ScenarioState = "gilt" | "notfall";
