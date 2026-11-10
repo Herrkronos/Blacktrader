@@ -34,14 +34,18 @@ const GREEN_CELLS = ACTIVE_CELL_KEYS.filter((c) => {
   return HORIZON_RANK[k].includes(h);
 });
 
-/** Blau: erledigt / (erledigt + ungültig) aus dem Einstiegs-Verlauf aller Werte (Gelb zählt nicht) */
+/**
+ * Blau: erledigt / (erledigt + ungültig) aus dem Einstiegs-Verlauf aller Werte (Gelb zählt nicht).
+ * Nur Einstiege, die vorher als aktuell zu sehen waren – im Nachhinein gefundene, schon aufgegangene Bereiche zählen
+ * nicht (gescheiterte findet die Suche nicht mehr, sonst stünde die Quote fälschlich bei 100 %).
+ */
 function blueRate(): { rate: number | null; n: number } {
   let ok = 0;
   let n = 0;
   try {
     for (const h of Object.values(allHistories()))
       for (const p of h.past) {
-        if (p.color !== "blau" || (p.status !== "erledigt" && p.status !== "ungültig")) continue;
+        if (p.color !== "blau" || !p.seen || (p.status !== "erledigt" && p.status !== "ungültig")) continue;
         n++;
         if (p.status === "erledigt") ok++;
       }

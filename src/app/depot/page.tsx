@@ -204,10 +204,10 @@ export default function DepotPage() {
       <div className="grid grid-cols-2 gap-2">
         <Tile label="Gesamt (abgeschlossen)" value={signed(stats.totalReturn)} tone={stats.totalReturn >= 0 ? "up" : "down"} />
         <Tile label="Offene Trades jetzt" value={openAvg == null ? "–" : signed(openAvg)} tone={openAvg == null ? undefined : openAvg >= 0 ? "up" : "down"} />
-        <Tile label="Trefferquote" value={`${(stats.winRate * 100).toFixed(0)} % (${stats.wins}/${stats.trades})`} />
-        <Tile label="Ø Gewinn / Verlust" value={`${stats.avgWin.toFixed(1).replace(".", ",")} / ${stats.avgLoss.toFixed(1).replace(".", ",")} %`} />
-        <Tile label="Max. Rückgang" value={signed(stats.maxDrawdown, 1)} tone={stats.maxDrawdown < 0 ? "down" : undefined} />
-        <Tile label="Gewinnfaktor" value={stats.profitFactor == null ? "∞" : stats.profitFactor.toFixed(2).replace(".", ",")} />
+        <Tile label="Trefferquote" value={stats.trades ? `${(stats.winRate * 100).toFixed(0)} % (${stats.wins}/${stats.trades})` : "–"} />
+        <Tile label="Ø Gewinn / Verlust" value={stats.trades ? `${stats.avgWin.toFixed(1).replace(".", ",")} / ${stats.avgLoss.toFixed(1).replace(".", ",")} %` : "–"} />
+        <Tile label="Max. Rückgang" value={!stats.trades ? "–" : stats.maxDrawdown < 0 ? signed(stats.maxDrawdown, 1) : "0,0 %"} tone={stats.maxDrawdown < 0 ? "down" : undefined} />
+        <Tile label="Gewinnfaktor" value={!stats.trades ? "–" : stats.profitFactor == null ? "∞" : stats.profitFactor.toFixed(2).replace(".", ",")} />
       </div>
       <div className="card p-3">
         <div className="label mb-1">Kumulierte Rendite</div>

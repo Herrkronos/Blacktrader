@@ -51,7 +51,7 @@ export function TradeDialog({ item, analysis, onClose }: { item: WatchItem; anal
               <dt className="text-stone-400">Kursziele</dt>
               <dd className="num text-up">{plan.targets.map((x) => money(x, item.currency)).join(" / ")}</dd>
               <dt className="text-stone-400">Chance : Risiko</dt>
-              <dd className="num">{plan.riskReward.toFixed(2)} : 1</dd>
+              <dd className="num">{plan.riskReward.toFixed(2).replace(".", ",")} : 1</dd>
             </dl>
             <p className="mt-3 text-sm text-stone-200">{c.reason}</p>
             {c.risk && <p className="mt-1 text-xs text-stone-400">{c.risk}</p>}

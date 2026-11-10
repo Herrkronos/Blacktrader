@@ -177,6 +177,8 @@ export interface HistEntry {
   touched?: boolean;
   /** Short (rot): umgekehrte Richtung */
   dir?: "long" | "short";
+  /** War vor dem Ergebnis als aktueller Einstieg zu sehen (nicht erst im Nachhinein gefunden) – nur diese zählen für Quoten */
+  seen?: boolean;
 }
 
 /**
@@ -217,7 +219,7 @@ export function longTermOutcome(lt: LongTermZone, candles: Candle[]): { status: 
 /** Einen Einstieg als abgeschlossen (grau) eintragen – auch wenn er nie „aktuell“ angezeigt wurde. */
 export function closeInHistory(h: { current?: HistEntry; past: HistEntry[] }, e: HistEntry, status: PastStatus, at: number, max = 10): { current?: HistEntry; past: HistEntry[] } {
   if (h.past.some((p) => p.key === e.key && (p.status === "erledigt" || p.status === "ungültig"))) return h;
-  const past = [{ ...e, status, to: at }, ...h.past.filter((p) => p.key !== e.key)].slice(0, max);
+  const past = trimPast([{ ...e, status, to: at }, ...h.past.filter((p) => p.key !== e.key)], max);
   return { current: h.current?.key === e.key ? undefined : h.current, past };
 }
 
@@ -250,9 +252,25 @@ export function updateHistory(h: { current?: HistEntry; past: HistEntry[] }, nex
       invalidation: next.invalidation,
       dir: next.dir,
       from: now,
+      seen: true,
     };
   }
-  return { current: cur, past: past.slice(0, max) };
+  return { current: cur, past: trimPast(past, max) };
+}
+
+/**
+ * Höchstens `max` alte Einstiege anzeigen – erledigte/ungültige aber länger merken (bis 3 × max), damit sie nicht nach ein
+ * paar „abgelöst“-Wechseln aus dem Verlauf fallen und dann wieder als aktueller Einstieg auftauchen.
+ */
+function trimPast(past: HistEntry[], max: number): HistEntry[] {
+  const out: HistEntry[] = [];
+  let n = 0;
+  for (const p of past) {
+    const done = p.status === "erledigt" || p.status === "ungültig";
+    if (n < max) (out.push(p), n++);
+    else if (done && out.length < 3 * max) out.push(p);
+  }
+  return out;
 }
 
 /** Kennungen erledigter/ungültiger Einstiege (werden nicht erneut als aktuell gezeigt). */

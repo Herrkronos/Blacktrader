@@ -77,7 +77,7 @@ export function HorizonToggle({ value, onChange, allowDefault }: { value?: Horiz
 
 export function Change({ value }: { value?: number }) {
   if (value == null || !Number.isFinite(value)) return <span className="text-stone-500">–</span>;
-  return <span className={`num ${value >= 0 ? "text-up" : "text-down"}`}>{`${value >= 0 ? "+" : ""}${value.toFixed(2)} %`}</span>;
+  return <span className={`num ${value >= 0 ? "text-up" : "text-down"}`}>{`${value >= 0 ? "+" : ""}${value.toFixed(2).replace(".", ",")} %`}</span>;
 }
 
 export function Stat({ label, value, hint, tone, accent }: { label: string; value: React.ReactNode; hint?: string; tone?: "up" | "down"; accent?: "core" | "trade" }) {

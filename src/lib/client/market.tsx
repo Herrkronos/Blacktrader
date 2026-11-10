@@ -316,7 +316,7 @@ function closeOnWave5End(symbol: string, horizon: Horizon, candles: Candle[]) {
     const exit = candles[candles.length - 1].close;
     const returnPct = tradeReturnEur(t, exit);
     actions.updateTrade(t.id, { status: "closed", exit, closedAt: Date.now(), closeReason: "welle5", returnPct, fxExit: eurPerUnit(tradeCurrency(t)) ?? undefined, lastPrice: exit });
-    notify(`Gewinn gesichert: ${t.symbol}`, `Welle 5 läuft aus (RSI wird schwächer) – Trade bei ${money(exit, tradeCurrency(t))} geschlossen · ${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(2)} %`, { sound: d.settings.sound, notifications: d.settings.notifications, kind: "info" });
+    notify(`Gewinn gesichert: ${t.symbol}`, `Welle 5 läuft aus (RSI wird schwächer) – Trade bei ${money(exit, tradeCurrency(t))} geschlossen · ${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(2).replace(".", ",")} %`, { sound: d.settings.sound, notifications: d.settings.notifications, kind: "info" });
   }
 }
 
@@ -397,7 +397,7 @@ function trackTrades(trades: Trade[], live: Record<string, LiveState>) {
       actions.updateTrade(t.id, { status: "closed", exit, closedAt: Date.now(), closeReason, returnPct, fxExit: eurPerUnit(tradeCurrency(t)) ?? undefined, lastPrice: price });
       notify(
         `Trade geschlossen: ${t.symbol}`,
-        `${closeReason === "target" ? "Kursziel erreicht" : "Stop-Loss ausgelöst"} bei ${money(exit, tradeCurrency(t))} · ${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(2)} %`,
+        `${closeReason === "target" ? "Kursziel erreicht" : "Stop-Loss ausgelöst"} bei ${money(exit, tradeCurrency(t))} · ${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(2).replace(".", ",")} %`,
         { sound: s.sound, notifications: s.notifications, kind: closeReason === "target" ? "buy" : "sell" },
       );
     } else if (!lastTradeWrite[t.id] || Date.now() - lastTradeWrite[t.id] > 30e3) {

@@ -25,10 +25,10 @@ export function EquityChart({ data, compare, height = 256, minimal = false }: { 
           <Tooltip
             contentStyle={{ background: "#0b0b0b", border: "1px solid rgba(201,162,74,0.3)", fontSize: 12 }}
             labelFormatter={(t) => new Date(Number(t)).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}
-            formatter={(v) => [`${Number(v).toFixed(2)} %`, "Kumulierte Rendite"]}
+            formatter={(v) => [`${Number(v).toFixed(2).replace(".", ",")} %`, "Kumulierte Rendite"]}
           />
           <ReferenceLine y={0} stroke="#57534e" />
-          {compare != null && <ReferenceLine y={compare} stroke="#78716c" strokeDasharray="4 4" label={{ value: `Einfach gehalten ${compare.toFixed(1)} %`, fill: "#a8a29e", fontSize: 10, position: "insideTopLeft" }} />}
+          {compare != null && <ReferenceLine y={compare} stroke="#78716c" strokeDasharray="4 4" label={{ value: `Einfach gehalten ${compare.toFixed(1).replace(".", ",")} %`, fill: "#a8a29e", fontSize: 10, position: "insideTopLeft" }} />}
           <Area type="stepAfter" dataKey="cumulative" stroke={color} fill="url(#eq)" strokeWidth={2} isAnimationActive={false} />
         </AreaChart>
       </ResponsiveContainer>

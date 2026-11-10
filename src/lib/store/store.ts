@@ -5,6 +5,7 @@ import { useRef, useSyncExternalStore } from "react";
 import { DEFAULT_WEIGHTS, type SignalLevel, type Weights } from "../analysis/score";
 import { HORIZON_DEFAULT_INTERVAL, type Horizon, type Interval, type ResolvedAsset } from "../types";
 import { eurPerUnit } from "../fx";
+import { tradeCurrency } from "../client/eur";
 
 export interface WatchItem extends ResolvedAsset {
   id: string;
@@ -146,7 +147,17 @@ function sanitize(raw: unknown): AppData {
   return {
     version: 1,
     watchlist: Array.isArray(d.watchlist) ? d.watchlist.filter((w) => w && w.id && w.symbol) : [],
-    trades: Array.isArray(d.trades) ? d.trades.filter((t) => t && t.id && t.symbol) : [],
+    // Trades ohne Währung: Währung ableiten. War der Wechselkurs beim Kauf fälschlich 1 (Dollar-Wert als Euro gemerkt),
+    // ihn verwerfen – sonst rechnete das Depot einen Währungsverlust ein, den es nie gab.
+    trades: Array.isArray(d.trades)
+      ? d.trades
+          .filter((t) => t && t.id && t.symbol)
+          .map((t) => {
+            if (t.currency) return t;
+            const currency = tradeCurrency(t);
+            return currency !== "EUR" && t.fxEntry === 1 ? { ...t, currency, fxEntry: undefined } : { ...t, currency };
+          })
+      : [],
     signals: d.signals && typeof d.signals === "object" ? d.signals : {},
     migrations: Array.isArray(d.migrations) ? d.migrations : [],
     migrationNotice: d.migrationNotice ?? null,
@@ -322,8 +333,10 @@ export const actions = {
   /** Nur für selbst übernommene Trades (source = manual). */
   addTrade(t: Omit<Trade, "id" | "status"> & { status?: Trade["status"] }) {
     // Wechselkurs beim Kauf merken – Ergebnisse werden in Euro gerechnet
-    const fxEntry = t.fxEntry ?? eurPerUnit(t.currency ?? null) ?? undefined;
-    update((d) => ({ ...d, trades: [...d.trades, { ...t, fxEntry, id: uid(), status: t.status ?? "open", source: "manual" }] }));
+    // Ohne Angabe: Währung aus Symbol und Art ableiten (sonst würde ein Dollar-Wert mit Kurs 1 als Euro gemerkt)
+    const currency = t.currency ?? tradeCurrency(t);
+    const fxEntry = t.fxEntry ?? eurPerUnit(currency) ?? undefined;
+    update((d) => ({ ...d, trades: [...d.trades, { ...t, currency, fxEntry, id: uid(), status: t.status ?? "open", source: "manual" }] }));
   },
   updateTrade(id: string, patch: Partial<Trade>) {
     update((d) => ({ ...d, trades: d.trades.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));

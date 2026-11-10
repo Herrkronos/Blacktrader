@@ -1,6 +1,7 @@
 "use client";
 // Detailansicht eines Werts (als Bottom-Sheet oder eigene Seite): großer Chart mit Wellenzählung und
 // Fibo-Zonen, Signal mit Teil-Scores, Langfristiger Einstieg, Begründung, Fundamentalzahlen, News.
+import { tradeCurrency } from "@/lib/client/eur";
 import { effectiveWeights, learnedParams, useTrainerVersion } from "@/lib/client/trainerParams";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -123,7 +124,7 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
     const out: ChartEntry[] = [];
     const fmtD = (t: number) => new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
     const STATUS = { erledigt: "erledigt", ungültig: "ungültig", abgelöst: "abgelöst" } as const;
-    for (const p of best?.history.past ?? [])
+    for (const p of (best?.history.past ?? []).slice(0, 10))
       if (p.zoneTop != null && p.zoneBottom != null) out.push({ color: "grau", from: p.from, to: p.to, top: p.zoneTop, bottom: p.zoneBottom, label: `${p.status ? STATUS[p.status] : "alt"} ${p.to ? fmtD(p.to) : ""}`.trim() });
     const b = best?.best;
     const lastT = chartCandles[chartCandles.length - 1]?.time ?? 0;
@@ -166,7 +167,8 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
           <div className="num text-[24px] font-semibold text-stone-50">{live?.price != null ? money(live.price, currency) : analysis ? money(analysis.price, currency) : "–"}</div>
           <div className="flex items-center gap-2">
             {live?.changePct != null && <span className={`num text-[15px] ${live.changePct >= 0 ? "text-up" : "text-down"}`}>{`${live.changePct >= 0 ? "+" : ""}${live.changePct.toFixed(2).replace(".", ",")} %`}</span>}
-            <StatusPill status={live?.status} source={live?.source ?? source} />
+            {/* Werte außerhalb von Watchlist/Depot haben keinen Live-Kurs – dann Status der geladenen Kerzen statt ewig „Lädt“ */}
+            <StatusPill status={live?.status ?? (candles.length ? (source === "Binance" ? "live" : "delayed") : undefined)} source={live?.source ?? source} />
           </div>
         </div>
       </div>
@@ -214,8 +216,8 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
           {showLongTerm && <LongTermCard
             zone={ltZone}
             currency={currency}
-            position={myLt ? (filledTranches(myLt).length ? `Deine Position: ${filledTranches(myLt).length} von 3 Teilen, Ø ${avgEntry(myLt).toFixed(2)}${myLt.stop ? `, Stop ${myLt.stop.toFixed(2)}` : ", kein Stop"}.` : "Deine Teil-Orders warten im Bereich.") : null}
-            onTake={ltZone && !myLt && !openLongTerm(asset.symbol) ? () => openLongTermTrade(asset, ltZone, horizon, interval, chartCandles[chartCandles.length - 1]?.close ?? ltZone.zoneTop) : undefined}
+            position={myLt ? (filledTranches(myLt).length ? `Deine Position: ${filledTranches(myLt).length} von 3 Teilen, Ø ${money(avgEntry(myLt), tradeCurrency(myLt))}${myLt.stop ? `, Stop ${money(myLt.stop, tradeCurrency(myLt))}` : ", kein Stop"}.` : "Deine Teil-Orders warten im Bereich.") : null}
+            onTake={ltZone && !myLt && !openLongTerm(asset.symbol) ? () => openLongTermTrade({ ...asset, currency: asset.currency ?? currency }, ltZone, horizon, interval, chartCandles[chartCandles.length - 1]?.close ?? ltZone.zoneTop) : undefined}
           />}
           {showTradePlan && <Commentary a={analysis} item={asset} />}
           <FundamentalsPanel a={analysis} f={fundamentals} note={fundNote} kind={asset.kind} />
@@ -236,7 +238,7 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
       ) : (
         <div className="card p-4 text-[15px] text-stone-400">{candles.length > 0 && candles.length < 30 ? "Zu wenig Historie für eine Analyse." : "Analyse wird berechnet …"}</div>
       )}
-      {trade && analysis && <TradeDialog item={{ ...asset, id: asset.id ?? "detail", addedAt: 0 }} analysis={analysis} onClose={() => setTrade(false)} />}
+      {trade && analysis && <TradeDialog item={{ ...asset, currency: asset.currency ?? currency, id: asset.id ?? "detail", addedAt: 0 }} analysis={analysis} onClose={() => setTrade(false)} />}
     </div>
   );
 }

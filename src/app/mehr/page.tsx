@@ -79,9 +79,8 @@ export default function MehrPage() {
       <section className="card space-y-2 p-4 text-[15px] text-stone-300">
         <div className="flex items-center gap-2">
           <IconShield className="h-5 w-5 text-gold" />
-          <h2 className="text-[17px] text-gold-light">Wichtiger Hinweis</h2>
+          <h2 className="text-[17px] text-gold-light">Daten</h2>
         </div>
-        <p>Keine Anlageberatung. Analysen können falsch sein. Handel auf eigenes Risiko.</p>
         <p className="text-stone-400">Alle Daten bleiben auf diesem Gerät. Kurse: Binance (Krypto, live), Yahoo Finance (Aktien/Rohstoffe, bis zu 15 Min. verzögert), Nasdaq, CoinGecko, OpenFIGI, Google News.</p>
       </section>
 

@@ -216,11 +216,11 @@ export function writeCommentary(input: {
 
   // --- Plan
   const planText = plan
-    ? `${plan.direction === "long" ? "Long" : "Short"} ${fmtPrice(plan.entry)} · Stop ${fmtPrice(plan.stop)} · Ziel ${plan.targets.slice(0, 2).map(fmtPrice).join(" / ")} · CRV ${plan.riskReward.toFixed(2)}`
+    ? `${plan.direction === "long" ? "Long" : "Short"} ${money(plan.entry, input.currency)} · Stop ${money(plan.stop, input.currency)} · Ziel ${plan.targets.slice(0, 2).map((x) => money(x, input.currency)).join(" / ")} · CRV ${plan.riskReward.toFixed(2).replace(".", ",")}`
     : "Kein Plan ohne definierten Stop.";
 
   const invalidation = best
-    ? `${best.bias === 1 ? "Unter" : "Über"} ${fmtPrice(best.stop)} ist die Zählung falsch – dann raus.`
+    ? `${best.bias === 1 ? "Unter" : "Über"} ${money(best.stop, input.currency)} ist die Zählung falsch – dann raus.`
     : "Kein Invalidierungslevel.";
 
   const verdict =

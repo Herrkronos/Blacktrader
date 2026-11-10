@@ -66,7 +66,7 @@ export function EntryTile({ asset, entry, price, changePct, status, source, char
 
       {chart && view && view.candles.length > 4 && (
         <div className="mt-2">
-          <MiniChart candles={view.candles} plan={b?.color === "gruen" || short ? b?.plan : null} best={view.best} longterm={lt} past={entry?.history.past ?? []} height={84} />
+          <MiniChart candles={view.candles} plan={b?.color === "gruen" || short ? b?.plan : null} best={view.best} longterm={lt} past={(entry?.history.past ?? []).slice(0, 10)} height={84} />
         </div>
       )}
 

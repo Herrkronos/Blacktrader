@@ -84,7 +84,7 @@ export function SignalCard({ a, onTrade, shortAllowed = true, main }: { a: Analy
           <dt className="text-stone-400">Kursziele</dt>
           <dd className="num text-up">{a.plan.targets.map((x) => money(x, a.currency)).join(" / ")}</dd>
           <dt className="text-stone-400">{expert ? "CRV" : "Chance : Risiko"}</dt>
-          <dd className={`num ${a.plan.riskReward >= 1.5 ? "text-up" : "text-down"}`}>{a.plan.riskReward.toFixed(2)} : 1</dd>
+          <dd className={`num ${a.plan.riskReward >= 1.5 ? "text-up" : "text-down"}`}>{a.plan.riskReward.toFixed(2).replace(".", ",")} : 1</dd>
         </dl>
       ) : (
         <p className="text-sm text-stone-400">Aktuell kein Einstieg geplant.</p>
@@ -227,7 +227,7 @@ export function WavePanel({ a }: { a: AnalysisResult }) {
   );
 }
 
-const fmtPct = (x?: number) => (x == null ? "–" : `${(x * 100).toFixed(1)} %`);
+const fmtPct = (x?: number) => (x == null ? "–" : `${(x * 100).toFixed(1).replace(".", ",")} %`);
 const fmtNum = (x?: number, d = 2) => (x == null ? "–" : x.toLocaleString("de-DE", { maximumFractionDigits: d }));
 
 const fmtPctF = (x?: number) => (x == null ? null : `${(x * 100).toFixed(1).replace(".", ",")} %`);
@@ -355,7 +355,7 @@ export function VolumePanel({ a }: { a: AnalysisResult }) {
         </div>
         <div className="rounded-lg bg-black/40 p-2">
           <div className="text-stone-400">Rel. Volumen</div>
-          <div className="num text-base text-stone-100">{v.relVolume ? `${v.relVolume.toFixed(2)}×` : "–"}</div>
+          <div className="num text-base text-stone-100">{v.relVolume ? `${v.relVolume.toFixed(2).replace(".", ",")}×` : "–"}</div>
         </div>
         <div className="rounded-lg bg-black/40 p-2">
           <div className="text-stone-400">OBV-Trend</div>
@@ -431,7 +431,7 @@ export function LongTermSignalCard({ a, zone, currency }: { a: AnalysisResult; z
           {fmt(zone.targets[0])} / {fmt(zone.targets[1])}
         </dd>
         <dt className="text-stone-400">Chance : Risiko</dt>
-        <dd className={`num ${s.crv >= 1.5 ? "text-up" : "text-down"}`}>{s.crv.toFixed(2)} : 1</dd>
+        <dd className={`num ${s.crv >= 1.5 ? "text-up" : "text-down"}`}>{s.crv.toFixed(2).replace(".", ",")} : 1</dd>
       </dl>
     </div>
   );

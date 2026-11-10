@@ -106,7 +106,7 @@ export function AssetCard({
   const myTrade = trades.find((t) => t.status !== "closed" && t.symbol === asset.symbol && t.strategy !== "core");
   const tradeOpen = plan && b?.horizon ? hasOpenTrade(asset.symbol, b.horizon) : false;
   const isNachkauf = !!plan && !isShort && !!myLong;
-  const past = entry?.history.past ?? [];
+  const past = (entry?.history.past ?? []).slice(0, 10);
   const openHorizon: Horizon = b?.horizon ?? entry?.ltHorizon ?? "medium";
 
   const ltMini = lt ? { start: lt.start, high: lt.high, zoneTop: lt.zoneTop, zoneBottom: lt.zoneBottom, invalidation: lt.invalidation, target: lt.targets[0] } : null;
@@ -295,7 +295,7 @@ export function AssetCard({
         confirm={plan?.orderType === "limit" ? "Order legen" : "Trade eröffnen"}
         onClose={() => setConfirm(null)}
         onConfirm={() => {
-          if (b?.res && openPaperTrade(asset, b.res)) {
+          if (b?.res && openPaperTrade({ ...asset, currency: cur }, b.res)) {
             if (getData().settings.haptics) haptic(30);
           }
         }}
@@ -318,7 +318,7 @@ export function AssetCard({
         confirm="Orders legen"
         onClose={() => setConfirm(null)}
         onConfirm={() => {
-          if (lt && openLongTermTrade(asset, lt, entry?.ltHorizon ?? "long", intervalFor(entry?.ltHorizon), lastPrice ?? lt.zoneTop)) {
+          if (lt && openLongTermTrade({ ...asset, currency: cur }, lt, entry?.ltHorizon ?? "long", intervalFor(entry?.ltHorizon), lastPrice ?? lt.zoneTop)) {
             if (getData().settings.haptics) haptic(30);
           }
         }}

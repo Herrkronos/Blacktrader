@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { InstallHint, OfflineBanner, PullToRefresh } from "@/components/AppChrome";
 import { BottomNav } from "@/components/BottomNav";
-import { Disclaimer } from "@/components/Disclaimer";
 import { Header } from "@/components/Header";
 import { ServiceWorker } from "@/components/ServiceWorker";
 import { MarketProvider } from "@/lib/client/market";
@@ -43,7 +42,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="mx-auto w-full max-w-3xl px-3 pb-[calc(var(--nav-h)+var(--safe-bottom)+16px)] pt-[calc(var(--header-h)+var(--safe-top)+12px)] sm:px-5">
             <OfflineBanner />
             {children}
-            <Disclaimer />
           </main>
           <PullToRefresh />
           <InstallHint />
