@@ -71,7 +71,7 @@ function TradeCard({ t, price, onAction, onOpenAsset, nachkauf }: { t: Trade; pr
           setDx(dx < -60 ? -120 : 0);
           start.current = null;
         }}
-        onClick={() => (dx ? setDx(0) : setOpen(!open))}
+        onClick={() => (dx ? setDx(0) : onOpenAsset(t))}
       >
         <div className="flex items-start justify-between gap-3">
           <button
@@ -140,8 +140,20 @@ function TradeCard({ t, price, onAction, onOpenAsset, nachkauf }: { t: Trade; pr
             <TrancheList t={t} />
           </div>
         )}
+        <button
+          type="button"
+          className="mt-2 flex min-h-[40px] w-full items-center justify-between border-t border-white/10 pt-2 text-[14px] text-stone-400"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(!open);
+          }}
+          aria-expanded={open}
+        >
+          <span>Details & Aktionen</span>
+          <span>{open ? "▲" : "▼"}</span>
+        </button>
         {open && (
-          <div className="mt-3 space-y-2 border-t border-white/10 pt-3 text-[14px] text-stone-300">
+          <div className="mt-1 space-y-2 text-[14px] text-stone-300" onClick={(e) => e.stopPropagation()}>
             <p className="text-stone-400">Übernommen am {new Date(t.openedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</p>
             <p className="whitespace-pre-wrap">{t.reason}</p>
             {t.promotedAt && (
@@ -150,7 +162,7 @@ function TradeCard({ t, price, onAction, onOpenAsset, nachkauf }: { t: Trade; pr
                 {t.initialStop != null && t.initialStop !== t.stop ? ` Stop von ${money(t.initialStop, tradeCurrency(t))} auf ${money(t.stop, tradeCurrency(t))} nachgezogen.` : ""}
               </p>
             )}
-            {t.strategy === "longterm" && (
+            {t.strategy === "longterm" && (!!t.partials?.length || !!t.lastActionText) && (
               <div className="space-y-1 rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
                 {(t.partials ?? []).map((p, i) => (
                   <p key={i}>
