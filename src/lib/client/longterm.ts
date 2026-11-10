@@ -18,7 +18,9 @@ export const openLongTerm = (symbol: string) => getData().trades.find((t) => t.s
 /** Langfristigen Einstieg übernehmen: drei wartende Teil-Orders im Bereich. */
 export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizon, interval: Interval, price: number): boolean {
   if (openLongTerm(asset.symbol)) return false;
-  if (!canAfford(getData().trades, getData().accountResets)) {
+  const slip = makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: "long", entry: z.zoneTop, tranches: [...z.tranches] });
+  const amount = slip.totalEur > 0 ? slip.totalEur : undefined;
+  if (!canAfford(getData().trades, getData().accountResets, amount)) {
     noMoney(freeCash(getData().trades, getData().accountResets));
     return false;
   }
@@ -52,7 +54,8 @@ export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizo
     partials: [],
     remaining: 1,
     source: "manual",
-    shares: makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: "long", entry: z.zoneTop, tranches: [...z.tranches] }).orders.reduce((s, o) => s + o.qty, 0),
+    shares: slip.orders.reduce((s, o) => s + o.qty, 0),
+    stakeEur: amount,
   });
   actions.addWatch(asset as ResolvedAsset); // überwachen, damit Blacktrader Meldungen geben kann
   return true;

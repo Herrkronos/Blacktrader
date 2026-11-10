@@ -28,7 +28,7 @@ export function OrderSlip(p: SlipInput) {
         </button>
       </div>
       <pre className="num whitespace-pre-wrap font-sans text-stone-200">{s.text}</pre>
-      {s.tooExpensive && <p className="mt-1 text-amber-300">1 Stück kostet mehr als {p.tranches?.length ? "ein Teil" : "der Einsatz"} – mit 500 € ist hier kein ganzes Stück möglich.</p>}
+      {s.tooExpensive && <p className="mt-1 text-amber-300">1 Stück kostet mehr als {p.tranches?.length ? "ein Teil (ca. 183 €)" : "550 €"} – im Rahmen von 500 € (+ höchstens 50 €) ist hier kein ganzes Stück möglich.</p>}
       {s.fx !== 1 && <p className="mt-1 text-[13px] text-stone-500">Umgerechnet mit dem aktuellen Wechselkurs. Ändert er sich, meldet die App, wann du den Stop bei flatex anpassen solltest. Gesamt ca. {fmt(s.totalEur)} €.</p>}
     </div>
   );

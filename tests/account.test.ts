@@ -40,6 +40,13 @@ describe("Blacktrader-Konto im Depot", () => {
   });
 });
 
+describe("Konto mit echtem Betrag (Stück × Kurs)", () => {
+  it("rechnet mit dem eingesetzten Betrag statt pauschal 500 €", () => {
+    const [a] = computeAccount([T("U", Y, 10, Y + D, { stakeEur: 506.56 })], [], () => null);
+    expect(a.equity).toBeCloseTo(8000 + 50.656 - 15.8 - 50.656 * 0.275, 6);
+  });
+});
+
 describe("Buy & Hold", () => {
   it("gleitender Durchschnittspreis, verkaufter Gewinn, Gebühren, KESt je Jahr verrechnet", () => {
     const s = summarizeHolding({

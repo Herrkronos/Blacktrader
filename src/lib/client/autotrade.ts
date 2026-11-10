@@ -20,7 +20,9 @@ export function hasOpenTrade(symbol: string, horizon: AnalysisResult["horizon"])
 export function openPaperTrade(asset: Asset, res: AnalysisResult): boolean {
   const plan = res.plan;
   if (!plan || res.decision.level === "neutral" || hasOpenTrade(asset.symbol, res.horizon)) return false;
-  if (!canAfford(getData().trades, getData().accountResets)) {
+  const slip = makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: plan.direction, entry: plan.entry, stop: plan.stop });
+  const amount = slip.totalEur > 0 ? slip.totalEur : undefined;
+  if (!canAfford(getData().trades, getData().accountResets, amount)) {
     noMoney(freeCash(getData().trades, getData().accountResets));
     return false;
   }
@@ -54,8 +56,9 @@ export function openPaperTrade(asset: Asset, res: AnalysisResult): boolean {
     pattern: plainSetup(res.elliott.best),
     lastPrice: res.price,
     // Order-Zettel: Stückzahl und Stop in Euro, wie bei flatex eingegeben
-    shares: makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: plan.direction, entry: plan.entry, stop: plan.stop }).orders[0].qty,
-    brokerStopEur: makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: plan.direction, entry: plan.entry, stop: plan.stop }).stopEur,
+    shares: slip.orders[0].qty,
+    stakeEur: amount,
+    brokerStopEur: slip.stopEur,
   });
   return true;
 }

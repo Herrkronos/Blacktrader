@@ -263,7 +263,7 @@ Turnier in Euro (10 Teilnehmer, 50 Versuche à 5 Jahre, KESt sofort je Gewinn, S
 
 ## Order-Zettel, Stop-Erinnerung, Live-Bilanz, Sicherung
 
-**Order-Zettel für flatex:** Beim Übernehmen zeigt die App die Stückzahl für 500 € (Aktien/Rohstoffe ganze Stück, Krypto Bruchteile; Blau: drei Teile à ca. 166,67 €) und alle Preise in Euro – mit „Kopieren“.
+**Order-Zettel für flatex:** Beim Übernehmen zeigt die App die Stückzahl für 500 € (Aktien/Rohstoffe ganze Stück so nah wie möglich an 500 €, bis zu 50 € darüber erlaubt; das Konto rechnet mit dem echten Betrag Stück × Kurs; Krypto Bruchteile; Blau: drei Teile à ca. 166,67 €) und alle Preise in Euro – mit „Kopieren“.
 
 **Stop bei flatex anpassen:** Bei Dollar-Werten verschiebt sich der richtige Euro-Stop mit dem Wechselkurs, außerdem zieht Blacktrader Stops nach. Weicht der richtige Euro-Stop um mehr als 0,5 % vom eingetragenen ab, zeigt das Depot „Stop bei flatex anpassen: alt → neu“ (und meldet es einmal). „Erledigt“ antippen, sobald er bei flatex geändert ist.
 

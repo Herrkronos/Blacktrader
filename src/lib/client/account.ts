@@ -1,5 +1,5 @@
 // Blacktrader-Konto im Depot: echtes Geld-Modell statt „jeder Trade mit dem ganzen Geld“.
-// 8.000 € Start, 500 € je Trade, 7,90 € Gebühr je Order (flatex), 27,5 % KESt sofort bei Gewinn mit Verlustausgleich
+// 8.000 € Start, 500 € je Trade (echter Betrag aus Stück × Kurs, bis 50 € darüber), 7,90 € Gebühr je Order (flatex), 27,5 % KESt sofort bei Gewinn mit Verlustausgleich
 // im selben Kalenderjahr. Langfrist-Trades (blau): 500 € gesamt, jede ausgeführte Teil-Order kostet eine Gebühr.
 // Reicht das Geld nicht für einen neuen Trade (500 € + Gebühr), wird nichts übernommen. Ohne Geld UND ohne offene
 // Position ist das Konto leer (pleite) – Neustart mit 8.000 €; alte Trades bleiben als frühere Runde sichtbar.
@@ -8,6 +8,8 @@ import type { Trade } from "../store/store";
 export const ACCOUNT = { start: 8000, stake: 500, fee: 7.9, tax: 0.275 } as const;
 
 const yearOf = (ms: number) => new Date(ms).getUTCFullYear();
+/** Eingesetzter Betrag eines Trades (Stück × Kurs beim Übernehmen; ältere Trades: 500 €) */
+export const stakeOf = (t: Pick<Trade, "stakeEur">) => (t.stakeEur && t.stakeEur > 0 ? t.stakeEur : ACCOUNT.stake);
 
 /** Gehört der Trade zum Konto? (übernommen; verfallene Orders ohne Ausführung zählen nicht) */
 export function countsForAccount(t: Trade): boolean {
@@ -73,7 +75,7 @@ export function computeRound(trades: Trade[], from: number, to: number | undefin
       // Wartende Orders reservieren das Geld schon (wie bei der Bank); Gebühr erst bei Ausführung
       const executed = t.status !== "pending";
       const f = executed ? buyOrders(t) * ACCOUNT.fee : 0;
-      cash -= ACCOUNT.stake + f;
+      cash -= stakeOf(t) + f;
       fees += f;
       open.add(t);
       continue;
@@ -85,9 +87,10 @@ export function computeRound(trades: Trade[], from: number, to: number | undefin
       paid = 0;
     }
     const r = t.returnPct ?? 0;
-    const g = (ACCOUNT.stake * r) / 100;
+    const st = stakeOf(t);
+    const g = (st * r) / 100;
     const f = sellOrders(t) * ACCOUNT.fee;
-    cash += ACCOUNT.stake + g - f;
+    cash += st + g - f;
     fees += f;
     // KESt auf den Kursgewinn (Spesen in Österreich nicht abzugsfähig), Verlustausgleich im selben Jahr
     if (g > 0) {
@@ -103,15 +106,15 @@ export function computeRound(trades: Trade[], from: number, to: number | undefin
     }
     closed++;
     if (g - (buyOrders(t) + sellOrders(t)) * ACCOUNT.fee > 0) wins++;
-    curve.push({ time: e.at, equity: cash, cumulative: ((cash + [...open].length * ACCOUNT.stake - ACCOUNT.start) / ACCOUNT.start) * 100 });
+    curve.push({ time: e.at, equity: cash, cumulative: ((cash + [...open].reduce((a, x) => a + stakeOf(x), 0) - ACCOUNT.start) / ACCOUNT.start) * 100 });
   }
   let openValue = 0;
   for (const t of open) {
     const r = t.status === "open" ? openReturnEur(t) : null;
-    openValue += ACCOUNT.stake * (1 + (r ?? 0) / 100);
+    openValue += stakeOf(t) * (1 + (r ?? 0) / 100);
   }
   const equity = cash + openValue;
-  const invested = open.size * ACCOUNT.stake;
+  const invested = [...open].reduce((a, x) => a + stakeOf(x), 0);
   const blocked = cash < ACCOUNT.stake + ACCOUNT.fee;
   return {
     round,
@@ -146,8 +149,8 @@ export function freeCash(trades: Trade[], resets: number[]): number {
   return rounds[rounds.length - 1].cash;
 }
 
-/** Reicht das Geld für einen neuen Trade (500 € + 7,90 € Gebühr)? */
-export const canAfford = (trades: Trade[], resets: number[]) => freeCash(trades, resets) >= ACCOUNT.stake + ACCOUNT.fee;
+/** Reicht das Geld für einen neuen Trade (Betrag, Standard 500 €, + 7,90 € Gebühr)? */
+export const canAfford = (trades: Trade[], resets: number[], amount: number = ACCOUNT.stake) => freeCash(trades, resets) >= amount + ACCOUNT.fee;
 
 /** Hinweis, wenn das Geld für einen neuen Trade nicht reicht (direkt in der App sichtbar) */
 export function noMoney(free?: number) {

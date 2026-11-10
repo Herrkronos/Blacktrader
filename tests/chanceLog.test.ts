@@ -24,15 +24,18 @@ describe("Live-Bilanz der Chancen", () => {
 });
 
 describe("Order-Zettel für flatex", () => {
-  it("ganze Stück für 500 € bei Aktien, Bruchteile bei Krypto, Blau in drei Teilen", () => {
+  it("ganze Stück so nah wie möglich an 500 € (bis 50 € darüber), Bruchteile bei Krypto, Blau in drei Teilen", () => {
     expect(qtyFor("stock", 500, 119.15)).toBe(4);
+    expect(qtyFor("stock", 500, 63.32)).toBe(8); // 506,56 € statt 443,24 €
+    expect(qtyFor("stock", 500, 530)).toBe(1); // 1 Stück bis 550 € erlaubt
+    expect(qtyFor("stock", 500, 560)).toBe(0);
     expect(qtyFor("crypto", 500, 61593.88)).toBeCloseTo(0.0081, 6);
     const s = makeOrderSlip({ kind: "stock", symbol: "SAP.DE", name: "SAP", currency: "EUR", direction: "long", entry: 200, stop: 180, targets: [240] });
     expect(s.orders[0]).toMatchObject({ qty: 2, limitEur: 200 });
     expect(s.text).toContain("Limit-Kauf 2 Stück zu 200,00 €");
     expect(s.text).toContain("Stop-Loss: 180,00 €");
     const lt = makeOrderSlip({ kind: "stock", symbol: "SAP.DE", name: "SAP", currency: "EUR", direction: "long", entry: 100, tranches: [100, 90, 80], invalidation: 70, targets: [150] });
-    expect(lt.orders.map((o) => o.qty)).toEqual([1, 1, 2]);
+    expect(lt.orders.map((o) => o.qty)).toEqual([1, 2, 2]);
     expect(lt.text).toContain("ungültig unter 70,00 €");
   });
 });

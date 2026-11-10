@@ -76,8 +76,10 @@ export interface Trade {
   /** Wert von 1 Einheit der Währung in Euro beim Kauf bzw. Verkauf */
   fxEntry?: number;
   fxExit?: number;
-  /** Order-Zettel: Stückzahl (für 500 €) */
+  /** Order-Zettel: Stückzahl (für 500 €, bis 50 € darüber) */
   shares?: number;
+  /** Tatsächlich eingesetzter Betrag in € (Stück × Kurs); ohne Angabe 500 € */
+  stakeEur?: number;
   /** Stop, wie er bei flatex in Euro eingetragen ist (für die Erinnerung bei Wechselkurs-Änderung) */
   brokerStopEur?: number;
   /** Zuletzt gemeldeter Vorschlag für den flatex-Stop (nur einmal melden) */

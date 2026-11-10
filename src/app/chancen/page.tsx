@@ -3,7 +3,8 @@
 // Blau (langfristig), Grün (Trade auf steigende Kurse) oder Rot (Short). Werte nur aus der Watchlist kommen nicht hierher.
 // Gelb (kein Einstieg) erscheint nur in der Watchlist.
 import { ChanceRecord } from "@/components/ChanceRecord";
-import { canAfford, freeCash, noMoney } from "@/lib/client/account";
+import { ACCOUNT, canAfford, freeCash, noMoney } from "@/lib/client/account";
+import { OVER_BUDGET } from "@/lib/client/orderSlip";
 import { useEffect, useMemo, useState } from "react";
 import { signalStrength } from "@/components/AssetCard";
 import { EntryTile } from "@/components/EntryTile";
@@ -137,7 +138,7 @@ export default function ChancenPage() {
           // Nur so viele, wie das Geld reicht (500 € + Gebühr je Trade) – dann einmal Bescheid geben
           for (const t of tradable) {
             const d = getData();
-            if (!canAfford(d.trades, d.accountResets)) {
+            if (!canAfford(d.trades, d.accountResets, ACCOUNT.stake + OVER_BUDGET)) {
               noMoney(freeCash(d.trades, d.accountResets));
               break;
             }

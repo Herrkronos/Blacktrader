@@ -9,4 +9,4 @@
 - Kein ETF im System – der S&P-500-ETF (SXR8) dient nur als Vergleich im Turnier.
 - Haupt-/Alternativszenario-Leiste ist nur Anzeige. Die Idee „45–55 % = neutral, kein Einstieg“ hat der Nutzer verworfen.
 - Depot hat zwei Reiter: „Blacktrader“ (Konto 8.000 €, 500 € je Trade, Gebühren, KESt, Sperre ohne Geld, Neustart nach Pleite als neue Runde) und „Buy & Hold“ (eigene Käufe: Datum, Preis je Stück in €, Stückzahl, Gebühr; verkauft nur auf Eingabe).
-- Order-Zettel (Stück für 500 €, Preise in €), Stop-Erinnerung flatex (>0,5 %), Live-Bilanz aller Chancen (chanceLog), automatische Sicherungsdatei bei jeder Trade-/Depot-Änderung (abschaltbar, Mehr → Backups).
+- Order-Zettel (Stück so nah wie möglich an 500 €, bis 50 € darüber erlaubt – Wunsch des Nutzers; Konto rechnet mit dem echten Betrag Stück × Kurs; Preise in €), Stop-Erinnerung flatex (>0,5 %), Live-Bilanz aller Chancen (chanceLog), automatische Sicherungsdatei bei jeder Trade-/Depot-Änderung (abschaltbar, Mehr → Backups).

@@ -1,5 +1,6 @@
 // Order-Zettel für flatex: Stückzahl für 500 € und alle Preise in Euro (wie du sie bei flatex eingibst).
-// Aktien/Rohstoffe: ganze Stück; Krypto: Bruchteile (4 Nachkommastellen). Blau: 3 Teile à ca. 166,67 €.
+// Aktien/Rohstoffe: ganze Stück, so nah wie möglich an 500 € – bis zu 50 € darüber ist erlaubt (Wunsch des Nutzers);
+// Krypto: Bruchteile (4 Nachkommastellen). Blau: 3 Teile à ca. 166,67 € (je Teil bis ca. 16,67 € darüber).
 import { eurPerUnit } from "../fx";
 import { ACCOUNT } from "./account";
 import { tradeCurrency } from "./eur";
@@ -36,10 +37,19 @@ export interface OrderSlip {
   text: string;
 }
 
-export function qtyFor(kind: string, budget: number, priceEur: number): number {
+/** Erlaubter Betrag über dem Einsatz je Trade */
+export const OVER_BUDGET = 50;
+
+/** Stückzahl: Krypto genau; sonst ganze Stück am nächsten am Budget, höchstens `cap` (Budget + erlaubter Aufschlag). */
+export function qtyFor(kind: string, budget: number, priceEur: number, cap = budget + OVER_BUDGET): number {
   if (!(priceEur > 0)) return 0;
   const q = budget / priceEur;
-  return kind === "crypto" ? Math.floor(q * 1e4) / 1e4 : Math.floor(q);
+  if (kind === "crypto") return Math.floor(q * 1e4) / 1e4;
+  const lo = Math.floor(q);
+  const hi = lo + 1;
+  // aufrunden, wenn das näher an 500 € liegt und höchstens 50 € darüber ist (auch: 1 Stück kostet 500–550 €)
+  if (hi * priceEur <= cap && (lo === 0 || hi * priceEur - budget < budget - lo * priceEur)) return hi;
+  return lo;
 }
 
 export function makeOrderSlip(i: SlipInput): OrderSlip {
@@ -48,7 +58,7 @@ export function makeOrderSlip(i: SlipInput): OrderSlip {
   const prices = i.tranches?.length ? i.tranches : [i.entry];
   const budget = ACCOUNT.stake / prices.length;
   const orders = prices.map((p) => {
-    const qty = qtyFor(i.kind, budget, e(p));
+    const qty = qtyFor(i.kind, budget, e(p), budget + OVER_BUDGET / prices.length);
     return { qty, limitEur: e(p), amountEur: qty * e(p) };
   });
   const stopEur = i.stop != null && i.stop > 0 ? e(i.stop) : undefined;
