@@ -1,14 +1,14 @@
 "use client";
 // Detailansicht eines Werts (als Bottom-Sheet oder eigene Seite): großer Chart mit Wellenzählung und
 // Fibo-Zonen, Signal mit Teil-Scores, Langfristiger Einstieg, Begründung, Fundamentalzahlen, News.
-import { displayCurrency, tradeCurrency } from "@/lib/client/eur";
+import { displayCurrency } from "@/lib/client/eur";
 import { useGermanQuote } from "@/lib/client/germanQuote";
 import { effectiveWeights, learnedParams, useTrainerVersion } from "@/lib/client/trainerParams";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { analyze } from "@/lib/analysis/analyze";
 import { findLongTermZone } from "@/lib/analysis/longterm";
-import { avgEntry, filledTranches, openLongTerm, openLongTermTrade } from "@/lib/client/longterm";
+import { openLongTerm, openLongTermTrade } from "@/lib/client/longterm";
 import { money } from "@/lib/analysis/persona";
 import { api } from "@/lib/client/api";
 import { binanceStream } from "@/lib/client/binanceWs";
@@ -218,11 +218,12 @@ export function AssetDetailView({ asset, initialHorizon, hideTake = false }: { a
         <>
           {showTradePlan && <SignalCard a={analysis} onTrade={hideTake ? undefined : () => setTrade(true)} shortAllowed={scan.ctx.spBear === true} main={mainColor === "gruen" || mainColor === "rot" || mainColor === "gelb" ? mainColor : undefined} />}
           {!showTradePlan && <LongTermSignalCard a={analysis} zone={ltZone} currency={currency} />}
-          {showLongTerm && <LongTermCard
+          {/* Schon investiert (offene Langfrist-Position) → kein „Langfristiger Einstieg“ mehr anbieten (Wunsch des Nutzers) */}
+          {showLongTerm && !myLt && !openLongTerm(asset.symbol) && <LongTermCard
             zone={ltZone}
             currency={currency}
-            position={myLt ? (filledTranches(myLt).length ? `Deine Position: ${filledTranches(myLt).length} von 3 Teilen, Ø ${money(avgEntry(myLt), tradeCurrency(myLt))}${myLt.stop ? `, Stop ${money(myLt.stop, tradeCurrency(myLt))}` : ", kein Stop"}.` : "Deine Teil-Orders warten im Bereich.") : null}
-            onTake={!hideTake && ltZone && !myLt && !openLongTerm(asset.symbol) ? () => openLongTermTrade({ ...asset, currency: asset.currency ?? currency }, ltZone, horizon, interval, chartCandles[chartCandles.length - 1]?.close ?? ltZone.zoneTop) : undefined}
+            position={null}
+            onTake={!hideTake && ltZone ? () => openLongTermTrade({ ...asset, currency: asset.currency ?? currency }, ltZone, horizon, interval, chartCandles[chartCandles.length - 1]?.close ?? ltZone.zoneTop) : undefined}
           />}
           {showTradePlan && <Commentary a={analysis} item={asset} />}
           <FundamentalsPanel a={analysis} f={fundamentals} note={fundNote} kind={asset.kind} />
