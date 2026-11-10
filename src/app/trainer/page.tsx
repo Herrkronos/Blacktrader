@@ -1,6 +1,6 @@
 "use client";
 // Mehr → Trainer: Blacktrader lernt (Walk-Forward, Strenge-Regeln unverändert) und tritt danach in einem Turnier
-// gegen 9 andere Analysten/Bots an (10 Teilnehmer): 50 Versuche à 5 Jahre, 5.000 € Startkapital, in bullischen,
+// gegen 9 andere Analysten/Bots an (10 Teilnehmer): 50 Versuche à 5 Jahre, 8.000 € Startkapital, in bullischen,
 // neutralen, bärischen und gemischten Szenarien. Alle Werte (Aktien, Krypto, Rohstoffe) werden verwendet.
 // Danach: Rangliste und wo sich Blacktrader verbessert hat.
 import Link from "next/link";

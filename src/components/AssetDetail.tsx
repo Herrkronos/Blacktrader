@@ -201,12 +201,6 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
             currency={currency}
           />
         )}
-        <p className="px-2 pb-1.5 text-[13px] text-stone-400">
-          {settings.expertMode
-            ? "Experte: Gold = Primärzählung mit Wellen-Labels, gestrichelt = Alternativzählung, Linien = Fibonacci-Ziele/-Retracements, Volumen und RSI. Kästen: Blau = Langfrist-Einstieg, Grün = Zielzone, Grau = alte Einstiege."
-            : "Blauer Kasten = Langfrist-Einstieg · Grüner Kasten = Zielzone (Kauf) · Roter Kasten = Short-Zone · Grau = alte Einstiege · Rote Linie = Stop · Grüne Linie = Ziel · Pfeile = erwarteter Weg."}{" "}
-          Zoomen mit zwei Fingern, Antippen zeigt den Kurs.
-        </p>
       </div>
 
       {analysis ? (

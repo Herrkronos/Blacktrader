@@ -3,7 +3,7 @@
 // Jeder Teilnehmer erzeugt aus DENSELBEN Kursdaten (alle Werte: Aktien, Krypto, Rohstoffe, 15 Jahre) seine Trades (die Bots nur Käufe, Blacktrader auch Shorts).
 // Jedes Signal kennt nur Kerzen bis zu seinem Tag; Einstieg und Ausstieg zum Eröffnungskurs der nächsten Kerze.
 //
-// Ein Versuch = 5 Jahre ECHTE Zeit: 5.000 € Startkapital, 500 € je Trade (nur wenn genug Geld da ist, je Wert höchstens
+// Ein Versuch = 5 Jahre ECHTE Zeit: 8.000 € Startkapital (wie das Depot-Konto), 500 € je Trade (nur wenn genug Geld da ist, je Wert höchstens
 // eine Position), 7,90 € Gebühr je Order (flatex; Kauf und Verkauf je einmal), 27,5 % KESt (Österreich) SOFORT bei jedem Verkauf mit Gewinn
 // (100 € → 110 €: 2,75 € KESt). Ein Verlust im selben Kalenderjahr holt bereits bezahlte KESt anteilig zurück
 // (automatischer Verlustausgleich der Bank), ins nächste Jahr wird nichts übertragen.
@@ -44,7 +44,7 @@ export interface Series {
 }
 
 /** fee: Gebühr je Order in € (flatex 7,90 €); KESt in Österreich auf den Gewinn ohne Abzug der Spesen */
-export const RULES = { start: 5000, years: 5, reps: 50, stake: 500, fee: 7.9, tax: 0.275, rounds: 5 } as const;
+export const RULES = { start: 8000, years: 5, reps: 50, stake: 500, fee: 7.9, tax: 0.275, rounds: 5 } as const;
 
 // ---------------------------------------------------------------------------------------------
 // Marktlage aus dem S&P 500 (nur Vergangenheit)
@@ -620,7 +620,8 @@ export function reportLines(rep: TournamentReport, previous?: TournamentReport |
       .filter(Boolean);
     if (parts.length) lines.push(`Getrennt: ${parts.join(" · ")}.`);
   }
-  if (previous) {
+  // Nur vergleichen, wenn die Regeln gleich sind (z. B. nicht 5.000 € gegen 8.000 € Startkapital)
+  if (previous && previous.rules?.start === rep.rules.start && previous.rules?.fee === rep.rules.fee) {
     const pb = previous.ranking.find((c) => c.id === "blacktrader");
     if (pb) lines.push(`Gegenüber der letzten Auswertung: Platz ${pb.rank} → ${bt.rank}, ${pct1(pb.avgPerYear)} → ${pct1(bt.avgPerYear)} pro Jahr.`);
   }

@@ -23,13 +23,13 @@ const T = (sym: string, d0: number, d1: number, r: number): PoolTrade => ({ sym,
 const flat = () => 100;
 
 describe("Turnier: Regeln", () => {
-  it("5.000 € Start, 5 Jahre, 50 Versuche, 9 Gegner (10 Teilnehmer), KESt 27,5 %", () => {
-    expect(RULES).toMatchObject({ start: 5000, years: 5, reps: 50, stake: 500, tax: 0.275 });
+  it("8.000 € Start (wie das Depot), 5 Jahre, 50 Versuche, 9 Gegner (10 Teilnehmer), KESt 27,5 %", () => {
+    expect(RULES).toMatchObject({ start: 8000, years: 5, reps: 50, stake: 500, tax: 0.275 });
     expect(OPPONENTS).toHaveLength(9);
   });
   it("ohne Trades bleibt das Geld liegen", () => {
     const r = runWindow([], W(1_500_000_000), flat);
-    expect(r.end).toBe(5000);
+    expect(r.end).toBe(8000);
     expect(r.trades).toBe(0);
   });
   it("KESt sofort bei jedem Gewinn: 100 € → 110 € ergibt 2,75 € KESt", () => {
@@ -55,9 +55,9 @@ describe("Turnier: Regeln", () => {
     // Gewinn 2018, Verlust 2019 → keine Rückzahlung
     expect(runWindow([t("A", 10, 40, 10), t("B", 400, 430, -10)], W(start), flat).tax).toBeCloseTo(50 * 0.275, 6);
   });
-  it("nur 500 € je Trade (+ 7,90 € Gebühr) und nur mit genug Geld: höchstens 9 Trades gleichzeitig", () => {
-    const many = Array.from({ length: 15 }, (_, i) => T(`S${i}`, 10, 100, 1));
-    expect(runWindow(many, W(1_500_000_000), flat).trades).toBe(9);
+  it("nur 500 € je Trade (+ 7,90 € Gebühr) und nur mit genug Geld: höchstens 15 Trades gleichzeitig", () => {
+    const many = Array.from({ length: 20 }, (_, i) => T(`S${i}`, 10, 100, 1));
+    expect(runWindow(many, W(1_500_000_000), flat).trades).toBe(15);
   });
   it("wer kein Geld mehr hat, scheidet aus", () => {
     const crash = Array.from({ length: 30 }, (_, i) => T(`S${i % 10}`, 10 + i * 40, 30 + i * 40, -95));
@@ -65,7 +65,7 @@ describe("Turnier: Regeln", () => {
   });
   it("offene Positionen werden am Ende zum Tageskurs bewertet", () => {
     const r = runWindow([T("A", 10, 5000, 50)], W(1_500_000_000), () => 120);
-    expect(r.end).toBeCloseTo(5000 + 100 - 15.8 - 100 * 0.275, 6);
+    expect(r.end).toBeCloseTo(8000 + 100 - 15.8 - 100 * 0.275, 6);
   });
   it("50 Zeiträume à 5 Jahre mit Marktlage", () => {
     const spx = series(15 * 252, 3, 0.0004);
@@ -80,7 +80,7 @@ describe("Turnier: Regeln", () => {
     const bad = summarizeRuns("x", "Schlecht", "", [{ w, r: runWindow([T("A", 10, 40, -20)], w, flat) }]);
     const list = rank([bad, good]);
     expect(list[0].name).toBe("Blacktrader");
-    expect(cagr(5000)).toBe(0);
+    expect(cagr(8000)).toBe(0);
     const lines = reportLines({ v: 2, at: "x", rules: { ...RULES }, ranking: list, scenarioCount: {} });
     expect(lines[0]).toContain("Platz 1 von 2");
     expect(lines[0]).toContain("Trades in 5 Jahren");

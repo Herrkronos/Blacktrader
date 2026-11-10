@@ -1,6 +1,6 @@
 # Hinweise für Claude (Blacktrader)
 
-- Oberfläche auf Deutsch, einsteigerfreundlich. Feste Regeln nicht ändern: Elliott ≥ 60 %, Risiko-Logik, 500 € je Trade. Start: Depot-Konto 8.000 € (Wunsch des Nutzers), Turnier/Tests weiter 5.000 € (Vergleichbarkeit).
+- Oberfläche auf Deutsch, einsteigerfreundlich. Feste Regeln nicht ändern: Elliott ≥ 60 %, Risiko-Logik, 500 € je Trade. Start: Depot-Konto 8.000 € (Wunsch des Nutzers), Turnier jetzt ebenfalls 8.000 € (Wunsch des Nutzers; ältere Tests liefen mit 5.000 €).
 - Der Nutzer handelt bei flatex Österreich (Euro, Tradegate/gettex): 7,90 € je Order, 27,5 % KESt.
 - Neue Regeln erst ausgiebig testen und den Nutzer fragen, bevor sie eingebaut werden.
 - **Blau-Regel** (`BLUE_RULE` in `src/lib/analysis/potential.ts`): auf Wunsch des Nutzers in Chancen UND Turnier aktiv, obwohl
