@@ -17,7 +17,7 @@ import { HORIZON_LABEL, type AssetKind, type Candle, type Horizon, type Resolved
 const fmtDate = (t: number) => new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
 const pct = (x: number) => `${Math.round(x * 100)} %`;
 const eurFmt = (x: number) => `${x.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
-const KIND_TEXT: Record<EchoKind, string> = { trade: "Kauf", short: "Short", core: "Kernposition" };
+const KIND_TEXT: Record<EchoKind, string> = { trade: "Kauf", short: "Short", core: "Langfristig" };
 const KIND_CLS: Record<EchoKind, string> = { trade: "text-emerald-300", short: "text-red-300", core: "text-sky-300" };
 const GROUP_KEYS: Record<string, AssetKind> = { "gruppe:stock": "stock", "gruppe:crypto": "crypto", "gruppe:commodity": "commodity" };
 
