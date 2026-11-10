@@ -393,7 +393,7 @@ export function LongTermSignalCard({ a, zone, currency }: { a: AnalysisResult; z
       </div>
       <div className="flex items-end gap-2">
         <span className="num font-display text-4xl text-gold-light">{s.total}</span>
-        <span className="pb-1 text-sm text-stone-400">/ 100 Punkte (über 50 = guter langfristiger Kauf)</span>
+        <span className="pb-1 text-sm text-stone-400">/ 100 Punkte (über 50 = eher guter langfristiger Kauf)</span>
       </div>
       <ScoreBar value={s.chart} label={expert ? `Langfrist-Struktur (Chance/Risiko ${s.crv.toFixed(1).replace(".", ",")}, ${zone.context})` : "Chartbild (langfristig)"} />
       <ScoreBar value={s.fundamental} label="Firmenzahlen & Nachrichten" />
