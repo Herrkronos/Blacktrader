@@ -255,7 +255,11 @@ export function AssetDetail() {
   const sym = params.get("sym");
   const kind = params.get("kind");
   const watch = useAppData((d) => d.watchlist);
-  const asset = (id ? watch.find((w) => w.id === id) : undefined) ?? watch.find((w) => w.symbol === sym && w.kind === kind) ?? SCAN_PRESETS.find((p) => p.symbol === sym && p.kind === kind);
+  const trades = useAppData((d) => d.trades);
+  // Depot: Werte liegen nicht mehr in der Watchlist – Angaben aus dem Trade nehmen
+  const held = [...trades].reverse().find((t) => t.symbol === sym && t.kind === kind);
+  const fromTrade = held ? { kind: held.kind, symbol: held.symbol, name: held.name, binanceSymbol: held.binanceSymbol, yahooSymbol: held.yahooSymbol, currency: held.currency } : undefined;
+  const asset = (id ? watch.find((w) => w.id === id) : undefined) ?? watch.find((w) => w.symbol === sym && w.kind === kind) ?? SCAN_PRESETS.find((p) => p.symbol === sym && p.kind === kind) ?? fromTrade;
   if (!asset) return <div className="card p-6 text-[15px] text-stone-400">Wert nicht gefunden.</div>;
   return (
     <div className="space-y-3">

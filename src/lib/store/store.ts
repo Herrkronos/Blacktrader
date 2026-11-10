@@ -58,7 +58,8 @@ export interface Trade {
   /** Langfrist-Bereich (nur strategy "longterm") */
   lt?: { zoneTop: number; zoneBottom: number; invalidation: number; targets: number[]; key: string };
   /** Einstieg in Teilen (Langfrist): Preis und Zeitpunkt der Ausführung */
-  tranches?: { price: number; filledAt?: number }[];
+  /** Teil-Orders: Limit (Währung des Werts), Stückzahl und Betrag in € (ab Nov. 2026 gespeichert) */
+  tranches?: { price: number; filledAt?: number; qty?: number; eur?: number }[];
   /** Teilausstiege (Anteil der Position, Kurs, Zeitpunkt, Grund) */
   partials?: { fraction: number; price: number; at: number; reason: string }[];
   /** Noch gehaltener Anteil der gekauften Position (1 = alles) */
@@ -366,7 +367,16 @@ export const actions = {
     // Ohne Angabe: Währung aus Symbol und Art ableiten (sonst würde ein Dollar-Wert mit Kurs 1 als Euro gemerkt)
     const currency = t.currency ?? tradeCurrency(t);
     const fxEntry = t.fxEntry ?? eurPerUnit(currency) ?? undefined;
-    update((d) => ({ ...d, trades: [...d.trades, { ...t, currency, fxEntry, id: uid(), status: t.status ?? "open", source: "manual" }] }));
+    // Im Depot → aus der Watchlist nehmen (Wunsch des Nutzers); Kurse und Meldungen laufen über den Trade weiter
+    update((d) => ({ ...d, watchlist: d.watchlist.filter((w) => !(w.kind === t.kind && w.symbol === t.symbol)), trades: [...d.trades, { ...t, currency, fxEntry, id: uid(), status: t.status ?? "open", source: "manual" }] }));
+  },
+  /** Werte, die offen im Depot liegen, aus der Watchlist nehmen (einmalig für ältere Daten) */
+  pruneWatchHeld() {
+    update((d) => {
+      const held = new Set(d.trades.filter((t) => t.status !== "closed").map((t) => `${t.kind}:${t.symbol}`));
+      const watchlist = d.watchlist.filter((w) => !held.has(`${w.kind}:${w.symbol}`));
+      return watchlist.length === d.watchlist.length ? d : { ...d, watchlist };
+    });
   },
   updateTrade(id: string, patch: Partial<Trade>) {
     update((d) => ({ ...d, trades: d.trades.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));

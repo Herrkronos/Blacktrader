@@ -35,7 +35,7 @@ export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizo
     return false;
   }
   const now = Date.now();
-  const tranches = levels.map((p) => ({ price: p, filledAt: price <= p ? now : undefined }));
+  const tranches = levels.map((p, i) => ({ price: p, filledAt: price <= p ? now : undefined, qty: slip.orders[i]?.qty, eur: slip.orders[i]?.amountEur }));
   const filled = tranches.filter((t) => t.filledAt);
   actions.addTrade({
     strategy: "longterm",
@@ -68,7 +68,6 @@ export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizo
     shares: slip.orders.reduce((s, o) => s + o.qty, 0),
     stakeEur: amount,
   });
-  actions.addWatch(asset as ResolvedAsset); // überwachen, damit Blacktrader Meldungen geben kann
   return true;
 }
 

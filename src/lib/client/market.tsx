@@ -98,6 +98,11 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     syncPush();
   }, [tradesForPush, watchlist]);
 
+  // Werte im Depot gehören nicht mehr in die Watchlist (ältere Daten einmal bereinigen)
+  useEffect(() => {
+    actions.pruneWatchHeld();
+  }, []);
+
   // Langfrist-Positionen alle 15 Minuten mit ihren eigenen Kerzen prüfen (Wellenzählung, Invalidierung)
   useEffect(() => {
     const run = async () => {

@@ -17,8 +17,7 @@ import { loadReports, startTraining, stopTraining, TOKEN_KEY, useTraining } from
 import { primaryCount, primaryRate, TARGET_HIT_RATE } from "@/lib/trainer/engine";
 import { goalProgress, goalReached } from "@/lib/trainer/goal";
 import { DURATIONS } from "@/lib/trainer/session";
-import { GROUP_LABEL, OPPONENTS, type OpponentGroup } from "@/lib/trainer/opponents";
-import { eur0, pct1, reportLines, RULES, SCENARIO_LABEL, SCENARIOS, type TournamentReport } from "@/lib/trainer/tournament";
+import { eur0, pct1, reportItems, RULES, SCENARIO_LABEL, SCENARIOS, type TournamentReport } from "@/lib/trainer/tournament";
 import { ACTIVE_CELL_KEYS, type CellKey } from "@/lib/trainer/universe";
 import { HORIZON_LABEL, KIND_LABEL, type AssetKind, type Horizon } from "@/lib/types";
 
@@ -66,7 +65,7 @@ function Ranking({ rep }: { rep: TournamentReport }) {
       <div className="grid grid-cols-[2rem_1fr_auto] gap-x-2 px-3 py-1.5 text-[12px] text-stone-500">
         <span>Platz</span>
         <span>Teilnehmer (Ø von {rep.ranking[0]?.runs ?? 50} Versuchen à 5 Jahre)</span>
-        <span className="text-right">pro Jahr</span>
+        <span className="text-right">Ø p. a.</span>
       </div>
       {rep.ranking.map((c) => {
         const me = c.id === "blacktrader";
@@ -88,7 +87,10 @@ function Ranking({ rep }: { rep: TournamentReport }) {
                 </span>
               )}
             </span>
-            <span className={`num text-right text-[16px] font-semibold ${c.avgPerYear >= 0 ? "text-up" : "text-down"}`}>{pct1(c.avgPerYear)}</span>
+            <span className={`num text-right text-[16px] font-semibold ${c.avgPerYear >= 0 ? "text-up" : "text-down"}`}>
+              {pct1(c.avgPerYear)}
+              <span className="block text-[11px] font-normal text-stone-500">Ø p. a.</span>
+            </span>
           </div>
         );
       })}
@@ -99,7 +101,10 @@ function Ranking({ rep }: { rep: TournamentReport }) {
             <span className="block truncate text-[15px] text-stone-300">{rep.benchmark.name}</span>
             <span className="block text-[12px] text-stone-500">nur zum Vergleich – handelt nicht mit, alles kaufen und 5 Jahre liegen lassen</span>
           </span>
-          <span className={`num text-right text-[16px] font-semibold ${rep.benchmark.avgPerYear >= 0 ? "text-up" : "text-down"}`}>{pct1(rep.benchmark.avgPerYear)}</span>
+          <span className={`num text-right text-[16px] font-semibold ${rep.benchmark.avgPerYear >= 0 ? "text-up" : "text-down"}`}>
+            {pct1(rep.benchmark.avgPerYear)}
+            <span className="block text-[11px] font-normal text-stone-500">Ø p. a.</span>
+          </span>
         </div>
       )}
     </div>
@@ -114,7 +119,7 @@ function ScenarioTable({ rep }: { rep: TournamentReport }) {
       <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 py-1 text-[12px] text-stone-500">
         <span>Szenario</span>
         <span className="text-right">Versuche</span>
-        <span className="text-right">pro Jahr</span>
+        <span className="text-right">Ø p. a.</span>
         <span className="text-right">Platz</span>
       </div>
       {SCENARIOS.filter((s) => bt.byScenario[s]).map((s) => (
@@ -183,7 +188,7 @@ export default function TrainerPage() {
   const curCell = st && running && (learning || !st.tournament) && st.cellIdx < st.cfg.cells.length ? st.cfg.cells[st.cellIdx] : null;
   const saves = st ? t.messages[st.cfg.id] ?? [] : [];
   const latest = t.reports[0] ?? null;
-  const lines = latest ? reportLines(latest, t.reports[1] ?? null) : [];
+  const items = latest ? reportItems(latest, t.reports[1] ?? null) : [];
 
   const start = (ms: number) => {
     if (token) {
@@ -241,26 +246,6 @@ export default function TrainerPage() {
             </p>
           )}
         </div>
-      </section>
-
-      <section className="card space-y-2 p-4">
-        <h2 className="text-[17px] text-gold-light">Turnier: Blacktrader gegen {OPPONENTS.length} Gegner</h2>
-        <p className="text-[14px] text-stone-400">
-          {RULES.reps} Versuche à {RULES.years} Jahre echte Zeit: {eur(RULES.start)} Startkapital, {eur(RULES.stake)} je Trade, 7,90 € Gebühr je Order (flatex) und 27,5 % KESt – für alle gleich. Wer kein Geld mehr hat, scheidet aus. Blacktrader handelt wie in den Chancen (mit Blau-Regel) und lernt zwischen den {RULES.rounds} Runden. Die Gegner wechseln ihre Variante: vor jedem Turnier tritt ihr Champion gegen neue Varianten an (auf eigenen Zeiträumen, nie gegen Blacktrader abgestimmt) – der Beste spielt. Der S&P-500-ETF läuft nur zum Vergleich mit.
-        </p>
-        {(Object.keys(GROUP_LABEL) as OpponentGroup[]).map((g) => (
-          <div key={g}>
-            <h3 className="pt-1 text-[15px] text-stone-300">{GROUP_LABEL[g]}</h3>
-            <ul className="space-y-1 text-[14px]">
-              {OPPONENTS.filter((o) => o.group === g).map((o) => (
-                <li key={o.id} className="flex gap-2">
-                  <span className="shrink-0 text-stone-100">{o.name}</span>
-                  <span className="text-stone-500">– {o.desc}{o.source ? ` (${o.source})` : ""}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
       </section>
 
       <section className="card space-y-3 p-4">
@@ -322,11 +307,15 @@ export default function TrainerPage() {
             <h2 className="text-[17px] text-gold-light">Auswertung</h2>
             <span className="text-[13px] text-stone-500">{new Date(latest.at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</span>
           </div>
-          <div className="space-y-1 text-[15px] text-stone-200">
-            {lines.map((l, i) => (
-              <p key={i}>{l}</p>
+          <ul className="divide-y divide-white/5 overflow-hidden rounded-xl bg-white/5">
+            {items.map((it, i) => (
+              <li key={i} className="px-3 py-2">
+                <span className="block text-[12px] uppercase tracking-wide text-stone-500">{it.label}</span>
+                <span className={`num block text-[15px] font-semibold ${it.tone === "good" ? "text-up" : it.tone === "warn" ? "text-amber-300" : it.tone === "bad" ? "text-down" : "text-stone-100"}`}>{it.value}</span>
+                {it.text && <span className="block text-[13px] text-stone-400">{it.text}</span>}
+              </li>
             ))}
-          </div>
+          </ul>
           <Ranking rep={latest} />
           <h3 className="pt-1 text-[15px] text-stone-300">Blacktrader je Szenario</h3>
           <ScenarioTable rep={latest} />
@@ -354,7 +343,7 @@ export default function TrainerPage() {
                     return (
                       <li key={r.at} className="flex justify-between py-1.5 text-stone-400">
                         <span>{new Date(r.at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</span>
-                        <span className="num">{b ? `Platz ${b.rank} · ${pct1(b.avgPerYear)} pro Jahr` : "–"}</span>
+                        <span className="num">{b ? `Platz ${b.rank} · Ø ${pct1(b.avgPerYear)} p. a.` : "–"}</span>
                       </li>
                     );
                   })}

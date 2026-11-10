@@ -16,7 +16,8 @@ import { eurPerUnit } from "@/lib/fx";
 import { instrumentKey, useMarket } from "@/lib/client/market";
 import { actions, useAppData, type Trade } from "@/lib/store/store";
 import { HORIZON_LABEL } from "@/lib/types";
-import { ACCOUNT, computeAccount } from "@/lib/client/account";
+import { ACCOUNT, ADD, computeAccount } from "@/lib/client/account";
+import { makeOrderSlip } from "@/lib/client/orderSlip";
 import { BuyHold } from "@/components/BuyHold";
 
 const eur = (x: number, sign = false) => `${sign && x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
@@ -72,12 +73,14 @@ function TradeCard({ t, price, onAction, nachkauf }: { t: Trade; price?: number;
         onClick={() => (dx ? setDx(0) : setOpen(!open))}
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="truncate text-[16px] font-semibold text-stone-50">{t.name}</div>
+          <Link href={`/analyse?sym=${encodeURIComponent(t.symbol)}&kind=${t.kind}`} className="min-w-0 active:opacity-70" onClick={(e) => e.stopPropagation()}>
+            <div className="truncate text-[16px] font-semibold text-stone-50">
+              {t.name} <span className="text-[14px] font-normal text-gold">›</span>
+            </div>
             <div className="text-[13px] text-stone-400">
               {t.symbol} · {HORIZON_LABEL[t.horizon]}
             </div>
-          </div>
+          </Link>
           <div className="text-right">
             <div className={`num text-[19px] font-semibold ${ret == null ? "text-amber-300" : ret >= 0 ? "text-up" : "text-down"}`}>{ret == null ? "–" : signed(ret)}</div>
             <div className="text-[13px] text-stone-400">{t.status === "closed" ? "Ergebnis" : "Stand"}</div>
@@ -136,7 +139,7 @@ function TradeCard({ t, price, onAction, nachkauf }: { t: Trade; price?: number;
             )}
             {t.strategy === "longterm" && (
               <div className="space-y-1 rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
-                <p>Teile: {(t.tranches ?? []).map((x) => `${money(x.price, tradeCurrency(t))} ${x.filledAt ? "✓" : "wartet"}`).join(" · ") || "–"}</p>
+                <TrancheList t={t} />
                 {(t.partials ?? []).map((p, i) => (
                   <p key={i}>
                     Teilausstieg {Math.round(p.fraction * 100)} % bei {money(p.price, tradeCurrency(t))} ({new Date(p.at).toLocaleDateString("de-DE")})
@@ -157,6 +160,37 @@ function TradeCard({ t, price, onAction, nachkauf }: { t: Trade; price?: number;
           </div>
         )}
       </article>
+    </div>
+  );
+}
+
+/** Blaue Teil-Orders mit Stückzahl und Betrag, darunter die Gesamtsumme (geplant und schon gekauft) */
+function TrancheList({ t }: { t: Trade }) {
+  const tr = t.tranches ?? [];
+  if (!tr.length) return <p>Teile: –</p>;
+  // Ältere Trades ohne gespeicherte Stückzahl: wie auf dem Order-Zettel nachrechnen
+  const slip = tr.some((x) => x.qty == null) ? makeOrderSlip({ kind: t.kind, symbol: t.symbol, name: t.name, currency: t.currency, direction: "long", entry: tr[0].price, tranches: tr.map((x) => x.price), budget: t.nachkauf ? ADD.stake : ACCOUNT.stake }) : null;
+  const rows = tr.map((x, i) => ({ ...x, qty: x.qty ?? slip?.orders[i]?.qty ?? 0, eur: x.eur ?? slip?.orders[i]?.amountEur ?? 0 }));
+  const qty = (q: number) => q.toLocaleString("de-DE", { maximumFractionDigits: 4 });
+  const sum = rows.reduce((a, x) => a + x.eur, 0);
+  const done = rows.filter((x) => x.filledAt);
+  return (
+    <div className="num">
+      {rows.map((x, i) => (
+        <div key={i} className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-2 py-0.5">
+          <span className="text-sky-300">Teil {i + 1}</span>
+          <span>
+            {money(x.price, tradeCurrency(t))} · {qty(x.qty)} Stück · {eur(x.eur)}
+          </span>
+          <span className={x.filledAt ? "text-up" : "text-stone-400"}>{x.filledAt ? "✓ gekauft" : "wartet"}</span>
+        </div>
+      ))}
+      <div className="mt-1 flex justify-between border-t border-sky-400/20 pt-1 font-semibold">
+        <span>
+          Gesamt {qty(rows.reduce((a, x) => a + x.qty, 0))} Stück · {eur(sum)}
+        </span>
+        <span className="font-normal text-sky-200">gekauft {eur(done.reduce((a, x) => a + x.eur, 0))}</span>
+      </div>
     </div>
   );
 }

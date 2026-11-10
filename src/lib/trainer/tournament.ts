@@ -323,50 +323,66 @@ export interface TournamentReport {
 export const pct1 = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1).replace(".", ",")} %`;
 export const eur0 = (x: number) => `${x < 0 ? "−" : ""}${Math.round(Math.abs(x)).toLocaleString("de-DE")} €`;
 
-export function reportLines(rep: TournamentReport, previous?: TournamentReport | null): string[] {
+/** Ein Punkt der Auswertung: Bezeichnung, kurzer Wert, Details; tone für die Farbe */
+export interface ReportItem {
+  label: string;
+  value: string;
+  text?: string;
+  tone?: "good" | "warn" | "bad";
+}
+
+const pa = (x: number) => `Ø ${pct1(x)} p. a.`;
+
+export function reportItems(rep: TournamentReport, previous?: TournamentReport | null): ReportItem[] {
   const bt = rep.ranking.find((c) => c.id === "blacktrader");
   if (!bt) return [];
-  const lines: string[] = [];
-  lines.push(`Blacktrader belegt Platz ${bt.rank} von ${rep.ranking.length}: Ø ${pct1(bt.avgPerYear)} pro Jahr, Ø ${Math.round(bt.avgTrades)} Trades in 5 Jahren, Ø Gewinn nach KESt ${eur0(bt.avgProfit)} (KESt Ø ${eur0(bt.avgTax)}).`);
+  const out: ReportItem[] = [];
+  out.push({ label: "Platzierung", value: `Platz ${bt.rank} von ${rep.ranking.length}`, text: `${pa(bt.avgPerYear)} · Ø ${Math.round(bt.avgTrades)} Trades in 5 Jahren · Ø Gewinn nach KESt ${eur0(bt.avgProfit)} · KESt Ø ${eur0(bt.avgTax)}`, tone: bt.rank === 1 ? "good" : undefined });
   const top = rep.ranking[0];
-  if (top.id !== "blacktrader") lines.push(`Bester: ${top.name} mit Ø ${pct1(top.avgPerYear)} pro Jahr.`);
+  if (top.id !== "blacktrader") out.push({ label: "Bester", value: top.name, text: pa(top.avgPerYear) });
   const best = SCENARIOS.filter((s) => bt.rankByScenario[s] === 1).map((s) => SCENARIO_LABEL[s]);
-  if (best.length) lines.push(`Platz 1 in: ${best.join(", ")}.`);
+  if (best.length) out.push({ label: "Platz 1 in", value: best.join(", ") });
   if (rep.benchmark) {
     const d = bt.avgPerYear - rep.benchmark.avgPerYear;
-    lines.push(`Vergleich ${rep.benchmark.name}: Ø ${pct1(rep.benchmark.avgPerYear)} pro Jahr – Blacktrader liegt ${Math.abs(d) < 0.0005 ? "gleichauf" : d > 0 ? `${pct1(d).replace("+", "")} pro Jahr vorne` : `${pct1(-d).replace("+", "")} pro Jahr dahinter`}.`);
+    const name = rep.benchmark.name.replace(/^Vergleich:\s*/, "");
+    out.push({ label: "Vergleich ETF", value: `${name}: ${pa(rep.benchmark.avgPerYear)}`, text: `Blacktrader liegt ${Math.abs(d) < 0.0005 ? "gleichauf" : d > 0 ? `${pct1(d).replace("+", "")} p. a. vorne` : `${pct1(-d).replace("+", "")} p. a. dahinter`}`, tone: d >= 0 ? "good" : "warn" });
   }
   if (rep.blueRule) {
     const { on, off } = rep.blueRule;
-    lines.push(
+    out.push(
       off - on >= 0.005
-        ? `Achtung Blau-Regel: ohne sie wäre Blacktrader besser (${pct1(off)} statt ${pct1(on)} pro Jahr) – prüfen, ob sie wieder entfernt werden soll.`
-        : `Blau-Regel geprüft: mit ${pct1(on)}, ohne ${pct1(off)} pro Jahr – sie bleibt.`,
+        ? { label: "Blau-Regel", value: "Achtung", text: `ohne sie wäre Blacktrader besser (${pct1(off)} statt ${pct1(on)} p. a.) – prüfen, ob sie wieder entfernt werden soll`, tone: "warn" }
+        : { label: "Blau-Regel", value: "bleibt", text: `mit ${pct1(on)}, ohne ${pct1(off)} p. a. – sie bleibt` },
     );
   }
-  if (bt.broke) lines.push(`In ${bt.broke} von ${bt.runs} Versuchen ist Blacktrader ausgeschieden (kein Geld mehr).`);
+  if (bt.broke) out.push({ label: "Ausgeschieden", value: `${bt.broke} von ${bt.runs} Versuchen`, text: "kein Geld mehr", tone: "bad" });
   if (rep.rounds && rep.rounds.length > 1) {
     const a = rep.rounds[0];
     const z = rep.rounds[rep.rounds.length - 1];
     const changed = rep.rounds.filter((r) => r.changed).length;
-    lines.push(changed ? `Während des Turniers verbessert: Runde 1 ${pct1(a.avgPerYear)} → Runde ${z.round} ${pct1(z.avgPerYear)} pro Jahr (${changed}× neuer Stand gespeichert).` : "Während des Turniers wurde kein besserer Stand gefunden – alter Stand bleibt.");
+    out.push(changed ? { label: "Lernen im Turnier", value: `Runde 1 ${pct1(a.avgPerYear)} → Runde ${z.round} ${pct1(z.avgPerYear)}`, text: `${changed}× neuer Stand gespeichert`, tone: "good" } : { label: "Lernen im Turnier", value: "kein besserer Stand", text: "alter Stand bleibt" });
   }
   if (rep.split) {
     const parts = (["blau", "gruen", "rot"] as const)
-      .map((k) => (rep.split![k] ? `nur ${k === "blau" ? "Blau" : k === "gruen" ? "Grün" : "Rot (Short)"}: Ø ${pct1(rep.split![k]!.avgPerYear)} pro Jahr (${Math.round(rep.split![k]!.avgTrades)} Trades)` : null))
+      .map((k) => (rep.split![k] ? `${k === "blau" ? "Blau" : k === "gruen" ? "Grün" : "Rot (Short)"} ${pa(rep.split![k]!.avgPerYear)} (${Math.round(rep.split![k]!.avgTrades)} Trades)` : null))
       .filter(Boolean);
-    if (parts.length) lines.push(`Getrennt: ${parts.join(" · ")}.`);
+    if (parts.length) out.push({ label: "Getrennt", value: parts.join(" · ") });
   }
   if (rep.opponents?.length) {
     const kept = rep.opponents.filter((o) => o.origin === "champion").length;
     const fresh = rep.opponents.filter((o) => o.origin === "neu").length;
-    lines.push(`Gegner-Varianten: ${kept} Champions haben sich gehalten, ${fresh} Gegner spielen mit einer neuen Variante (ausgewählt auf eigenen Zeiträumen, nicht gegen Blacktrader).`);
+    out.push({ label: "Gegner-Varianten", value: `${kept} Champions · ${fresh} neue Varianten`, text: "ausgewählt auf eigenen Zeiträumen, nicht gegen Blacktrader" });
   }
-  if (rep.b7?.checked) lines.push(`Regelwerk B7: ${rep.b7.checked} neue Lern-Stände im Turnier geprüft, ${rep.b7.rejected} abgelehnt (schlechter oder ausgeschieden).`);
+  if (rep.b7?.checked) out.push({ label: "Regelwerk B7", value: `${rep.b7.checked} geprüft · ${rep.b7.rejected} abgelehnt`, text: "neue Lern-Stände im Turnier (schlechter oder ausgeschieden = abgelehnt)" });
   // Nur vergleichen, wenn die Regeln gleich sind (z. B. nicht 5.000 € gegen 8.000 € Startkapital)
   if (previous && previous.rules?.start === rep.rules.start && previous.rules?.fee === rep.rules.fee) {
     const pb = previous.ranking.find((c) => c.id === "blacktrader");
-    if (pb) lines.push(`Gegenüber der letzten Auswertung: Platz ${pb.rank} → ${bt.rank}, ${pct1(pb.avgPerYear)} → ${pct1(bt.avgPerYear)} pro Jahr.`);
+    if (pb) out.push({ label: "Letzte Auswertung", value: `Platz ${pb.rank} → ${bt.rank}`, text: `${pct1(pb.avgPerYear)} → ${pct1(bt.avgPerYear)} p. a.` });
   }
-  return lines;
+  return out;
+}
+
+/** Auswertung als Sätze (z. B. für Tests und Texte) */
+export function reportLines(rep: TournamentReport, previous?: TournamentReport | null): string[] {
+  return reportItems(rep, previous).map((i) => `${i.label}: ${i.value}${i.text ? ` – ${i.text}` : ""}`);
 }
