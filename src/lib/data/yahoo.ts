@@ -12,8 +12,8 @@ const INTERVAL_MAP: Record<Interval, { interval: string; range: string; aggregat
   "1h": { interval: "60m", range: "1y" },
   "4h": { interval: "60m", range: "2y", aggregate: 4 * 3600 },
   "1d": { interval: "1d", range: "5y" },
-  // Wochenkerzen: so viel Historie, wie die Analyse nutzt (600 Kerzen ≈ 11,5 Jahre, wie im Turnier getestet)
-  "1w": { interval: "1wk", range: "max" },
+  // Wochenkerzen: so viel Historie, wie die Analyse nutzt (600 Kerzen ≈ 11,5 Jahre, wie im Turnier getestet) – 14 Jahre laden
+  "1w": { interval: "1wk", range: "days:5110" },
   "1M": { interval: "1mo", range: "max" },
 };
 
@@ -44,7 +44,10 @@ async function chart(symbol: string, interval: string, range: string): Promise<C
   let lastErr: unknown;
   for (const base of BASES) {
     try {
-      const url = `${base}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}&includePrePost=false&events=div%2Csplit`;
+      // „days:N“ = genauer Zeitraum (bei range=max liefert Yahoo statt Wochen- nur Quartalskerzen)
+      const now = Math.floor(Date.now() / 1000);
+      const span = range.startsWith("days:") ? `period1=${now - Number(range.slice(5)) * 86400}&period2=${now}` : `range=${range}`;
+      const url = `${base}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&${span}&includePrePost=false&events=div%2Csplit`;
       const data = await fetchJson<ChartResponse>(url);
       if (data.chart.error) throw new UpstreamError(`Yahoo: ${data.chart.error.description ?? "Fehler"}`, 404);
       return data;
@@ -75,7 +78,7 @@ export async function yahooCandles(symbol: string, iv: Interval): Promise<Candle
       out.push({ time: t, open: o, high: h, low: l, close: c, volume: q.volume[i] ?? 0 });
     });
     const res = m.aggregate ? aggregateCandles(out, m.aggregate) : out;
-    // Wochenkerzen „max“: nur die letzten 700 zurückgeben (Analyse nutzt 600)
+    // Wochenkerzen: höchstens die letzten 700 zurückgeben (Analyse nutzt 600)
     return iv === "1w" ? res.slice(-700) : res;
   });
 }
