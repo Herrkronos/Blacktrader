@@ -10,7 +10,7 @@ import type { BestEntry, HistEntry } from "@/lib/analysis/bestEntry";
 import { money } from "@/lib/analysis/persona";
 import { haptic } from "@/lib/client/alerts";
 import { hasOpenTrade, openPaperTrade } from "@/lib/client/autotrade";
-import { avgEntry, filledTranches, openLongTermTrade } from "@/lib/client/longterm";
+import { avgEntry, effectiveLevels, filledTranches, openLongTermTrade } from "@/lib/client/longterm";
 import type { LiveStatus } from "@/lib/client/market";
 import type { ScanEntry } from "@/lib/client/scanner";
 import { getData, useAppData } from "@/lib/store/store";
@@ -20,7 +20,7 @@ import { MiniChart } from "./MiniChart";
 import { miniView } from "./miniView";
 import { waveCaption } from "./waveText";
 import { ConfirmSheet } from "./Sheet";
-import { DepotPicker } from "./DepotPicker";
+import { DepotPicker, MarketNote } from "./DepotPicker";
 import { StatusPill } from "./StatusPill";
 
 const RISK_LIMIT = 15; // % Abstand Einstieg–Stop, ab dem "Hohes Risiko" angezeigt wird
@@ -355,7 +355,8 @@ export function AssetCard({
               <DepotPicker />
               <p>{asset.name}: Einstieg in drei Teilen bei</p>
               <p className="num text-sky-200">{lt.tranches.map((t) => money(t, cur)).join(" · ")}</p>
-              <OrderSlip kind={asset.kind} symbol={asset.symbol} name={asset.name} currency={cur} direction="long" entry={lt.zoneTop} tranches={[...lt.tranches]} invalidation={lt.invalidation} targets={[...lt.targets]} />
+              <MarketNote price={lastPrice} top={lt.tranches[0]} cur={cur} />
+              <OrderSlip kind={asset.kind} symbol={asset.symbol} name={asset.name} currency={cur} direction="long" entry={lt.zoneTop} tranches={effectiveLevels([...lt.tranches], lastPrice ?? 0)} invalidation={lt.invalidation} targets={[...lt.targets]} />
               <p className="text-stone-400">
                 Kein fester Stop. Ungültig, wenn ein Schlusskurs unter {money(lt.invalidation, cur)} liegt. Teilausstieg oder Stop gibt es nur, wenn sich die Wellenzählung ändert – du bekommst dann eine Nachricht von Blacktrader.
               </p>
@@ -378,7 +379,8 @@ export function AssetCard({
             <div className="space-y-2">
               <DepotPicker />
               <p>{asset.name}: Nachkauf zu deiner Position im neuen blauen Bereich – eine Order zu 250 € an der Oberkante ({nk.left} von 4 Nachkäufen noch möglich).</p>
-              <OrderSlip kind={asset.kind} symbol={asset.symbol} name={asset.name} currency={cur} direction="long" entry={lt.zoneTop} tranches={[lt.zoneTop]} invalidation={lt.invalidation} targets={[...lt.targets]} budget={250} />
+              <MarketNote price={lastPrice} top={lt.zoneTop} cur={cur} />
+              <OrderSlip kind={asset.kind} symbol={asset.symbol} name={asset.name} currency={cur} direction="long" entry={lt.zoneTop} tranches={effectiveLevels([lt.zoneTop], lastPrice ?? 0)} invalidation={lt.invalidation} targets={[...lt.targets]} budget={250} />
             </div>
           ) : null
         }

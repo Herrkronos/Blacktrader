@@ -70,6 +70,8 @@ export interface Trade {
   closeReason?: "target" | "stop" | "manual" | "cancelled" | "welle5" | "trendbruch" | "invalidiert" | "zaehlung" | "verkauft";
   /** flatex-Depot (1–4), in dem gekauft wurde */
   depot?: number;
+  /** Frühere Stände, bevor der Kauf an flatex angeglichen wurde („Kauf korrigieren“) – der alte Stand bleibt erhalten */
+  corrections?: { at: number; tranches: { price: number; filledAt?: number; qty?: number; eur?: number }[]; stakeEur?: number; entry: number }[];
   /** Gemeinsamer Verkauf mehrerer Käufe desselben Werts: bei flatex EINE Order → Verkaufsgebühr nur beim ersten Kauf */
   sellFeeShared?: boolean;
   /** "longterm" = Langfristiger Einstieg (blau); "core" = alte Kernposition (vor dem Update); sonst Zonen-Trade */

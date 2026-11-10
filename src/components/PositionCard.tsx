@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { money } from "@/lib/analysis/persona";
 import { tradeCurrency } from "@/lib/client/eur";
-import { heldShares, sharesExact, trancheRows } from "@/lib/client/longterm";
+import { correctFill, heldShares, sharesExact, trancheRows } from "@/lib/client/longterm";
 import { investedOf } from "@/lib/client/account";
 import { clearPositionStop, positionSummary, sellPosition, setPositionStop, updateWaitingOrder } from "@/lib/client/position";
 import { eurPerUnit } from "@/lib/fx";
@@ -28,11 +28,11 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
   const s = positionSummary(group, priceNow);
   const unit = first.kind === "crypto" ? first.symbol.replace(/-USD$/, "") : "Stück";
   const [showBuys, setShowBuys] = useState(true);
-  const [sheet, setSheet] = useState<null | "sell" | "stop" | "orders">(null);
+  const [sheet, setSheet] = useState<null | "sell" | "stop" | "orders" | "fix">(null);
   // Jeder Kauf ist bei flatex eine eigene Position (eigenes Depot): erst den Kauf wählen
   const [lots, setLots] = useState<Trade[] | null>(null);
   const [choose, setChoose] = useState<null | "sell" | "stop" | "orders">(null);
-  const openFor = (what: "sell" | "stop" | "orders", sel: Trade[]) => {
+  const openFor = (what: "sell" | "stop" | "orders" | "fix", sel: Trade[]) => {
     setLots(sel);
     setSheet(what);
   };
@@ -103,7 +103,7 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
               <div className="mb-1 flex items-center justify-between font-semibold text-sky-300">
                 <span>
                   {lotName(t, k)} · {eur(rows.reduce((a, x) => a + x.eur, 0))}
-                  <DepotBadge depot={t.depot} />
+                  <DepotBadge depot={t.depot} showMissing />
                 </span>
                 <span className="flex items-center gap-2 font-normal text-stone-400">
                   {new Date(t.openedAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" })}
@@ -181,7 +181,7 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
                 <button key={t.id} disabled={!has} className="flex w-full items-center justify-between rounded-xl bg-white/5 p-3 text-left disabled:opacity-40" onClick={() => (setChoose(null), openFor(choose!, [t]))}>
                   <span>
                     <b>{lotName(t, k)}</b>
-                    <DepotBadge depot={t.depot} />
+                    <DepotBadge depot={t.depot} showMissing />
                     <span className="num block text-[13px] text-stone-400">
                       {choose === "orders" ? `wartend ${eur(ls.reserved)}` : `${qtyStr(heldShares(t))} ${unit} · Einstieg ${ls.avgEur != null ? eur(ls.avgEur) : "–"}`}
                     </span>
@@ -212,6 +212,10 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
               {sheet === "orders" && <LotTabs lots={sel!} active="orders" onTab={setSheet} />}
               {sheet === "orders" && <OrdersForm group={sel!} unit={unit} onDone={() => setSheet(null)} />}
             </Sheet>
+            <Sheet open={sheet === "fix"} onClose={() => setSheet(null)} title={<LotTitle lots={sel!} group={group} name={first.name} lotName={lotName} />}>
+              {sheet === "fix" && <LotTabs lots={sel!} active="fix" onTab={setSheet} />}
+              {sheet === "fix" && sel!.length === 1 && <FixForm t={sel![0]} unit={unit} />}
+            </Sheet>
           </>
         )}
       </div>
@@ -240,13 +244,14 @@ function LotTitle({ lots, group, name, lotName }: { lots: Trade[]; group: Trade[
   return (
     <span>
       {name} · {lotName(t, group.findIndex((x) => x.id === t.id))}
-      <DepotBadge depot={t.depot} />
+      <DepotBadge depot={t.depot} showMissing />
     </span>
   );
 }
 
 /** Reiter Verkaufen / Stop / Orders; bei einem Kauf auch das Depot (nachträglich zuordnen) */
-function LotTabs({ lots, active, onTab }: { lots: Trade[]; active: "sell" | "stop" | "orders"; onTab: (x: "sell" | "stop" | "orders") => void }) {
+type Tab = "sell" | "stop" | "orders" | "fix";
+function LotTabs({ lots, active, onTab }: { lots: Trade[]; active: Tab; onTab: (x: Tab) => void }) {
   const t = lots.length === 1 ? lots[0] : null;
   return (
     <div className="mb-3 space-y-3">
@@ -267,8 +272,60 @@ function LotTabs({ lots, active, onTab }: { lots: Trade[]; active: "sell" | "sto
             {l}
           </button>
         ))}
+        {t && (
+          <button className={`col-span-3 min-h-[40px] rounded-lg text-[14px] ${active === "fix" ? "bg-gold font-semibold text-stone-950" : "bg-white/5 text-stone-300"}`} onClick={() => onTab("fix")}>
+            Kauf korrigieren
+          </button>
+        )}
       </div>
-      {t && <DepotPicker value={t.depot} label="flatex-Depot dieses Kaufs" onChange={(d) => actions.updateTrade(t.id, { depot: d })} />}
+      {t && <DepotPicker value={t.depot} noDefault label="flatex-Depot dieses Kaufs" onChange={(d) => actions.updateTrade(t.id, { depot: d })} />}
+    </div>
+  );
+}
+
+/** Kauf so eintragen, wie flatex ihn ausgeführt hat (der alte Stand wird aufgehoben) */
+function FixForm({ t, unit }: { t: Trade; unit: string }) {
+  const fx = eurPerUnit(tradeCurrency(t)) ?? 1;
+  const rows = trancheRows(t);
+  const filled = rows.map((x, i) => ({ x, i })).filter((r) => r.x.filledAt);
+  return (
+    <div className="space-y-3 text-[15px]">
+      <p className="text-stone-400">Wie bei flatex ausgeführt eintragen. Der bisherige Stand wird gespeichert und bleibt nachvollziehbar.</p>
+      {filled.map(({ x, i }) => (
+        <FixRow key={i} t={t} index={i} priceEur={x.price * fx} qty={x.qty} unit={unit} />
+      ))}
+      {!filled.length && <p className="text-stone-400">Noch kein Teil gekauft – wartende Orders änderst du unter „Orders“.</p>}
+      {!!t.corrections?.length && (
+        <p className="text-[12px] text-stone-500">
+          Korrigiert am {new Date(t.corrections[t.corrections.length - 1].at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })} · vorher Einstieg {money(t.corrections[t.corrections.length - 1].entry, tradeCurrency(t))}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function FixRow({ t, index, priceEur, qty, unit }: { t: Trade; index: number; priceEur: number; qty: number; unit: string }) {
+  const [p, setP] = useState(inputVal(priceEur));
+  const [q, setQ] = useState(inputVal(qty, t.kind === "crypto" ? 4 : 0));
+  const [msg, setMsg] = useState<string | null>(null);
+  return (
+    <div className="space-y-2 rounded-xl bg-white/5 p-3">
+      <div className="text-[14px] text-sky-300">Teil {index + 1} · gekauft</div>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-[13px] text-stone-400">
+          Kaufpreis (€ je Stück)
+          <input className="input num mt-1 w-full text-right" inputMode="decimal" value={p} onChange={(e) => setP(e.target.value)} />
+        </label>
+        <label className="text-[13px] text-stone-400">
+          {unit}
+          <input className="input num mt-1 w-full text-right" inputMode="decimal" value={q} onChange={(e) => setQ(e.target.value)} />
+        </label>
+      </div>
+      <div className="num text-[13px] text-stone-400">Betrag {eur(num(p) * num(q) || 0)}</div>
+      <button className="btn-primary min-h-[44px] w-full" onClick={() => setMsg(correctFill(t, index, num(p), num(q)) ?? "Gespeichert.")}>
+        Speichern
+      </button>
+      {msg && <p className="text-[13px] text-stone-300">{msg}</p>}
     </div>
   );
 }

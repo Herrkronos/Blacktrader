@@ -79,3 +79,26 @@ describe("Getrennte flatex-Depots: jeder Kauf eigene Position", () => {
     expect(getData().trades.find((t) => t.symbol === "ETH")!.depot).toBe(3);
   });
 });
+
+describe("Kauf über dem Kurs und Korrektur", () => {
+  it("Teil über dem Kurs zählt zum Marktpreis; Kauf korrigieren behält den alten Stand", async () => {
+    const L = await import("../src/lib/client/longterm");
+    expect(L.effectiveLevels([105.61], 74.64)).toEqual([74.64]);
+    expect(L.effectiveLevels([76, 68, 60], 74.64)).toEqual([74.64, 68, 60]);
+    const store = new Map<string, string>();
+    const ls = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k), key: (i: number) => [...store.keys()][i] ?? null, get length() { return store.size; } };
+    vi.resetModules();
+    vi.stubGlobal("window", { localStorage: ls, addEventListener: () => {} });
+    const t = { id: "n", strategy: "longterm", status: "open", symbol: "SOL", name: "Solana", kind: "crypto", currency: "EUR", horizon: "long", interval: "1w", direction: "long", stop: 0, targets: [200], source: "manual", fxEntry: 1, partials: [], remaining: 1, nachkauf: true, entry: 105.61, openedAt: 1, stakeEur: 249.99, tranches: [{ price: 105.61, filledAt: 1, qty: 2.3668, eur: 249.99 }] };
+    store.set("black-ship-trading-analyst:v1", JSON.stringify({ version: 1, watchlist: [], settings: {}, signals: {}, migrations: ["v2-manual-journal", "v3-blacktrader"], trades: [t] }));
+    const { getData } = await import("../src/lib/store/store");
+    const L2 = await import("../src/lib/client/longterm");
+    expect(L2.correctFill(getData().trades[0], 0, 74.9, 3.34)).toBeNull();
+    const n = getData().trades[0];
+    expect(n.tranches![0]).toMatchObject({ price: 74.9, qty: 3.34 });
+    expect(n.tranches![0].eur).toBeCloseTo(250.166, 3);
+    expect(n.entry).toBeCloseTo(74.9, 6);
+    expect(n.corrections![0].entry).toBe(105.61);
+    expect(n.corrections![0].tranches[0].price).toBe(105.61);
+  });
+});

@@ -15,6 +15,23 @@ import type { Candle, Horizon, Interval, ResolvedAsset } from "../types";
 
 type Asset = Pick<ResolvedAsset, "symbol" | "name" | "kind" | "binanceSymbol" | "yahooSymbol" | "currency" | "isin" | "exchange" | "coingeckoId">;
 
+/** Teil-Orders über dem aktuellen Kurs werden sofort zum Marktpreis ausgeführt → mit dem Kurs rechnen */
+export const effectiveLevels = (levels: number[], price: number) => levels.map((p) => (price > 0 && price < p ? price : p));
+
+/** Kauf so eintragen, wie flatex ihn ausgeführt hat (Preis in €, Stück). Der alte Stand bleibt in `corrections`. */
+export function correctFill(t: Trade, index: number, priceEur: number, qty: number): string | null {
+  const tr = t.tranches ?? [];
+  if (!tr[index]?.filledAt) return "Dieser Teil ist noch nicht gekauft.";
+  if (!(priceEur > 0) || !(qty > 0)) return "Kaufpreis und Stück eingeben.";
+  const fx = eurPerUnit(tradeCurrency(t)) ?? 1;
+  const tranches = tr.map((x, i) => (i === index ? { ...x, price: priceEur / fx, qty, eur: qty * priceEur } : x));
+  const filled = tranches.filter((x) => x.filledAt);
+  const entry = filled.every((x) => x.qty) ? filled.reduce((a, x) => a + x.price * x.qty!, 0) / filled.reduce((a, x) => a + x.qty!, 0) : t.entry;
+  const stakeEur = tranches.reduce((a, x) => a + (x.eur ?? 0), 0) || t.stakeEur;
+  actions.updateTrade(t.id, { tranches, entry, stakeEur, corrections: [...(t.corrections ?? []), { at: Date.now(), tranches: tr, stakeEur: t.stakeEur, entry: t.entry }] });
+  return null;
+}
+
 export const openLongTerm = (symbol: string) => getData().trades.find((t) => t.strategy === "longterm" && t.status !== "closed" && t.symbol === symbol);
 
 /**
@@ -28,7 +45,8 @@ export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizo
     if (!nk) noTwice();
     return false;
   }
-  const levels = nk ? [z.zoneTop] : [...z.tranches];
+  // Liegt der Kurs schon unter einem Teil, kauft flatex diesen sofort zum Marktpreis – Zettel und Buchung mit dem Kurs
+  const levels = effectiveLevels(nk ? [z.zoneTop] : [...z.tranches], price);
   const slip = makeOrderSlip({ kind: asset.kind, symbol: asset.symbol, name: asset.name, currency: asset.currency, direction: "long", entry: z.zoneTop, tranches: levels, budget: nk ? ADD.stake : undefined });
   const amount = slip.totalEur > 0 ? slip.totalEur : undefined;
   if (!canAfford(getData().trades, getData().accountResets, amount)) {
