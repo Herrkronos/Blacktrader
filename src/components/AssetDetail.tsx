@@ -15,7 +15,7 @@ import { SCAN_PRESETS } from "@/lib/client/presets";
 import { useScan } from "@/lib/client/scanner";
 import { actions, useAppData } from "@/lib/store/store";
 import { HORIZON_LABEL, type Candle, type Fundamentals, type Horizon, type Interval, type NewsItem, type ResolvedAsset } from "@/lib/types";
-import { Commentary, LongTermCard, FundamentalsPanel, NewsPanel, SignalCard, VolumePanel, WavePanel } from "./AnalysisPanels";
+import { Commentary, LongTermCard, LongTermSignalCard, FundamentalsPanel, NewsPanel, SignalCard, VolumePanel, WavePanel } from "./AnalysisPanels";
 import type { ChartEntry } from "./chartZones";
 import { PriceChart } from "./PriceChart";
 import { StatusPill } from "./StatusPill";
@@ -210,6 +210,7 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
       {analysis ? (
         <>
           {showTradePlan && <SignalCard a={analysis} onTrade={() => setTrade(true)} shortAllowed={scan.ctx.spBear === true} />}
+          {!showTradePlan && <LongTermSignalCard a={analysis} zone={ltZone} currency={currency} />}
           {showLongTerm && <LongTermCard
             zone={ltZone}
             currency={currency}

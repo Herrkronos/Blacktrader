@@ -211,3 +211,18 @@ describe("Haupt- und Alternativszenario", () => {
     expect(scenarioShare({ best: undefined, alternative: undefined, contested: false })).toBeNull();
   });
 });
+
+describe("Punkte für blauen Langfrist-Kauf", () => {
+  it("besseres Chance/Risiko und Trendfortsetzung geben mehr Punkte; Notfall zieht ab", async () => {
+    const { longTermScore } = await import("../src/lib/analysis/longtermScore");
+    const zone = (inv: number, context: "neuer Trend" | "Trendfortsetzung") => ({ zoneTop: 100, zoneBottom: 80, invalidation: inv, targets: [160, 250], context }) as never;
+    const a = (contested = false) => ({ weights: { elliott: 60, fundamental: 20, volume: 20 }, fundamental: { score: 50 }, volume: { score: 50 }, elliott: { contested } }) as never;
+    const good = longTermScore(zone(80, "Trendfortsetzung"), a()); // Chance 60 %, Risiko 20 % → CRV 3
+    const weak = longTermScore(zone(40, "neuer Trend"), a()); // Risiko 60 % → CRV 1
+    expect(good.crv).toBeCloseTo(3, 6);
+    expect(good.chart).toBe(97);
+    expect(weak.chart).toBe(53);
+    expect(good.total).toBeGreaterThan(weak.total);
+    expect(longTermScore(zone(80, "Trendfortsetzung"), a(true)).chart).toBe(82);
+  });
+});

@@ -7,6 +7,7 @@ import type { WaveCount } from "@/lib/analysis/elliott";
 import { compactNumber } from "@/lib/analysis/fundamental";
 import { fmtPrice, money } from "@/lib/analysis/persona";
 import { longTermText, type LongTermZone } from "@/lib/analysis/longterm";
+import { longTermScore } from "@/lib/analysis/longtermScore";
 import { SIGNAL_LABEL } from "@/lib/analysis/score";
 import { api } from "@/lib/client/api";
 import { useAppData } from "@/lib/store/store";
@@ -375,6 +376,51 @@ export function VolumePanel({ a }: { a: AnalysisResult }) {
 }
 
 /** Langfristiger Einstieg (blau): Bereich, Invalidierung, Ziele und ggf. die eigene Position. */
+/** Punkte-System für einen blauen Langfrist-Einstieg (statt des grünen Trade-Signals, wenn Blau das Hauptszenario ist). */
+export function LongTermSignalCard({ a, zone, currency }: { a: AnalysisResult; zone: LongTermZone | null | undefined; currency?: string }) {
+  const expert = useAppData((d) => d.settings.expertMode);
+  if (!zone || zone.status === "invalidiert") return null;
+  const s = longTermScore(zone, a);
+  const fmt = (n: number) => money(n, currency);
+  const verdict = s.total >= 65 ? "guter langfristiger Kauf" : s.total >= 55 ? "solider langfristiger Kauf" : s.total >= 45 ? "durchschnittlich" : "schwach";
+  return (
+    <div className="panel core-bg space-y-3 p-4">
+      <div className="flex items-center justify-between">
+        <span className="panel-title">
+          Signal <span className="badge-core ml-1 align-middle">Langfristiger Kauf</span>
+        </span>
+        <span className="text-[14px] text-sky-200">{verdict}</span>
+      </div>
+      <div className="flex items-end gap-2">
+        <span className="num font-display text-4xl text-gold-light">{s.total}</span>
+        <span className="pb-1 text-sm text-stone-400">/ 100 Punkte (über 50 = guter langfristiger Kauf)</span>
+      </div>
+      <ScoreBar value={s.chart} label={expert ? `Langfrist-Struktur (Chance/Risiko ${s.crv.toFixed(1).replace(".", ",")}, ${zone.context})` : "Chartbild (langfristig)"} />
+      <ScoreBar value={s.fundamental} label="Firmenzahlen & Nachrichten" />
+      <ScoreBar value={s.volume} label="Kaufinteresse" />
+      <ScenarioBar elliott={a.elliott} />
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+        <dt className="text-stone-400">Richtung</dt>
+        <dd className="text-sky-200">Langfristig steigend (Welle 3)</dd>
+        <dt className="text-stone-400">Einstiegsbereich</dt>
+        <dd className="num">
+          {fmt(zone.zoneTop)} – {fmt(zone.zoneBottom)}
+        </dd>
+        <dt className="text-stone-400">Ungültig unter</dt>
+        <dd className="num text-down">
+          {fmt(zone.invalidation)} <span className="text-xs text-stone-400">(−{s.riskPct.toFixed(0)} %, kein fester Stop)</span>
+        </dd>
+        <dt className="text-stone-400">Ziele</dt>
+        <dd className="num text-up">
+          {fmt(zone.targets[0])} / {fmt(zone.targets[1])}
+        </dd>
+        <dt className="text-stone-400">Chance : Risiko</dt>
+        <dd className={`num ${s.crv >= 1.5 ? "text-up" : "text-down"}`}>{s.crv.toFixed(2)} : 1</dd>
+      </dl>
+    </div>
+  );
+}
+
 export function LongTermCard({ zone, currency, onTake, position }: { zone: LongTermZone | null | undefined; currency?: string; onTake?: () => void; position?: string | null }) {
   if (!zone || zone.status === "invalidiert") return null;
   const fmt = (n: number) => money(n, currency);
