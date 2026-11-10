@@ -10,7 +10,8 @@ import { IconSearch } from "./Icons";
 
 const kindLabel = (c: ResolvedAsset) => (c.kind === "crypto" ? "Krypto" : c.kind === "commodity" ? "Rohstoff" : c.exchange ?? "Aktie/ETF");
 
-export function AddAsset() {
+/** `onPick`: statt zur Watchlist hinzufügen den gewählten Wert zurückgeben (z. B. Buy & Hold). */
+export function AddAsset({ onPick, actionLabel = "+ Hinzufügen" }: { onPick?: (c: ResolvedAsset) => void; actionLabel?: string } = {}) {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +52,12 @@ export function AddAsset() {
   }, [q, isinState]);
 
   const choose = (c: ResolvedAsset) => {
+    if (onPick) {
+      onPick(c);
+      setCandidates([]);
+      setQ("");
+      return;
+    }
     actions.addWatch(c);
     if (getData().settings.haptics) haptic(20);
     setAdded(c.name);
@@ -93,7 +100,7 @@ export function AddAsset() {
                     {c.symbol} · {kindLabel(c)}
                   </span>
                 </span>
-                <span className="text-[13px] text-gold">+ Hinzufügen</span>
+                <span className="text-[13px] text-gold">{actionLabel}</span>
               </button>
             </li>
           ))}

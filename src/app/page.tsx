@@ -7,7 +7,7 @@ import { useAssetSheet } from "@/components/AssetSheet";
 import { EquityChart } from "@/components/EquityChart";
 import { IconChevron } from "@/components/Icons";
 import { money } from "@/lib/analysis/persona";
-import { performance } from "@/lib/analysis/stats";
+import { ACCOUNT, computeAccount } from "@/lib/client/account";
 import { tradeReturnEur } from "@/lib/client/eur";
 import { instrumentKey, useMarket } from "@/lib/client/market";
 import { isChance, isTopChance, potential, runScan, useScan } from "@/lib/client/scanner";
@@ -43,8 +43,15 @@ export default function Uebersicht() {
     runScan();
   }, []);
 
-  const closed = trades.filter((t) => t.status === "closed" && t.returnPct != null);
-  const stats = performance(closed.map((t) => ({ returnPct: t.returnPct!, closedAt: t.closedAt! })));
+  const resets = useAppData((d) => d.accountResets);
+  // Blacktrader-Konto (wie im Depot): 8.000 € Start, 500 € je Trade, Gebühren und KESt
+  const acc = useMemo(() => {
+    const r = computeAccount(trades, resets, (t) => {
+      const p = live[instrumentKey(t)]?.price ?? t.lastPrice;
+      return p ? tradeReturnEur(t, p) : null;
+    });
+    return r[r.length - 1];
+  }, [trades, resets, live]);
   const openTrades = trades.filter((t) => t.status !== "closed");
   const openPerf = openTrades
     .filter((t) => t.status === "open")
@@ -77,14 +84,16 @@ export default function Uebersicht() {
   return (
     <div className="space-y-6">
       <section className="card p-4">
-        <div className="label">Gesamtperformance (abgeschlossene Papier-Trades)</div>
-        <div className={`num text-[36px] font-semibold leading-tight ${stats.totalReturn >= 0 ? "text-up" : "text-down"}`}>{signed(stats.totalReturn)}</div>
+        <div className="label">Blacktrader-Konto (Start {ACCOUNT.start.toLocaleString("de-DE")} €)</div>
+        <div className={`num text-[36px] font-semibold leading-tight ${acc.profitPct >= 0 ? "text-up" : "text-down"}`}>{signed(acc.profitPct)}</div>
         <div className="mt-0.5 text-[14px] text-stone-400">
-          {stats.trades} abgeschlossen · Trefferquote {(stats.winRate * 100).toFixed(0)} %{openPerf.length ? ` · offene Trades jetzt ${signed(openPerf.reduce((a, b) => a + b, 0) / openPerf.length)}` : ""}
+          Kontostand {money(acc.equity, "EUR")} · {acc.closed} abgeschlossen{acc.closed ? ` · Trefferquote ${Math.round((acc.wins / acc.closed) * 100)} %` : ""}
+          {openPerf.length ? ` · ${openPerf.length} offen` : ""}
+          {acc.broke ? " · Konto leer – im Depot neu starten" : ""}
         </div>
-        {stats.curve.length > 0 ? (
+        {acc.curve.length > 0 ? (
           <div className="mt-2">
-            <EquityChart data={stats.curve} height={90} minimal />
+            <EquityChart data={acc.curve} height={90} minimal />
           </div>
         ) : (
           <p className="mt-2 text-[14px] text-stone-500">Sobald du Papier-Trades übernimmst und diese geschlossen werden, erscheint hier deine Kurve.</p>

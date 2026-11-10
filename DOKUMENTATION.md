@@ -253,3 +253,10 @@ Chronologischer Test Sep 2022 – Nov 2026, 5.000 € Startkapital, nach 27,5 % 
 
 Turnier in Euro (10 Teilnehmer, 50 Versuche à 5 Jahre, KESt sofort je Gewinn, Standard-Einstellung, Ø pro Jahr): **1. Blacktrader +21,8 %** (Ø 176 Trades, Ø Gewinn nach KESt 9.293 €) · 2. MACD-Bot +20,9 % · 3. Kaufen & Halten +19,4 % · 4. Trendfolger +16,8 % · 5. Ausbruchs-Bot +16,7 % · 6. Momentum-Bot +16,1 % · 7. Zufalls-Bot +10,6 % · 8. KI-Bot +8,4 % · 9. RSI-Bot +4,0 % · 10. Bollinger-Bot −0,3 %. Niemand ist ausgeschieden. Hinweis: Der Euro fiel im Zeitraum von 1,38 auf 1,12 Dollar – Dollar-Werte bekamen dadurch Rückenwind, am meisten bei langen Haltedauern.
 **Ehrlicher Hinweis:** überwiegend steigende Märkte; der Vorsprung vor Zufall ist im chronologischen Test klein. Bei Krypto ist der Gewinnfaktor trotz höherer Quote schwach.
+
+
+## Depot
+
+**Blacktrader-Konto:** 8.000 € Startkapital, 500 € je Trade, 7,90 € Gebühr je Order (Langfrist: je ausgeführter Teil-Order), 27,5 % KESt sofort auf Gewinne mit Verlustausgleich im selben Jahr. Angezeigt werden Kontostand, Gewinn in € und % vom Start, freies und gebundenes Geld, Gebühren, KESt, Trefferquote. Reicht das freie Geld nicht für 500 € + Gebühr, kann kein neuer Trade übernommen werden (Hinweis in der App; „Alle übernehmen“ in den Chancen nimmt nur so viele, wie das Geld reicht). Ohne Geld und ohne offene Position ist das Konto leer: Neustart mit 8.000 €, die alten Trades bleiben als frühere Runde sichtbar. Das Turnier rechnet zur Vergleichbarkeit weiter mit 5.000 €.
+
+**Buy & Hold:** eigene Käufe von Aktien und ETFs, unabhängig von Blacktrader. Eingabe je Kauf/Verkauf: Datum, Preis je Stück in €, Stückzahl, Gebühr (Standard 7,90 €). Verkauft wird nur, wenn du es einträgst. Kurs jetzt: Börsenkurs in Euro (jede Minute). KESt geschätzt wie in Österreich: gleitender Durchschnittspreis, Gebühren nicht abziehbar, Gewinne und Verluste eines Jahres verrechnet.

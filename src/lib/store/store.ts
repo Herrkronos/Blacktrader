@@ -6,6 +6,7 @@ import { DEFAULT_WEIGHTS, type SignalLevel, type Weights } from "../analysis/sco
 import { HORIZON_DEFAULT_INTERVAL, type Horizon, type Interval, type ResolvedAsset } from "../types";
 import { eurPerUnit } from "../fx";
 import { tradeCurrency } from "../client/eur";
+import type { Holding, HoldingTx } from "../client/holdings";
 
 export interface WatchItem extends ResolvedAsset {
   id: string;
@@ -116,6 +117,10 @@ export interface AppData {
   migrations: string[];
   /** Hinweis nach der Migration (einmalig anzeigen) */
   migrationNotice?: { removedAuto: number; unverified: number; backupKey: string; at: number } | null;
+  /** Blacktrader-Konto: Zeitpunkte, an denen nach einer Pleite neu gestartet wurde (Millisekunden) */
+  accountResets: number[];
+  /** Buy & Hold: eigene Käufe (Aktien, ETFs) */
+  holdings: Holding[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -133,7 +138,7 @@ export const DEFAULT_SETTINGS: Settings = {
   keys: { finnhub: "", alphavantage: "", openfigi: "", llm: "", llmProvider: "anthropic", llmModel: "" },
 };
 
-const DEFAULT_DATA: AppData = { version: 1, watchlist: [], trades: [], settings: DEFAULT_SETTINGS, signals: {}, migrations: [], migrationNotice: null };
+const DEFAULT_DATA: AppData = { version: 1, watchlist: [], trades: [], settings: DEFAULT_SETTINGS, signals: {}, migrations: [], migrationNotice: null, accountResets: [], holdings: [] };
 export const BACKUP_PREFIX = "black-ship-trading-analyst:backup:";
 const KEY = "black-ship-trading-analyst:v1";
 
@@ -161,6 +166,8 @@ function sanitize(raw: unknown): AppData {
     signals: d.signals && typeof d.signals === "object" ? d.signals : {},
     migrations: Array.isArray(d.migrations) ? d.migrations : [],
     migrationNotice: d.migrationNotice ?? null,
+    accountResets: Array.isArray(d.accountResets) ? d.accountResets.filter((x) => Number.isFinite(x)) : [],
+    holdings: Array.isArray(d.holdings) ? d.holdings.filter((h) => h && h.id && h.symbol).map((h) => ({ ...h, txs: Array.isArray(h.txs) ? h.txs.filter((t) => t && t.qty > 0 && t.price > 0) : [] })) : [],
     settings: {
       ...DEFAULT_SETTINGS,
       ...s,
@@ -358,6 +365,28 @@ export const actions = {
     const parsed = sanitize(JSON.parse(raw));
     // Wiederhergestellt: Trades gelten als selbst übernommen, Migration nicht erneut ausführen
     update(() => ({ ...parsed, trades: parsed.trades.map((t) => ({ ...t, source: "manual" as const, unverified: false })), migrations: [...new Set([...parsed.migrations, "v2-manual-journal", "v3-blacktrader"])], migrationNotice: null }));
+  },
+  /** Blacktrader-Konto nach einer Pleite mit 8.000 € neu starten (alte Trades bleiben als frühere Runde) */
+  resetAccount() {
+    update((d) => ({ ...d, accountResets: [...d.accountResets, Date.now()] }));
+  },
+  addHolding(h: Omit<Holding, "id" | "txs">, tx: Omit<HoldingTx, "id">) {
+    update((d) => {
+      const found = d.holdings.find((x) => x.kind === h.kind && x.symbol === h.symbol);
+      const t = { ...tx, id: uid() };
+      return found
+        ? { ...d, holdings: d.holdings.map((x) => (x === found ? { ...x, txs: [...x.txs, t] } : x)) }
+        : { ...d, holdings: [...d.holdings, { ...h, id: uid(), txs: [t] }] };
+    });
+  },
+  addHoldingTx(id: string, tx: Omit<HoldingTx, "id">) {
+    update((d) => ({ ...d, holdings: d.holdings.map((x) => (x.id === id ? { ...x, txs: [...x.txs, { ...tx, id: uid() }] } : x)) }));
+  },
+  removeHoldingTx(id: string, txId: string) {
+    update((d) => ({ ...d, holdings: d.holdings.map((x) => (x.id === id ? { ...x, txs: x.txs.filter((t) => t.id !== txId) } : x)).filter((x) => x.txs.length > 0) }));
+  },
+  removeHolding(id: string) {
+    update((d) => ({ ...d, holdings: d.holdings.filter((x) => x.id !== id) }));
   },
   removeTrade(id: string) {
     update((d) => ({ ...d, trades: d.trades.filter((t) => t.id !== id) }));

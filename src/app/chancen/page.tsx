@@ -2,6 +2,7 @@
 // Chancen: aus dem Markt (S&P 100, DAX 40, ATX, 20 Krypto, 10 Rohstoffe) die 20 Einstiege mit dem größten Potenzial –
 // Blau (langfristig), Grün (Trade auf steigende Kurse) oder Rot (Short). Werte nur aus der Watchlist kommen nicht hierher.
 // Gelb (kein Einstieg) erscheint nur in der Watchlist.
+import { canAfford, freeCash, noMoney } from "@/lib/client/account";
 import { useEffect, useMemo, useState } from "react";
 import { signalStrength } from "@/components/AssetCard";
 import { EntryTile } from "@/components/EntryTile";
@@ -130,12 +131,20 @@ export default function ChancenPage() {
         onClose={() => setConfirmAll(false)}
         onConfirm={() => {
           let n = 0;
-          for (const t of tradable) if (openPaperTrade(t.asset, t.res)) n++;
+          // Nur so viele, wie das Geld reicht (500 € + Gebühr je Trade) – dann einmal Bescheid geben
+          for (const t of tradable) {
+            const d = getData();
+            if (!canAfford(d.trades, d.accountResets)) {
+              noMoney(freeCash(d.trades, d.accountResets));
+              break;
+            }
+            if (openPaperTrade(t.asset, t.res)) n++;
+          }
           if (n && getData().settings.haptics) haptic(30);
         }}
         text={
           <p>
-            Es werden {tradable.length} Papier-Trades ins Depot übernommen (bereits laufende werden übersprungen). Einstieg, Stop und Ziele kommen unverändert von Blacktrader.
+            Es werden bis zu {tradable.length} Papier-Trades ins Depot übernommen – so viele, wie das Geld im Konto reicht (bereits laufende werden übersprungen). Einstieg, Stop und Ziele kommen unverändert von Blacktrader.
           </p>
         }
       />

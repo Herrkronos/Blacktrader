@@ -7,12 +7,14 @@ import { Legend } from "@/components/Legend";
 import { Sheet } from "@/components/Sheet";
 import { tradeCurrency, tradeReturnEur } from "@/lib/client/eur";
 import { money } from "@/lib/analysis/persona";
-import { performance } from "@/lib/analysis/stats";
 import { eurPerUnit } from "@/lib/fx";
 import { instrumentKey, useMarket } from "@/lib/client/market";
 import { actions, useAppData, type Trade } from "@/lib/store/store";
 import { HORIZON_LABEL } from "@/lib/types";
+import { ACCOUNT, computeAccount } from "@/lib/client/account";
+import { BuyHold } from "@/components/BuyHold";
 
+const eur = (x: number, sign = false) => `${sign && x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const signed = (x: number, d = 2) => `${x >= 0 ? "+" : ""}${x.toFixed(d).replace(".", ",")} %`;
 
 function Tile({ label, value, tone }: { label: string; value: string; tone?: "up" | "down" }) {
@@ -132,7 +134,37 @@ function TradeCard({ t, price, onAction }: { t: Trade; price?: number; onAction:
 }
 
 export default function DepotPage() {
+  const [tab, setTab] = useState<"bt" | "bh">("bt");
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-[22px] text-gold">Depot</h1>
+          <p className="text-[15px] text-stone-400">{tab === "bt" ? `Blacktrader-Konto: ${ACCOUNT.start.toLocaleString("de-DE")} € Start, ${ACCOUNT.stake} € je Trade.` : "Deine eigenen Käufe – verkauft wird nur, wenn du es willst."}</p>
+        </div>
+        {tab === "bt" && <Legend />}
+      </div>
+      <div className="grid grid-cols-2 gap-1 rounded-xl bg-white/5 p-1">
+        {(
+          [
+            ["bt", "Blacktrader"],
+            ["bh", "Buy & Hold"],
+          ] as const
+        ).map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} className={`min-h-[44px] rounded-lg text-[15px] ${tab === k ? "bg-white/10 font-semibold text-gold-light" : "text-stone-400"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {tab === "bt" ? <BlacktraderDepot /> : <BuyHold />}
+    </div>
+  );
+}
+
+function BlacktraderDepot() {
   const trades = useAppData((d) => d.trades);
+  const resets = useAppData((d) => d.accountResets);
+  const [showOld, setShowOld] = useState(false);
   const notice = useAppData((d) => d.migrationNotice);
   const { live } = useMarket();
   // Signalart statt Zeitraum: Blau (langfristig / hochgestuft) · Grün (Trade) · Rot (Short). Der Zeitraum steht nur noch als Info am Trade.
@@ -140,37 +172,31 @@ export default function DepotPage() {
   const [action, setAction] = useState<Trade | null>(null);
   const [exitPrice, setExitPrice] = useState("");
 
+  const rounds = useMemo(
+    () =>
+      computeAccount(trades, resets, (t) => {
+        const p = live[instrumentKey(t)]?.price ?? t.lastPrice;
+        return p ? tradeReturnEur(t, p) : null;
+      }),
+    [trades, resets, live],
+  );
+  const acc = rounds[rounds.length - 1];
+  const roundStart = acc.from;
   const filtered = useMemo(
     () =>
       trades
+        .filter((t) => showOld || t.openedAt >= roundStart)
         .filter((t) => {
           if (art === "all") return true;
           const blue = t.strategy === "core" || t.strategy === "longterm" || !!t.promotedAt;
           return art === "blau" ? blue : art === "gruen" ? !blue && t.direction === "long" : !blue && t.direction === "short";
         })
         .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0) || b.openedAt - a.openedAt),
-    [trades, art],
+    [trades, art, showOld, roundStart],
   );
-  const closed = filtered.filter((t) => t.status === "closed" && t.returnPct != null);
-  const stats = performance(closed.map((t) => ({ returnPct: t.returnPct!, closedAt: t.closedAt! })));
-  const openRets = filtered
-    .filter((t) => t.status === "open")
-    .map((t) => {
-      const p = live[instrumentKey(t)]?.price ?? t.lastPrice;
-      return p ? tradeReturnEur(t, p) : null;
-    })
-    .filter((x): x is number => x != null);
-  const openAvg = openRets.length ? openRets.reduce((a, b) => a + b, 0) / openRets.length : null;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-[22px] text-gold">Depot</h1>
-          <p className="text-[15px] text-stone-400">Nur Trades, die du selbst übernommen hast.</p>
-        </div>
-        <Legend />
-      </div>
 
       {notice && (notice.removedAuto > 0 || notice.unverified > 0) && (
         <div className="card edge-wait space-y-2 p-4 text-[15px]">
@@ -201,18 +227,57 @@ export default function DepotPage() {
         </div>
       )}
 
+      {acc.broke ? (
+        <div className="card edge-short space-y-2 p-4 text-[15px]">
+          <p className="font-semibold text-red-300">Konto leer</p>
+          <p className="text-stone-300">Kein Geld mehr für einen Trade und keine offene Position. Du kannst mit {ACCOUNT.start.toLocaleString("de-DE")} € neu starten – die bisherigen Trades bleiben als Runde {acc.round} sichtbar.</p>
+          <button className="btn-primary w-full" onClick={() => actions.resetAccount()}>
+            Neu starten mit {ACCOUNT.start.toLocaleString("de-DE")} €
+          </button>
+        </div>
+      ) : (
+        acc.blocked && (
+          <div className="card edge-wait p-4 text-[15px] text-amber-100">
+            Zu wenig freies Geld für einen neuen Trade ({ACCOUNT.stake} € + {ACCOUNT.fee.toFixed(2).replace(".", ",")} € Gebühr). Neue Trades gehen erst wieder, wenn ein offener Trade schließt.
+          </div>
+        )
+      )}
+
+      <div className="card p-4">
+        <div className="label">Kontostand{rounds.length > 1 ? ` · Runde ${acc.round}` : ""}</div>
+        <div className="num text-[30px] font-semibold leading-tight text-stone-50">{eur(acc.equity)}</div>
+        <div className={`num text-[16px] ${acc.profit >= 0 ? "text-up" : "text-down"}`}>
+          {eur(acc.profit, true)} ({signed(acc.profitPct)}) seit Start mit {ACCOUNT.start.toLocaleString("de-DE")} €
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-2">
-        <Tile label="Gesamt (abgeschlossen)" value={signed(stats.totalReturn)} tone={stats.totalReturn >= 0 ? "up" : "down"} />
-        <Tile label="Offene Trades jetzt" value={openAvg == null ? "–" : signed(openAvg)} tone={openAvg == null ? undefined : openAvg >= 0 ? "up" : "down"} />
-        <Tile label="Trefferquote" value={stats.trades ? `${(stats.winRate * 100).toFixed(0)} % (${stats.wins}/${stats.trades})` : "–"} />
-        <Tile label="Ø Gewinn / Verlust" value={stats.trades ? `${stats.avgWin.toFixed(1).replace(".", ",")} / ${stats.avgLoss.toFixed(1).replace(".", ",")} %` : "–"} />
-        <Tile label="Max. Rückgang" value={!stats.trades ? "–" : stats.maxDrawdown < 0 ? signed(stats.maxDrawdown, 1) : "0,0 %"} tone={stats.maxDrawdown < 0 ? "down" : undefined} />
-        <Tile label="Gewinnfaktor" value={!stats.trades ? "–" : stats.profitFactor == null ? "∞" : stats.profitFactor.toFixed(2).replace(".", ",")} />
+        <Tile label="Frei verfügbar" value={eur(acc.cash)} />
+        <Tile label="In Trades gebunden" value={`${eur(acc.invested)} (${acc.open})`} />
+        <Tile label="Gebühren bezahlt" value={eur(acc.fees)} />
+        <Tile label="KESt bezahlt" value={eur(acc.tax)} />
+        <Tile label="Trefferquote" value={acc.closed ? `${Math.round((acc.wins / acc.closed) * 100)} % (${acc.wins}/${acc.closed})` : "–"} />
+        <Tile label="Abgeschlossene Trades" value={String(acc.closed)} />
       </div>
       <div className="card p-3">
-        <div className="label mb-1">Kumulierte Rendite</div>
-        <EquityChart data={stats.curve} height={180} />
+        <div className="label mb-1">Gewinn in % vom Startkapital (nach Gebühren und KESt)</div>
+        <EquityChart data={acc.curve} height={180} />
       </div>
+      {rounds.length > 1 && (
+        <div className="card space-y-1 p-3 text-[14px]">
+          <div className="label">Frühere Runden</div>
+          {rounds.slice(0, -1).map((r) => (
+            <div key={r.round} className="flex justify-between text-stone-300">
+              <span>
+                Runde {r.round} ({new Date(r.from || r.curve[0]?.time || Date.now()).toLocaleDateString("de-DE")} – {r.to ? new Date(r.to).toLocaleDateString("de-DE") : ""})
+              </span>
+              <span className={`num ${r.profit >= 0 ? "text-up" : "text-down"}`}>{eur(r.profit, true)}</span>
+            </div>
+          ))}
+          <button className="chip mt-1 border-white/10 text-stone-300" onClick={() => setShowOld(!showOld)}>
+            {showOld ? "Nur aktuelle Runde zeigen" : "Trades früherer Runden zeigen"}
+          </button>
+        </div>
+      )}
 
       <div className="-mx-3 flex gap-2 overflow-x-auto px-3 [scrollbar-width:none]">
         {(

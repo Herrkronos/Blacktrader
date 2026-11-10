@@ -7,6 +7,7 @@ import { analyzeElliott } from "../analysis/elliott";
 import { assessLongTerm, blendedReturn, type LongTermAction, type LongTermZone } from "../analysis/longterm";
 import { money } from "../analysis/persona";
 import { actions, getData, type Trade } from "../store/store";
+import { canAfford, freeCash, noMoney } from "./account";
 import type { Candle, Horizon, Interval, ResolvedAsset } from "../types";
 
 type Asset = Pick<ResolvedAsset, "symbol" | "name" | "kind" | "binanceSymbol" | "yahooSymbol" | "currency" | "isin" | "exchange" | "coingeckoId">;
@@ -16,6 +17,10 @@ export const openLongTerm = (symbol: string) => getData().trades.find((t) => t.s
 /** Langfristigen Einstieg übernehmen: drei wartende Teil-Orders im Bereich. */
 export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizon, interval: Interval, price: number): boolean {
   if (openLongTerm(asset.symbol)) return false;
+  if (!canAfford(getData().trades, getData().accountResets)) {
+    noMoney(freeCash(getData().trades, getData().accountResets));
+    return false;
+  }
   const now = Date.now();
   const tranches = z.tranches.map((p) => ({ price: p, filledAt: price <= p ? now : undefined }));
   const filled = tranches.filter((t) => t.filledAt);
