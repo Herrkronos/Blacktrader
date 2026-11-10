@@ -8,7 +8,6 @@ import { sessionUniverse, type CellKey, type SeriesSpec } from "./universe";
 import { advanceWF, compactWF, finalizeWF, focusLabel, improvementCheck, initWF, keyOf, oosMetrics, protocolOf, type ProtocolEntry, type SavedPoint, type WFPhase, type WFResult, type WFState } from "./walkforward";
 
 export const DURATIONS = [
-  { label: "15 Min", ms: 15 * 60e3 },
   { label: "30 Min", ms: 30 * 60e3 },
   { label: "1 Std", ms: 60 * 60e3 },
   { label: "3 Std", ms: 3 * 3600e3 },
@@ -136,9 +135,10 @@ export async function runSession(st: SessionState, io: SessionIO): Promise<Sessi
       },
     });
     st.saved ??= {};
+    // Lernzeit: nur das Lernen selbst zählt – Prüfen und Speichern (Live-Prüfung, Regelwerk B7) laufen obendrauf
+    const spent = now() - t0;
     // Sofort speichern, sobald ein besserer Stand auf unbekannten Daten feststeht
     await trySave(st, cell, io);
-    const spent = now() - t0;
     st.elapsedMs += spent;
     st.cellElapsedMs += spent;
     const base = oosMetrics(st.wf, Array.from({ length: st.wf.folds }, () => st.wf!.baseKey));

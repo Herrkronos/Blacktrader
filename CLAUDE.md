@@ -19,3 +19,4 @@
 - Live-Kontrolle: Stufe 1 Warnung ab 100 Ergebnissen (liveCheck.ts, Erwartung Grün 50,3 / Blau 59,7 / Rot 19,1 %), Stufe 2 Live-Veto beim Lernen ab 500 (session.ts LIVE_LEARN_MIN, Worker liveVeto). Blacktrader lernt NICHT aus Nutzer-Handlungen.
 - Turnier: 15 Gegner (opponents.ts: 5 Bots, 5 Bank-Analysten aus Yahoo-Einstufungen ab 2012/nur US, 5 Strategien), alle mit fairen Parameter-Bereichen; Champion + neue Varianten, Auswahl auf eigenen 3-Jahres-Zeiträumen, nie gegen Blacktrader abgestimmt; Champions in der Auswertung (opponents) → nächstes Turnier.
 - Regelwerk (/regelwerk, rulebook.ts): A nie selbst ändern, B1–B7 (B7 = Turnier-Prüfung b7Check/tournamentVeto), C1 kleine Schritte (stepLimitErrors), C2 Versions-Hinweis, C3 Rückweg-Vorschlag bei Live-Warnung, C4 Live-Prüfung.
+- Lernzeit ab 30 Min (15 Min entfernt, Wunsch des Nutzers); immer 5 Runden; Prüfen/Speichern (Live-Veto, B7) zählt NICHT zur Lernzeit, läuft obendrauf.

@@ -130,8 +130,14 @@ self.onmessage = async (e: MessageEvent) => {
         const with_ = (p: typeof cand) => (k: AssetKind, h: Horizon) => (k === kind && h === horizon ? p : cur(k, h));
         const bk = `${cell}|${JSON.stringify(baseParams)}|${JSON.stringify(["medium", "long"].map((h) => cur(kind, h as Horizon)))}`;
         const prevText = s.detail;
+        const prevT = s.tournament;
+        if (prevT) {
+          s.tournament = { ...prevT, text: `${prevT.text.split(":")[0]}: Regelwerk B7 prüft neuen Stand im Turnier` };
+          post(true);
+        }
         const r = await b7Check(prepRef, kind, with_(baseParams), with_(cand), { ...tio, onProgress: () => post() }, b7Base.get(bk));
         s.detail = prevText;
+        if (prevT) s.tournament = prevT;
         if (!r) return null;
         if (r.basePool) b7Base.set(bk, r.basePool);
         return r.veto;
