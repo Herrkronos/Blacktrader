@@ -9,6 +9,7 @@ import { lastPrice, potential, type ScanEntry } from "@/lib/client/scanner";
 import type { ResolvedAsset } from "@/lib/types";
 import { COLOR_LABEL, signalStrength } from "./AssetCard";
 import { MiniChart } from "./MiniChart";
+import { miniView } from "./miniView";
 import { StatusPill } from "./StatusPill";
 
 const EDGE = { blau: "edge-core", gruen: "edge-trade", rot: "edge-short", gelb: "edge-wait" } as const;
@@ -32,12 +33,13 @@ export function EntryTile({ asset, entry, price, changePct, status, source, char
   // Chart: Kerzen des aktuellen Einstiegs, Wellenzählung, Zone (grün/blau), alte Einstiege grau
   const view = (() => {
     if (!entry || !b) return null;
-    if ((b.color === "gruen" || short) && b.horizon) return { candles: entry.horizons[b.horizon]?.candles ?? [], best: b.res?.elliott.best };
-    if (blue && entry.ltCandles?.length) return { candles: entry.ltCandles, best: undefined };
-    const h = entry.horizons.medium ?? entry.horizons.long ?? entry.horizons.short;
-    return h ? { candles: h.candles, best: h.res.elliott.best } : null;
+    // Alle Charts in Tageskerzen; Wellenpunkte aus Wochenkerzen auf die passende Tageskerze gelegt
+    if ((b.color === "gruen" || short) && b.horizon) return miniView(entry, b.res?.elliott.best, b.horizon, entry.horizons[b.horizon]?.candles ?? []);
+    if (blue) return miniView(entry, undefined, entry.ltHorizon, entry.ltCandles ?? []);
+    const h = (["medium", "long", "short"] as const).find((x) => entry.horizons[x]);
+    return h ? miniView(entry, entry.horizons[h]!.res.elliott.best, h, entry.horizons[h]!.candles) : null;
   })();
-  const lt = blue && b?.lt ? { start: b.lt.start, high: b.lt.high, zoneTop: b.lt.zoneTop, zoneBottom: b.lt.zoneBottom, invalidation: b.lt.invalidation, target: b.lt.targets[0] } : null;
+  const lt = view?.longterm ?? null;
 
   return (
     <button onClick={onOpen} className={`card w-full p-3.5 text-left ${b ? EDGE[b.color] : ""}`}>
@@ -68,7 +70,7 @@ export function EntryTile({ asset, entry, price, changePct, status, source, char
 
       {chart && view && view.candles.length > 4 && (
         <div className="mt-2">
-          <MiniChart candles={view.candles} plan={b?.color === "gruen" || short ? b?.plan : null} best={view.best} longterm={lt} past={(entry?.history.past ?? []).slice(0, 10)} height={84} />
+          <MiniChart candles={view.candles} plan={b?.color === "gruen" || short ? b?.plan : null} best={view.best} longterm={lt} past={(entry?.history.past ?? []).slice(0, 10)} height={84} from={view.from} />
         </div>
       )}
 
@@ -80,7 +82,7 @@ export function EntryTile({ asset, entry, price, changePct, status, source, char
           </span>
           <span className="text-red-300">
             <span className="label block">{blue ? "Ungültig unter" : "Stop"}</span>
-            {money((blue ? b.invalidation : b.stop)!, cur)}
+            {(blue ? b.invalidation : b.stop)! > 0 ? money((blue ? b.invalidation : b.stop)!, cur) : "keiner"}
           </span>
           <span className="text-emerald-300">
             <span className="label block">Ziel</span>

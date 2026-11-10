@@ -425,7 +425,7 @@ export function LongTermSignalCard({ a, zone, currency }: { a: AnalysisResult; z
         </dd>
         <dt className="text-stone-400">Ungültig unter</dt>
         <dd className="num text-down">
-          {fmt(zone.invalidation)} <span className="text-xs text-stone-400">(−{s.riskPct.toFixed(0)} %, kein fester Stop)</span>
+          {zone.invalidation > 0 ? fmt(zone.invalidation) : "keiner"} <span className="text-xs text-stone-400">({zone.invalidation > 0 ? `−${s.riskPct.toFixed(0)} %, ` : ""}kein fester Stop)</span>
         </dd>
         <dt className="text-stone-400">Ziele</dt>
         <dd className="num text-up">

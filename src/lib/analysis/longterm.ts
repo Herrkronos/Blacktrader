@@ -47,6 +47,8 @@ export interface LongTermZone {
 
 /** Sucht den aktuellen Langfrist-Einstiegsbereich. null = keiner (z. B. kein Aufwärtstrend oder Bereich verpasst). */
 export function findLongTermZone(candles: Candle[], o: LongTermOptions = DEFAULT_LONGTERM): LongTermZone | null {
+  // Wie im Test (runLongTermEcho, Turnier): höchstens die letzten 600 Kerzen
+  if (candles.length > 600) candles = candles.slice(-600);
   if (candles.length < 150) return null;
   const a = atr(candles)[candles.length - 1];
   if (!a) return null;

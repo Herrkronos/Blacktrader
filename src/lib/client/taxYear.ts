@@ -1,7 +1,7 @@
 // Steuer-Jahresübersicht (Schätzung, Österreich): KESt 27,5 % auf Kursgewinne und Dividenden, Gewinne und Verluste
 // eines Kalenderjahres werden verrechnet – über Blacktrader-Trades und Buy & Hold zusammen (wie bei einem Depot).
 import type { Trade } from "../store/store";
-import { countsForAccount, stakeOf } from "./account";
+import { countsForAccount, investedOf } from "./account";
 import { summarizeHolding, type Holding } from "./holdings";
 
 export const KEST = 0.275;
@@ -23,7 +23,7 @@ export function taxYears(trades: Trade[], holdings: Holding[]): TaxYear[] {
   const row = (k: string) => (y[k] ??= { year: k, trades: 0, sold: 0, dividends: 0, total: 0, kest: 0 });
   for (const t of trades) {
     if (!countsForAccount(t) || t.status !== "closed" || t.closedAt == null || t.returnPct == null) continue;
-    row(String(new Date(t.closedAt).getFullYear())).trades += (stakeOf(t) * t.returnPct) / 100;
+    row(String(new Date(t.closedAt).getFullYear())).trades += (investedOf(t) * t.returnPct) / 100;
   }
   for (const h of holdings) {
     const s = summarizeHolding(h);

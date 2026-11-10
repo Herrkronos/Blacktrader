@@ -23,8 +23,29 @@ export interface MiniPast {
   zoneBottom?: number;
 }
 
-export function MiniChart({ candles, plan, best, height = 92, showWaves = true, longterm, past = [] }: { candles: Candle[]; plan?: TradePlan | null; best?: WaveCount; height?: number; showWaves?: boolean; longterm?: MiniLongTerm | null; past?: MiniPast[] }) {
-  const data = candles.slice(longterm ? -150 : -90);
+/** Höchstens so viele Punkte im Kursverlauf (lange Zeiträume werden ausgedünnt – Hochs/Tiefs bleiben erhalten) */
+const MAX_POINTS = 240;
+
+function pickWindow(candles: Candle[], from: number | undefined, min: number): Candle[] {
+  let data = candles.slice(-min);
+  if (from != null) {
+    // ab etwas vor dem ersten Wellenpunkt, damit die ganze Zählung zu sehen ist
+    const i = candles.findIndex((c) => c.time >= from);
+    if (i >= 0) data = candles.slice(Math.max(0, Math.min(i - 5, candles.length - min)));
+  }
+  if (data.length <= MAX_POINTS) return data;
+  // Ausdünnen: je Gruppe eine Kerze mit Hoch, Tief und letztem Schlusskurs
+  const step = Math.ceil(data.length / MAX_POINTS);
+  const out: Candle[] = [];
+  for (let i = 0; i < data.length; i += step) {
+    const g = data.slice(i, i + step);
+    out.push({ ...g[g.length - 1], open: g[0].open, high: Math.max(...g.map((x) => x.high)), low: Math.min(...g.map((x) => x.low)) });
+  }
+  return out;
+}
+
+export function MiniChart({ candles, plan, best, height = 92, showWaves = true, longterm, past = [], from }: { candles: Candle[]; plan?: TradePlan | null; best?: WaveCount; height?: number; showWaves?: boolean; longterm?: MiniLongTerm | null; past?: MiniPast[]; from?: number }) {
+  const data = pickWindow(candles, from, longterm ? 150 : 90);
   if (data.length < 5) return <div style={{ height }} className="rounded-xl bg-white/5" />;
   const W = 320;
   const H = height;

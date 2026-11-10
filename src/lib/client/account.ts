@@ -25,6 +25,16 @@ export function countsForAccount(t: Trade): boolean {
 const buyOrders = (t: Trade) => (t.strategy === "longterm" ? Math.max(1, (t.tranches ?? []).filter((x) => x.filledAt).length) : 1);
 /** Anzahl Verkaufs-Orders (Teilausstiege + Schlussverkauf) */
 const sellOrders = (t: Trade) => (t.partials?.length ?? 0) + 1;
+/**
+ * Tatsächlich gekaufter Betrag (Gewinn/Verlust nur darauf). Blau in drei Teilen: nur die ausgeführten Teile –
+ * der Rest der 500 € ist für die wartenden Limit-Orders reserviert und bringt weder Gewinn noch Verlust.
+ */
+export function investedOf(t: Trade): number {
+  const st = stakeOf(t);
+  if (t.strategy !== "longterm" || !t.tranches?.length) return st;
+  const n = t.tranches.length;
+  return t.tranches.reduce((a, x) => a + (x.filledAt ? x.eur ?? st / n : 0), 0);
+}
 
 export interface RoundSummary {
   round: number;
@@ -86,7 +96,7 @@ export function computeRound(trades: Trade[], from: number, to: number | undefin
     open.delete(t);
     const r = t.returnPct ?? 0;
     const st = stakeOf(t);
-    const g = (st * r) / 100;
+    const g = (investedOf(t) * r) / 100;
     const f = sellOrders(t) * ACCOUNT.fee;
     cash += st + g - f;
     fees += f;
@@ -101,7 +111,7 @@ export function computeRound(trades: Trade[], from: number, to: number | undefin
   let openValue = 0;
   for (const t of open) {
     const r = t.status === "open" ? openReturnEur(t) : null;
-    openValue += stakeOf(t) * (1 + (r ?? 0) / 100);
+    openValue += stakeOf(t) + (investedOf(t) * (r ?? 0)) / 100;
   }
   const equity = cash + openValue;
   const invested = [...open].reduce((a, x) => a + stakeOf(x), 0);

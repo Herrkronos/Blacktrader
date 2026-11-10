@@ -120,3 +120,14 @@ describe("KESt mit Verlusttopf (wie bei der österreichischen Bank)", () => {
     expect(r.tax).toBeCloseTo(0, 6);
   });
 });
+
+describe("Blau in drei Teilen: Gewinn/Verlust nur auf den gekauften Teil", () => {
+  it("1 von 3 Teilen gekauft: Verlust nur auf diesen Teil, der Rest der Reservierung kommt zurück", async () => {
+    const { computeAccount, investedOf } = await import("../src/lib/client/account");
+    const t = { id: "b", strategy: "longterm", status: "closed", symbol: "IFX.DE", name: "Infineon", kind: "stock", horizon: "long", direction: "long", entry: 56, stop: 0, targets: [88], openedAt: Date.UTC(2026, 0, 2), closedAt: Date.UTC(2026, 1, 2), closeReason: "invalidiert", returnPct: -20, stakeEur: 482, tranches: [{ price: 56, filledAt: 1, qty: 3, eur: 168 }, { price: 49, qty: 3, eur: 147 }, { price: 42, qty: 4, eur: 167 }], partials: [], source: "manual" } as never;
+    expect(investedOf(t)).toBe(168);
+    const r = computeAccount([t], [], () => null).at(-1)!;
+    // 8.000 − 1 Kauf-Gebühr − 1 Verkaufs-Gebühr − 20 % von 168 €
+    expect(r.equity).toBeCloseTo(8000 - 7.9 - 7.9 - 33.6, 6);
+  });
+});

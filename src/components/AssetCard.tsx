@@ -17,6 +17,7 @@ import { getData, useAppData } from "@/lib/store/store";
 import { HORIZON_LABEL, type Candle, type Horizon, type ResolvedAsset } from "@/lib/types";
 import { ScenarioBar } from "./ScenarioBar";
 import { MiniChart } from "./MiniChart";
+import { miniView } from "./miniView";
 import { waveCaption } from "./waveText";
 import { ConfirmSheet } from "./Sheet";
 import { StatusPill } from "./StatusPill";
@@ -43,12 +44,12 @@ const PAST_LABEL = { erledigt: "erledigt", ungültig: "ungültig", abgelöst: "a
 /** Kerzengröße des Zeitraums */
 const intervalFor = (h?: Horizon) => getData().settings.intervals[h ?? "long"];
 
-function viewCandles(e: ScanEntry): { candles: Candle[]; res: AnalysisResult | null } {
+function viewCandles(e: ScanEntry): { candles: Candle[]; res: AnalysisResult | null; h?: Horizon } {
   const b = e.best;
-  if ((b.color === "gruen" || b.color === "rot") && b.horizon) return { candles: e.horizons[b.horizon]?.candles ?? [], res: b.res ?? null };
-  if (b.color === "blau" && e.ltCandles?.length) return { candles: e.ltCandles, res: e.horizons[e.ltHorizon ?? "long"]?.res ?? null };
+  if ((b.color === "gruen" || b.color === "rot") && b.horizon) return { candles: e.horizons[b.horizon]?.candles ?? [], res: b.res ?? null, h: b.horizon };
+  if (b.color === "blau" && e.ltCandles?.length) return { candles: e.ltCandles, res: e.horizons[e.ltHorizon ?? "long"]?.res ?? null, h: e.ltHorizon ?? "long" };
   const h = (["medium", "long", "short"] as Horizon[]).find((x) => e.horizons[x]);
-  return { candles: h ? e.horizons[h]!.candles : e.ltCandles ?? [], res: h ? e.horizons[h]!.res : null };
+  return { candles: h ? e.horizons[h]!.candles : e.ltCandles ?? [], res: h ? e.horizons[h]!.res : null, h };
 }
 
 function PastRow({ p, cur }: { p: HistEntry; cur?: string }) {
@@ -97,7 +98,7 @@ export function AssetCard({
   const expert = useAppData((d) => d.settings.expertMode);
   const cur = displayCurrency(asset, asset.currency ?? entry?.asset.currency);
   const b = entry?.best;
-  const view = entry ? viewCandles(entry) : { candles: [], res: null };
+  const view: ReturnType<typeof viewCandles> = entry ? viewCandles(entry) : { candles: [], res: null };
   const res = view.res;
   const lastPrice = price ?? res?.price ?? entry?.ltCandles?.at(-1)?.close;
   const plan = b?.color === "gruen" || b?.color === "rot" ? b.plan ?? null : null;
@@ -117,8 +118,10 @@ export function AssetCard({
   const past = (entry?.history.past ?? []).slice(0, 10);
   const openHorizon: Horizon = b?.horizon ?? entry?.ltHorizon ?? "medium";
 
-  const ltMini = lt ? { start: lt.start, high: lt.high, zoneTop: lt.zoneTop, zoneBottom: lt.zoneBottom, invalidation: lt.invalidation, target: lt.targets[0] } : null;
-  const wave = lt ? undefined : res?.elliott.best;
+  // Alle Charts in Tageskerzen (Wellenpunkte aus Wochenkerzen auf die passende Tageskerze gelegt)
+  const mv = entry ? miniView(entry, lt ? undefined : res?.elliott.best, lt ? entry.ltHorizon : b?.horizon ?? view.h, view.candles) : null;
+  const ltMini = mv?.longterm ?? null;
+  const wave = mv?.best;
 
   const myLine = (() => {
     if (!myLong) return null;
@@ -153,7 +156,7 @@ export function AssetCard({
       ) : (
         <>
           {/* Zeile 2: Chart mit aktuellem Einstieg, alte Einstiege grau */}
-          <MiniChart candles={view.candles} plan={plan} best={wave} longterm={ltMini} past={past} />
+          <MiniChart candles={mv?.candles ?? view.candles} plan={plan} best={wave} longterm={ltMini} past={past} from={mv?.from} />
           {lt ? (
             <p className="-mt-1 text-[13px] text-sky-200">Welle 1 fertig – erwartet: Rücksetzer (Welle 2) in den blauen Bereich, danach Welle 3.</p>
           ) : (
@@ -188,7 +191,7 @@ export function AssetCard({
               </div>
               <div className="rounded-xl bg-white/5 px-1 py-2">
                 <div className="label">Ungültig unter</div>
-                <div className="num text-[15px] font-semibold text-red-300">{money(lt.invalidation, cur)}</div>
+                <div className="num text-[15px] font-semibold text-red-300">{lt.invalidation > 0 ? money(lt.invalidation, cur) : "keiner"}</div>
                 <div className="text-[13px] text-stone-400">kein fester Stop</div>
               </div>
               <div className="rounded-xl bg-white/5 px-1 py-2">

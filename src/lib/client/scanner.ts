@@ -42,6 +42,8 @@ export interface ScanEntry {
   /** Finanz-Prüfung (nur Aktien mit geladenen Firmenzahlen): hohe Schulden und Geld verbrennen/Verluste/Umsatzeinbruch */
   financeWeak?: boolean;
   financeReason?: string;
+  /** Tageskerzen (bis ca. 5 Jahre) – alle Charts zeigen Tageskerzen, gerechnet wird weiter auf Tag + Woche */
+  daily?: Candle[];
 }
 
 export interface ScanState {
@@ -134,7 +136,8 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   const byAsset = new Map<string, Omit<ScanEntry, "best" | "history"> & { full: Partial<Record<Horizon, Candle[]>> }>();
   let done = 0;
   let failed = 0;
-  await pool(jobs, 6, async ({ asset: a0, horizon }) => {
+  // Kursdaten: 12 Abfragen gleichzeitig (vorher 6 – die Suche wartete fast nur auf das Netz; Rechnung unverändert)
+  await pool(jobs, 12, async ({ asset: a0, horizon }) => {
     const key = assetKey(a0);
     const entry = byAsset.get(key) ?? { asset: a0, horizons: {}, longterm: null, full: {} };
     byAsset.set(key, entry);
@@ -179,7 +182,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
     .slice(0, 40);
   const enrich = prelim.flatMap(({ e }) => (Object.entries(e.horizons) as [Horizon, HorizonResult][]).filter(([, v]) => v && v.res.decision.level !== "neutral").map(([h]) => ({ e, h })));
   let done2 = 0;
-  await pool(enrich, 6, async ({ e, h }) => {
+  await pool(enrich, 10, async ({ e, h }) => {
     try {
       const c = e.full[h];
       if (c) {
@@ -195,7 +198,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   // Finanz-Prüfung für Aktien: die aussichtsreichsten Markt-Werte und alle eigenen (Watchlist, Depot, Buy & Hold)
   const finance = new Map<string, { weak: boolean; reason?: string }>();
   const finAssets = [...new Map([...prelim.map(({ e }) => e.asset), ...[...byAsset.values()].filter((e) => personal.has(assetKey(e.asset))).map((e) => e.asset)].filter((a) => a.kind === "stock").map((a) => [assetKey(a), a])).values()];
-  await pool(finAssets, 6, async (a) => {
+  await pool(finAssets, 10, async (a) => {
     try {
       finance.set(assetKey(a), financeCheck((await api.fundamentals(a)).fundamentals));
     } catch {
@@ -233,7 +236,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
       history = recordEntry(key, best, []);
     }
     const fin = finance.get(key);
-    return { ...e, best, history, financeWeak: fin?.weak || undefined, financeReason: fin?.reason };
+    return { ...e, best, history, financeWeak: fin?.weak || undefined, financeReason: fin?.reason, daily: full.medium };
   });
   emit({ busy: false, at: Date.now(), entries, checked: jobs.length, failed, ctx });
   try {

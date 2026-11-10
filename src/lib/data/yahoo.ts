@@ -12,7 +12,8 @@ const INTERVAL_MAP: Record<Interval, { interval: string; range: string; aggregat
   "1h": { interval: "60m", range: "1y" },
   "4h": { interval: "60m", range: "2y", aggregate: 4 * 3600 },
   "1d": { interval: "1d", range: "5y" },
-  "1w": { interval: "1wk", range: "10y" },
+  // Wochenkerzen: so viel Historie, wie die Analyse nutzt (600 Kerzen ≈ 11,5 Jahre, wie im Turnier getestet)
+  "1w": { interval: "1wk", range: "max" },
   "1M": { interval: "1mo", range: "max" },
 };
 
@@ -73,7 +74,9 @@ export async function yahooCandles(symbol: string, iv: Interval): Promise<Candle
       if (o == null || h == null || l == null || c == null) return;
       out.push({ time: t, open: o, high: h, low: l, close: c, volume: q.volume[i] ?? 0 });
     });
-    return m.aggregate ? aggregateCandles(out, m.aggregate) : out;
+    const res = m.aggregate ? aggregateCandles(out, m.aggregate) : out;
+    // Wochenkerzen „max“: nur die letzten 700 zurückgeben (Analyse nutzt 600)
+    return iv === "1w" ? res.slice(-700) : res;
   });
 }
 

@@ -8,6 +8,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { analyze } from "@/lib/analysis/analyze";
 import { findLongTermZone } from "@/lib/analysis/longterm";
+import { INTERVAL_SECONDS, snapCount } from "@/lib/analysis/snapPivots";
 import { openLongTerm, openLongTermTrade } from "@/lib/client/longterm";
 import { money } from "@/lib/analysis/persona";
 import { api } from "@/lib/client/api";
@@ -16,7 +17,7 @@ import { useLive } from "@/lib/client/market";
 import { SCAN_PRESETS } from "@/lib/client/presets";
 import { useScan } from "@/lib/client/scanner";
 import { actions, useAppData } from "@/lib/store/store";
-import { HORIZON_LABEL, type Candle, type Fundamentals, type Horizon, type Interval, type NewsItem, type ResolvedAsset } from "@/lib/types";
+import { type Candle, type Fundamentals, type Horizon, type Interval, type NewsItem, type ResolvedAsset } from "@/lib/types";
 import { Commentary, LongTermCard, LongTermSignalCard, FundamentalsPanel, NewsPanel, SignalCard, VolumePanel, WavePanel } from "./AnalysisPanels";
 import type { ChartEntry } from "./chartZones";
 import { PriceChart } from "./PriceChart";
@@ -68,6 +69,25 @@ export function AssetDetailView({ asset, initialHorizon, hideTake = false }: { a
     setLoading(true);
     load();
     const t = setInterval(load, interval === "5m" || interval === "15m" ? 60e3 : 300e3);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [asset.symbol, asset.kind, interval]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Anzeige immer in Tageskerzen (gerechnet wird weiter auf den Kerzen des Zeitraums, z. B. Woche)
+  // Tageskerzen aus der Suche sofort nutzen (kein Warten), danach frisch laden
+  const [dayRaw, setDayRaw] = useState<Candle[]>(() => best?.daily ?? []);
+  useEffect(() => {
+    if (interval === "1d") return;
+    let cancelled = false;
+    const load = () =>
+      api
+        .candles(asset, "1d", 60e3)
+        .then((r) => !cancelled && setDayRaw(r.candles))
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 300e3);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -154,6 +174,26 @@ export function AssetDetailView({ asset, initialHorizon, hideTake = false }: { a
     }
     return out;
   }, [best, chartCandles, analysis, ltZone]);
+  // Anzeige: Tageskerzen (mit Live-Kurs); Wellenpunkte und Zonen-Beginn auf die passende Tageskerze legen
+  const dayCandles = useMemo(() => {
+    if (interval === "1d") return chartCandles;
+    if (!dayRaw.length) return [];
+    const last = dayRaw[dayRaw.length - 1];
+    if (!live?.price || Math.abs(live.price - last.close) / last.close > 0.2) return dayRaw;
+    return [...dayRaw.slice(0, -1), { ...last, close: live.price, high: Math.max(last.high, live.price), low: Math.min(last.low, live.price) }];
+  }, [interval, chartCandles, dayRaw, live?.price]);
+  const span = INTERVAL_SECONDS[interval] ?? 86400;
+  const shownBest = useMemo(() => snapCount(analysis?.elliott.best, dayCandles, span), [analysis, dayCandles, span]);
+  const shownAlt = useMemo(() => snapCount(analysis?.elliott.alternative, dayCandles, span), [analysis, dayCandles, span]);
+  const shownEntries = useMemo(() => {
+    if (!dayCandles.length || interval === "1d") return chartEntries;
+    const at = (t: number) => {
+      const i = dayCandles.findIndex((c) => c.time >= t);
+      return i < 0 ? dayCandles[dayCandles.length - 1].time : dayCandles[i].time;
+    };
+    return chartEntries.map((e) => ({ ...e, from: at(e.from), to: e.to != null ? at(e.to) : e.to }));
+  }, [chartEntries, dayCandles, interval]);
+
   // Nur das Hauptszenario zeigen: ist der aktuelle Einstieg blau (langfristig), keinen grünen Trade-Plan darunter –
   // und umgekehrt. Ohne Scan-Ergebnis bleibt alles sichtbar.
   const mainColor = best?.best.color;
@@ -191,23 +231,21 @@ export function AssetDetailView({ asset, initialHorizon, hideTake = false }: { a
         </span>
         <input type="checkbox" className="h-6 w-6 accent-[#C9A24A]" checked={settings.expertMode} onChange={(e) => actions.setSettings({ expertMode: e.target.checked })} />
       </label>
-      <p className="ls-hide text-[13px] text-stone-400">
-        Blacktrader zeigt den Zeitraum des aktuellen Einstiegs: {HORIZON_LABEL[horizon]} ({interval}).
-      </p>
+      <p className="ls-hide text-[13px] text-stone-400">Chart in Tageskerzen.</p>
 
       <div className="card chart-wrap overflow-hidden p-1">
         {error && <p className="p-3 text-[15px] text-red-300">Kursdaten nicht verfügbar: {error}</p>}
-        {loading && candles.length === 0 && !error && <p className="p-3 text-[15px] text-stone-400">Lade Kerzen …</p>}
-        {candles.length > 0 && (
+        {(loading || !dayCandles.length) && !error && <p className="p-3 text-[15px] text-stone-400">Lade Kerzen …</p>}
+        {dayCandles.length > 0 && (
           <PriceChart
-            candles={chartCandles}
-            best={analysis?.elliott.best}
-            alternative={analysis?.elliott.alternative}
+            candles={dayCandles}
+            best={shownBest}
+            alternative={shownAlt}
             plan={showTradePlan && (settings.expertMode || analysis?.decision.level !== "neutral") ? analysis?.plan : null}
             showAlternative={settings.expertMode}
             simple={!settings.expertMode}
             height={typeof window !== "undefined" && window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches ? Math.max(240, window.innerHeight - 110) : 360}
-            entries={chartEntries}
+            entries={shownEntries}
             fmt={fmtPrice}
             currency={currency}
           />
