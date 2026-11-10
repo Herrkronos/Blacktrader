@@ -42,7 +42,7 @@ export const api = {
   resolve: (q: string) => get<{ candidates: ResolvedAsset[] }>(`/api/resolve?${qs({ q })}`, true),
   candles: (a: Instrument, interval: Interval, ttl = 30e3) =>
     memoized(`c:${a.binanceSymbol}:${a.yahooSymbol}:${interval}`, ttl, () =>
-      get<{ candles: Candle[]; source: string; delayed: boolean }>(`/api/candles?${qs({ binance: a.binanceSymbol, yahoo: a.yahooSymbol, interval })}`),
+      get<{ candles: Candle[]; source: string; delayed: boolean; currency?: string }>(`/api/candles?${qs({ binance: a.binanceSymbol, yahoo: a.yahooSymbol, interval })}`),
     ),
   quote: (a: Instrument) => get<Quote>(`/api/quote?${qs({ binance: a.binanceSymbol, yahoo: a.yahooSymbol })}`),
   fundamentals: (a: Instrument) =>

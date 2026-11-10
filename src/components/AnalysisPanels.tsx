@@ -1,4 +1,5 @@
 "use client";
+import { ScenarioBar } from "./ScenarioBar";
 import { useState } from "react";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AnalysisResult } from "@/lib/analysis/analyze";
@@ -36,6 +37,7 @@ export function SignalCard({ a, onTrade, shortAllowed = true }: { a: AnalysisRes
       <ScoreBar value={a.elliott.score} label={expert ? `Elliott (${Math.round((w.elliott / sum) * 100)} %)` : "Chartbild"} />
       <ScoreBar value={a.fundamental.score} label={expert ? `Fundamental/News (${Math.round((w.fundamental / sum) * 100)} %)` : "Firmenzahlen & Nachrichten"} />
       <ScoreBar value={a.volume.score} label={expert ? `Volumen/RSI (${Math.round((w.volume / sum) * 100)} %)` : "Kaufinteresse"} />
+      <ScenarioBar elliott={a.elliott} />
       {expert && a.decision.vetoes.length > 0 && (
         <div className="rounded-lg border border-gold/20 bg-black/40 p-2 text-xs text-stone-300">
           Roh-Signal „{SIGNAL_LABEL[a.decision.rawLevel]}“ neutralisiert: {a.decision.vetoes.join("; ")}.

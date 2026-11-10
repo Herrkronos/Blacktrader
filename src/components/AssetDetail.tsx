@@ -147,6 +147,11 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
     }
     return out;
   }, [best, chartCandles, analysis, ltZone]);
+  // Nur das Hauptszenario zeigen: ist der aktuelle Einstieg blau (langfristig), keinen grünen Trade-Plan darunter –
+  // und umgekehrt. Ohne Scan-Ergebnis bleibt alles sichtbar.
+  const mainColor = best?.best.color;
+  const showTradePlan = mainColor !== "blau";
+  const showLongTerm = mainColor == null || mainColor === "blau";
   const fmtPrice = useMemo(() => (n: number) => money(n, currency), [currency]);
 
   return (
@@ -185,7 +190,7 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
             candles={chartCandles}
             best={analysis?.elliott.best}
             alternative={analysis?.elliott.alternative}
-            plan={settings.expertMode || analysis?.decision.level !== "neutral" ? analysis?.plan : null}
+            plan={showTradePlan && (settings.expertMode || analysis?.decision.level !== "neutral") ? analysis?.plan : null}
             showAlternative={settings.expertMode}
             simple={!settings.expertMode}
             height={typeof window !== "undefined" && window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches ? Math.max(240, window.innerHeight - 110) : 360}
@@ -204,14 +209,14 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
 
       {analysis ? (
         <>
-          <SignalCard a={analysis} onTrade={() => setTrade(true)} shortAllowed={scan.ctx.spBear === true} />
-          <LongTermCard
+          {showTradePlan && <SignalCard a={analysis} onTrade={() => setTrade(true)} shortAllowed={scan.ctx.spBear === true} />}
+          {showLongTerm && <LongTermCard
             zone={ltZone}
             currency={currency}
             position={myLt ? (filledTranches(myLt).length ? `Deine Position: ${filledTranches(myLt).length} von 3 Teilen, Ø ${avgEntry(myLt).toFixed(2)}${myLt.stop ? `, Stop ${myLt.stop.toFixed(2)}` : ", kein Stop"}.` : "Deine Teil-Orders warten im Bereich.") : null}
             onTake={ltZone && !myLt && !openLongTerm(asset.symbol) ? () => openLongTermTrade(asset, ltZone, horizon, interval, chartCandles[chartCandles.length - 1]?.close ?? ltZone.zoneTop) : undefined}
-          />
-          <Commentary a={analysis} item={asset} />
+          />}
+          {showTradePlan && <Commentary a={analysis} item={asset} />}
           <FundamentalsPanel a={analysis} f={fundamentals} note={fundNote} kind={asset.kind} />
           <NewsPanel news={news} score={analysis.fundamental.newsScore} />
           <details className="card p-4" open={settings.expertMode}>

@@ -19,6 +19,8 @@ export function setFxRates(r: Partial<Record<string, number>>) {
 /** Wert von 1 Einheit in Euro (null = unbekannt) */
 export function eurPerUnit(currency?: string | null): number | null {
   if (!currency || currency === "EUR") return 1;
+  // London notiert oft in Pence (GBp/GBX)
+  if (currency === "GBp" || currency === "GBX") return rates.GBP != null ? rates.GBP / 100 : null;
   return rates[currency] ?? (USD_LIKE.has(currency) ? rates.USD ?? null : null);
 }
 

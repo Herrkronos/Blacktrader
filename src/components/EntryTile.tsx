@@ -15,7 +15,7 @@ const BADGE = { blau: "badge-core", gruen: "badge-trade", rot: "badge-short", ge
 
 export function EntryTile({ asset, entry, price, changePct, status, source, chart = false, showChance = false, onOpen }: { asset: ResolvedAsset; entry?: ScanEntry; price?: number; changePct?: number; status?: LiveStatus; source?: string; chart?: boolean; showChance?: boolean; onOpen: () => void }) {
   const b = entry?.best;
-  const cur = asset.currency;
+  const cur = asset.currency ?? entry?.asset.currency;
   const p = price ?? (entry ? lastPrice(entry) : undefined);
   const short = b?.color === "rot";
   // Abstand zur Zone: Kauf – Kurs fällt bis zur Oberkante; Short – Kurs steigt bis zur Unterkante

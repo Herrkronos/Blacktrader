@@ -55,6 +55,9 @@ async function chart(symbol: string, interval: string, range: string): Promise<C
   throw lastErr;
 }
 
+/** Handelswährung je Yahoo-Symbol (aus den Kursdaten gemerkt) */
+export const yahooCurrency = new Map<string, string>();
+
 export async function yahooCandles(symbol: string, iv: Interval): Promise<Candle[]> {
   const m = INTERVAL_MAP[iv];
   const ttl = iv === "5m" ? 30e3 : iv === "15m" ? 60e3 : iv === "1h" || iv === "4h" ? 120e3 : iv === "1d" ? 300e3 : 3600e3;
@@ -62,6 +65,7 @@ export async function yahooCandles(symbol: string, iv: Interval): Promise<Candle
     const data = await chart(symbol, m.interval, m.range);
     const r = data.chart.result?.[0];
     if (!r?.timestamp) throw new UpstreamError("Yahoo: keine Kursdaten", 404);
+    if (r.meta?.currency) yahooCurrency.set(symbol, r.meta.currency);
     const q = r.indicators.quote[0];
     const out: Candle[] = [];
     r.timestamp.forEach((t, i) => {

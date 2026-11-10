@@ -1,7 +1,7 @@
 import { binanceCandles } from "@/lib/data/binance";
 import { UpstreamError } from "@/lib/data/http";
 import { handle, param } from "@/lib/data/route-helpers";
-import { yahooCandles } from "@/lib/data/yahoo";
+import { yahooCandles, yahooCurrency } from "@/lib/data/yahoo";
 import type { Interval } from "@/lib/types";
 
 const INTERVALS: Interval[] = ["5m", "15m", "1h", "4h", "1d", "1w", "1M"];
@@ -18,14 +18,15 @@ export async function GET(req: Request) {
       const errors: string[] = [];
       if (binance) {
         try {
-          return { candles: await binanceCandles(binance, interval), source: "Binance", delayed: false };
+          return { candles: await binanceCandles(binance, interval), source: "Binance", delayed: false, currency: binance.endsWith("USDT") ? "USDT" : binance.endsWith("EUR") ? "EUR" : undefined };
         } catch (e) {
           errors.push((e as Error).message);
         }
       }
       if (yahoo) {
         try {
-          return { candles: await yahooCandles(yahoo, interval), source: "Yahoo Finance", delayed: !binance };
+          const candles = await yahooCandles(yahoo, interval);
+          return { candles, source: "Yahoo Finance", delayed: !binance, currency: yahooCurrency.get(yahoo) };
         } catch (e) {
           errors.push((e as Error).message);
         }

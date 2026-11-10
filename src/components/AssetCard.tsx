@@ -12,6 +12,7 @@ import type { LiveStatus } from "@/lib/client/market";
 import type { ScanEntry } from "@/lib/client/scanner";
 import { getData, useAppData } from "@/lib/store/store";
 import { HORIZON_LABEL, type Candle, type Horizon, type ResolvedAsset } from "@/lib/types";
+import { ScenarioBar } from "./ScenarioBar";
 import { MiniChart } from "./MiniChart";
 import { waveCaption } from "./waveText";
 import { ConfirmSheet } from "./Sheet";
@@ -91,7 +92,7 @@ export function AssetCard({
   const [showPast, setShowPast] = useState(false);
   const trades = useAppData((d) => d.trades);
   const expert = useAppData((d) => d.settings.expertMode);
-  const cur = asset.currency;
+  const cur = asset.currency ?? entry?.asset.currency;
   const b = entry?.best;
   const view = entry ? viewCandles(entry) : { candles: [], res: null };
   const res = view.res;
@@ -191,6 +192,8 @@ export function AssetCard({
           ) : (
             <p className="rounded-xl bg-amber-500/10 px-3 py-2 text-[15px] text-amber-100">{b.waitFor ?? b.reason}</p>
           )}
+
+          {b.color !== "gelb" && <ScenarioBar elliott={res?.elliott} />}
 
           {(b.color === "gruen" || b.color === "rot") && <p className="text-[14px] text-stone-300">{b.reason}</p>}
 

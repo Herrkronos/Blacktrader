@@ -195,3 +195,19 @@ describe("Potenzial (gleich in Chancen, Turnier und Training)", () => {
     expect(MIN_POTENTIAL).toBe(26);
   });
 });
+
+describe("Haupt- und Alternativszenario", () => {
+  it("Anteile ergeben 100 %; fast gleich starke Gegenrichtung = Notfall", async () => {
+    const { scenarioShare } = await import("../src/lib/analysis/scenario");
+    const best = { probability: 0.6, bias: 1 } as never;
+    const alt = { probability: 0.2, bias: -1 } as never;
+    const s = scenarioShare({ best, alternative: alt, contested: false })!;
+    expect(s.main).toBeCloseTo(0.75, 6);
+    expect(s.alt).toBeCloseTo(0.25, 6);
+    expect(s.opposite).toBe(true);
+    expect(s.state).toBe("gilt");
+    expect(scenarioShare({ best, alternative: alt, contested: true })!.state).toBe("notfall");
+    expect(scenarioShare({ best, alternative: undefined, contested: false })!.main).toBe(1);
+    expect(scenarioShare({ best: undefined, alternative: undefined, contested: false })).toBeNull();
+  });
+});

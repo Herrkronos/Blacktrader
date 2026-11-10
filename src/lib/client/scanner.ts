@@ -121,13 +121,16 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   const byAsset = new Map<string, Omit<ScanEntry, "best" | "history"> & { full: Partial<Record<Horizon, Candle[]>> }>();
   let done = 0;
   let failed = 0;
-  await pool(jobs, 6, async ({ asset, horizon }) => {
-    const key = assetKey(asset);
-    const entry = byAsset.get(key) ?? { asset, horizons: {}, longterm: null, full: {} };
+  await pool(jobs, 6, async ({ asset: a0, horizon }) => {
+    const key = assetKey(a0);
+    const entry = byAsset.get(key) ?? { asset: a0, horizons: {}, longterm: null, full: {} };
     byAsset.set(key, entry);
     try {
       const interval = settings.intervals[horizon];
-      const { candles } = await api.candles(asset, interval, 60e3);
+      const { candles, currency } = await api.candles(entry.asset, interval, 60e3);
+      // Watchlist-Werte ohne bekannte Währung: aus den Kursdaten übernehmen (sonst stünden $-Preise ohne Umrechnung da)
+      if (!entry.asset.currency && currency) entry.asset = { ...entry.asset, currency };
+      const asset = entry.asset;
       const params = learnedParams(asset.kind, horizon);
       let res = analyze({ symbol: asset.symbol, name: asset.name, candles, horizon, interval, weights: effectiveWeights(settings, asset.kind, horizon), kind: asset.kind, currency: asset.currency, params });
       // Kandidat aus Watchlist/Depot: gleich vollständig bewerten (Firmenzahlen und Nachrichten)
