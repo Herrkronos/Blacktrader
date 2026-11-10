@@ -158,3 +158,87 @@ export function noMoney(free?: number) {
   const text = `Nicht genug Geld: Für einen neuen Trade brauchst du ${ACCOUNT.stake} € + ${ACCOUNT.fee.toFixed(2).replace(".", ",")} € Gebühr.${f} Erst muss ein offener Trade schließen – oder im Depot neu starten, wenn das Konto leer ist.`;
   if (typeof window !== "undefined" && typeof window.alert === "function") window.alert(text);
 }
+
+export interface SimTrade {
+  sym: string;
+  /** Einstieg und Ausstieg (Millisekunden) */
+  entry: number;
+  exit: number;
+  /** Rendite in % */
+  r: number;
+}
+
+export interface SimResult {
+  start: number;
+  end: number;
+  profit: number;
+  profitPct: number;
+  fees: number;
+  tax: number;
+  taken: number;
+  /** ausgelassen, weil das Geld nicht reichte oder der Wert schon im Depot lag */
+  skipped: number;
+  broke: boolean;
+}
+
+/**
+ * Spielt Trades mit dem Konto durch (für das EchoChart): 8.000 € Start, 500 € je Trade nur wenn genug Geld da ist
+ * (je Wert höchstens eine Position), 7,90 € je Order, 27,5 % KESt sofort auf Gewinne mit Verlustausgleich im Jahr.
+ */
+export function simulateAccount(trades: SimTrade[]): SimResult {
+  type Ev = { at: number; kind: 0 | 1; i: number };
+  const ev: Ev[] = [];
+  trades.forEach((t, i) => {
+    ev.push({ at: t.entry, kind: 1, i });
+    ev.push({ at: t.exit, kind: 0, i });
+  });
+  ev.sort((a, b) => a.at - b.at || a.kind - b.kind);
+  let cash: number = ACCOUNT.start;
+  let fees = 0;
+  let tax = 0;
+  let paid = 0;
+  let year = ev.length ? yearOf(ev[0].at) : 0;
+  let taken = 0;
+  let skipped = 0;
+  let broke = false;
+  const open = new Set<number>();
+  const syms = new Set<string>();
+  for (const e of ev) {
+    const t = trades[e.i];
+    if (e.kind === 1) {
+      if (broke || syms.has(t.sym) || cash < ACCOUNT.stake + ACCOUNT.fee) {
+        if (!broke && cash < ACCOUNT.stake + ACCOUNT.fee && open.size === 0) broke = true;
+        skipped++;
+        continue;
+      }
+      cash -= ACCOUNT.stake + ACCOUNT.fee;
+      fees += ACCOUNT.fee;
+      open.add(e.i);
+      syms.add(t.sym);
+      taken++;
+      continue;
+    }
+    if (!open.has(e.i)) continue;
+    open.delete(e.i);
+    syms.delete(t.sym);
+    if (yearOf(e.at) !== year) {
+      year = yearOf(e.at);
+      paid = 0;
+    }
+    const g = (ACCOUNT.stake * t.r) / 100;
+    cash += ACCOUNT.stake + g - ACCOUNT.fee;
+    fees += ACCOUNT.fee;
+    if (g > 0) {
+      const k = g * ACCOUNT.tax;
+      cash -= k;
+      tax += k;
+      paid += k;
+    } else if (g < 0 && paid > 0) {
+      const back = Math.min(paid, -g * ACCOUNT.tax);
+      cash += back;
+      tax -= back;
+      paid -= back;
+    }
+  }
+  return { start: ACCOUNT.start, end: cash, profit: cash - ACCOUNT.start, profitPct: ((cash - ACCOUNT.start) / ACCOUNT.start) * 100, fees, tax, taken, skipped, broke };
+}

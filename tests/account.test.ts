@@ -87,3 +87,17 @@ describe("Dividenden und Steuer-Jahresübersicht", () => {
     expect(y.kest).toBeCloseTo(40 * 0.275, 6);
   });
 });
+
+describe("EchoChart-Konto (8.000 €, 500 € je Trade, netto)", () => {
+  it("Gewinn nach Gebühr und KESt; ohne Geld wird ausgelassen", async () => {
+    const { simulateAccount } = await import("../src/lib/client/account");
+    const r = simulateAccount([{ sym: "A", entry: Y, exit: Y + D, r: 20 }]);
+    // 100 € Gewinn − 2 × 7,90 € − 27,50 € KESt
+    expect(r.end).toBeCloseTo(8000 + 100 - 15.8 - 27.5, 6);
+    expect(r.profitPct).toBeCloseTo(((100 - 15.8 - 27.5) / 8000) * 100, 6);
+    const many = Array.from({ length: 20 }, (_, i) => ({ sym: `S${i}`, entry: Y + i, exit: Y + 10 * D, r: 0 }));
+    const m = simulateAccount(many);
+    expect(m.taken).toBe(15);
+    expect(m.skipped).toBe(5);
+  });
+});

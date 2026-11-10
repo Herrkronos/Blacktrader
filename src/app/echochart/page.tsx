@@ -9,10 +9,12 @@ import { INTERVAL_SECONDS, LOOKBACKS, loadHistory, planHistory, YAHOO_MAX_DAYS }
 import { SCAN_GROUPS } from "@/lib/client/presets";
 import { learnedParams } from "@/lib/client/trainerParams";
 import { useAppData } from "@/lib/store/store";
+import { ACCOUNT, simulateAccount, type SimTrade } from "@/lib/client/account";
 import { HORIZON_LABEL, type AssetKind, type Candle, type Horizon, type ResolvedAsset } from "@/lib/types";
 
 const fmtDate = (t: number) => new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
 const pct = (x: number) => `${Math.round(x * 100)} %`;
+const eurFmt = (x: number) => `${x.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const KIND_TEXT: Record<EchoKind, string> = { trade: "Kauf", short: "Short", core: "Kernposition" };
 const KIND_CLS: Record<EchoKind, string> = { trade: "text-emerald-300", short: "text-red-300", core: "text-sky-300" };
 const GROUP_KEYS: Record<string, AssetKind> = { "gruppe:stock": "stock", "gruppe:crypto": "crypto", "gruppe:commodity": "commodity" };
@@ -24,6 +26,8 @@ interface AssetResult {
   tradeHit: number | null;
   tradeReturn: number | null;
   trades: number;
+  /** Trades für die Kontorechnung (8.000 €, 500 € je Trade) */
+  sim: SimTrade[];
   error?: string;
 }
 
@@ -89,9 +93,10 @@ export default function EchoChartPage() {
           trades: t.length,
           tradeHit: t.length ? t.filter((x) => x.returnPct > 0).length / t.length : null,
           tradeReturn: t.length ? (t.reduce((e, x) => e * (1 + x.returnPct / 100), 1) - 1) * 100 : null,
+          sim: t.map((x) => ({ sym: a.symbol, entry: x.entryTime * 1000, exit: x.exitTime * 1000, r: x.returnPct })),
         });
       } catch (e) {
-        out.push({ asset: a, zones: [], candles: [], trades: 0, tradeHit: null, tradeReturn: null, error: (e as Error).message });
+        out.push({ asset: a, zones: [], candles: [], trades: 0, tradeHit: null, tradeReturn: null, sim: [], error: (e as Error).message });
       }
     }
     setResults(out);
@@ -108,6 +113,8 @@ export default function EchoChartPage() {
   const single = results && results.length === 1 ? results[0] : null;
   const tradesAll = results?.reduce((s, r) => s + r.trades, 0) ?? 0;
   const tradeHit = results && tradesAll ? results.reduce((s, r) => s + (r.tradeHit ?? 0) * r.trades, 0) / tradesAll : null;
+  // Konto wie im Depot: 8.000 € Start, 500 € je Trade, Gebühren und KESt – Ergebnis netto
+  const acc = results && tradesAll ? simulateAccount(results.flatMap((r) => r.sim)) : null;
 
   return (
     <div className="space-y-4">
@@ -216,6 +223,25 @@ export default function EchoChartPage() {
             </p>
           )}
 
+          {acc && (
+            <div className="rounded-xl border border-gold/30 bg-black/30 p-3 text-center">
+              <div className="text-[14px] text-stone-300">Mit {ACCOUNT.start.toLocaleString("de-DE")} € und {ACCOUNT.stake} € je Trade (netto)</div>
+              <div className={`num text-[30px] font-semibold leading-tight ${acc.profit >= 0 ? "text-up" : "text-down"}`}>
+                {acc.profitPct >= 0 ? "+" : ""}
+                {acc.profitPct.toFixed(1).replace(".", ",")} %
+              </div>
+              <div className="num text-[16px] text-stone-100">
+                {eurFmt(acc.start)} → <b>{eurFmt(acc.end)}</b> ({acc.profit >= 0 ? "+" : "−"}
+                {eurFmt(Math.abs(acc.profit))})
+              </div>
+              <div className="num mt-1 text-[13px] text-stone-400">
+                {acc.taken} Trades · Gebühren {eurFmt(acc.fees)} · KESt {eurFmt(acc.tax)}
+                {acc.skipped ? ` · ${acc.skipped} ausgelassen (kein Geld frei oder Wert schon im Depot)` : ""}
+                {acc.broke ? " · Konto war leer" : ""}
+              </div>
+            </div>
+          )}
+
           {!single && (
             <ul className="divide-y divide-white/5 text-[14px]">
               {[...results]
@@ -258,6 +284,7 @@ export default function EchoChartPage() {
           <details className="text-[13px] text-stone-400">
             <summary className="cursor-pointer">Wie wird gezählt?</summary>
             <p className="mt-1">
+              Konto: {ACCOUNT.start.toLocaleString("de-DE")} € Start, {ACCOUNT.stake} € je Trade (nur wenn genug Geld frei ist, je Wert eine Position), 7,90 € Gebühr je Order, 27,5 % KESt sofort auf Gewinne mit Verlustausgleich im selben Jahr – alles netto. Wechselkurs-Schwankungen sind hier nicht eingerechnet.{" "}
               Wie bei HKCM: Eine Zone hat gehalten, wenn der Kurs hineinläuft, vor der Unterkante dreht und oben wieder herausläuft (bei Short umgekehrt). Fällt er vorher unter die Unterkante, ist sie gescheitert. Zonen, die der Kurs nie erreicht hat, zählen nicht. Blacktrader kennt dabei immer nur die Kurse bis zum jeweiligen Tag. Gute Ergebnisse von früher sind keine Garantie für die Zukunft.
             </p>
           </details>
