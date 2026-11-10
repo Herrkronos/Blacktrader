@@ -4,6 +4,7 @@
 // Reicht das Geld nicht für einen neuen Trade (500 € + Gebühr), wird nichts übernommen. Ohne Geld UND ohne offene
 // Position ist das Konto leer (pleite) – Neustart mit 8.000 €; alte Trades bleiben als frühere Runde sichtbar.
 import type { Trade } from "../store/store";
+import { KestYear } from "../analysis/kest";
 
 export const ACCOUNT = { start: 8000, stake: 500, fee: 7.9, tax: 0.275 } as const;
 
@@ -63,8 +64,7 @@ export function computeRound(trades: Trade[], from: number, to: number | undefin
   let cash: number = ACCOUNT.start;
   let fees = 0;
   let tax = 0;
-  let paid = 0;
-  let year = yearOf(from);
+  const kest = new KestYear(ACCOUNT.tax);
   let closed = 0;
   let wins = 0;
   const open = new Set<Trade>();
@@ -82,28 +82,16 @@ export function computeRound(trades: Trade[], from: number, to: number | undefin
     }
     if (!open.has(t)) continue;
     open.delete(t);
-    if (yearOf(e.at) !== year) {
-      year = yearOf(e.at);
-      paid = 0;
-    }
     const r = t.returnPct ?? 0;
     const st = stakeOf(t);
     const g = (st * r) / 100;
     const f = sellOrders(t) * ACCOUNT.fee;
     cash += st + g - f;
     fees += f;
-    // KESt auf den Kursgewinn (Spesen in Österreich nicht abzugsfähig), Verlustausgleich im selben Jahr
-    if (g > 0) {
-      const k = g * ACCOUNT.tax;
-      cash -= k;
-      tax += k;
-      paid += k;
-    } else if (g < 0 && paid > 0) {
-      const back = Math.min(paid, -g * ACCOUNT.tax);
-      cash += back;
-      tax -= back;
-      paid -= back;
-    }
+    // KESt mit Verlusttopf im Kalenderjahr (analysis/kest.ts)
+    const k = kest.settle(g, yearOf(e.at));
+    cash -= k;
+    tax += k;
     closed++;
     if (g - (buyOrders(t) + sellOrders(t)) * ACCOUNT.fee > 0) wins++;
     curve.push({ time: e.at, equity: cash, cumulative: ((cash + [...open].reduce((a, x) => a + stakeOf(x), 0) - ACCOUNT.start) / ACCOUNT.start) * 100 });
@@ -196,8 +184,7 @@ export function simulateAccount(trades: SimTrade[]): SimResult {
   let cash: number = ACCOUNT.start;
   let fees = 0;
   let tax = 0;
-  let paid = 0;
-  let year = ev.length ? yearOf(ev[0].at) : 0;
+  const kest = new KestYear(ACCOUNT.tax);
   let taken = 0;
   let skipped = 0;
   let broke = false;
@@ -221,24 +208,12 @@ export function simulateAccount(trades: SimTrade[]): SimResult {
     if (!open.has(e.i)) continue;
     open.delete(e.i);
     syms.delete(t.sym);
-    if (yearOf(e.at) !== year) {
-      year = yearOf(e.at);
-      paid = 0;
-    }
     const g = (ACCOUNT.stake * t.r) / 100;
     cash += ACCOUNT.stake + g - ACCOUNT.fee;
     fees += ACCOUNT.fee;
-    if (g > 0) {
-      const k = g * ACCOUNT.tax;
-      cash -= k;
-      tax += k;
-      paid += k;
-    } else if (g < 0 && paid > 0) {
-      const back = Math.min(paid, -g * ACCOUNT.tax);
-      cash += back;
-      tax -= back;
-      paid -= back;
-    }
+    const k = kest.settle(g, yearOf(e.at));
+    cash -= k;
+    tax += k;
   }
   return { start: ACCOUNT.start, end: cash, profit: cash - ACCOUNT.start, profitPct: ((cash - ACCOUNT.start) / ACCOUNT.start) * 100, fees, tax, taken, skipped, broke };
 }

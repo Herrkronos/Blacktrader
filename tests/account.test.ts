@@ -101,3 +101,22 @@ describe("EchoChart-Konto (8.000 €, 500 € je Trade, netto)", () => {
     expect(m.skipped).toBe(5);
   });
 });
+
+describe("KESt mit Verlusttopf (wie bei der österreichischen Bank)", () => {
+  it("Verlust zuerst, Gewinn später im selben Jahr: verrechnet; im nächsten Jahr verfällt der Topf", async () => {
+    const { KestYear } = await import("../src/lib/analysis/kest");
+    const k = new KestYear(0.275);
+    expect(k.settle(-100, 2026)).toBeCloseTo(0, 6); // nichts bezahlt → in den Topf
+    expect(k.settle(150, 2026)).toBeCloseTo(50 * 0.275, 6); // nur 50 € steuerpflichtig
+    expect(k.settle(-20, 2026)).toBeCloseTo(-20 * 0.275, 6); // holt bezahlte KESt zurück
+    const n = new KestYear(0.275);
+    n.settle(-100, 2025);
+    expect(n.settle(100, 2026)).toBeCloseTo(27.5, 6); // kein Vortrag ins nächste Jahr
+    const { simulateAccount } = await import("../src/lib/client/account");
+    const r = simulateAccount([
+      { sym: "A", entry: Y, exit: Y + D, r: -20 },
+      { sym: "B", entry: Y + 2 * D, exit: Y + 3 * D, r: 20 },
+    ]);
+    expect(r.tax).toBeCloseTo(0, 6);
+  });
+});

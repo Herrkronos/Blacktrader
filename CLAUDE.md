@@ -12,3 +12,4 @@
 - Order-Zettel (Stück so nah wie möglich an 500 €, bis 50 € darüber erlaubt – Wunsch des Nutzers; Konto rechnet mit dem echten Betrag Stück × Kurs; Preise in €), Stop-Erinnerung flatex (>0,5 %), Live-Bilanz aller Chancen (chanceLog), automatische Sicherungsdatei bei jeder Trade-/Depot-Änderung (abschaltbar, Mehr → Backups).
 - Szenario-Prozente sind NICHT kalibriert (Ziel vor Ungültig ~46 % unabhängig vom Anteil, 84.034 Fälle) – nicht als Wahrscheinlichkeit verkaufen.
 - Zonen-Alarm nur für Watchlist-Werte (nicht für Chancen – Wunsch des Nutzers, zu viele Meldungen).
+- KESt-Rechnung überall über analysis/kest.ts (KestYear: sofort auf Gewinne, Verlusttopf im Kalenderjahr, kein Vortrag).

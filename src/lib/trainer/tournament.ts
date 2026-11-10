@@ -11,6 +11,7 @@
 // Wer kein Geld mehr für einen Trade hat und keine offene Position hält, scheidet aus.
 // 50 Versuche mit verschiedenen Startzeitpunkten – für alle Teilnehmer dieselben. Jeder Zeitraum wird nach der
 // Marktlage (S&P 500) als bullisch, neutral, bärisch oder gemischt eingeordnet. Gewertet wird der Durchschnitt.
+import { KestYear } from "../analysis/kest";
 import { ema, rsi, sma } from "../analysis/indicators";
 import type { Candle } from "../types";
 
@@ -371,8 +372,7 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
   let cash: number = RULES.start;
   const open = new Map<number, number>(); // Trade-Index → Einsatz
   const openSym = new Set<string>();
-  let year = yearOf(w.from);
-  let paidThisYear = 0; // in diesem Kalenderjahr bezahlte KESt (für den Verlustausgleich)
+  const kest = new KestYear(RULES.tax);
   let tax = 0;
   let fees = 0;
   let taken = 0;
@@ -380,29 +380,16 @@ export function runWindow(pool: PoolTrade[], w: Window, priceAt: (sym: string, t
   let low: number = cash;
   let broke = false;
   const close = (i: number, r: number, t: number) => {
-    if (yearOf(t) !== year) {
-      year = yearOf(t);
-      paidThisYear = 0;
-    }
     const stake = open.get(i)!;
     // KESt auf den Kursgewinn – Spesen sind in Österreich steuerlich nicht abzugsfähig
     const g = (stake * r) / 100;
     cash += stake + g - RULES.fee;
     fees += RULES.fee;
     if (g - 2 * RULES.fee > 0) wins++;
-    if (g > 0) {
-      // KESt sofort beim Verkauf mit Gewinn
-      const k = g * RULES.tax;
-      cash -= k;
-      tax += k;
-      paidThisYear += k;
-    } else if (g < 0 && paidThisYear > 0) {
-      // Verlustausgleich im selben Jahr: bereits bezahlte KESt anteilig zurück
-      const back = Math.min(paidThisYear, -g * RULES.tax);
-      cash += back;
-      tax -= back;
-      paidThisYear -= back;
-    }
+    // sofort bei Gewinn, Verlusttopf im Kalenderjahr (analysis/kest.ts)
+    const k = kest.settle(g, yearOf(t));
+    cash -= k;
+    tax += k;
     open.delete(i);
     openSym.delete(trades[i].sym);
   };
