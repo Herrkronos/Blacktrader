@@ -24,7 +24,6 @@ export function ScenarioBar({ elliott }: { elliott: Pick<ElliottResult, "best" |
             ? "Die Alternative zeigt in dieselbe Richtung – kein Widerspruch. Gehandelt wird das Hauptszenario."
             : "Gehandelt wird nur das Hauptszenario. Wird die Alternative wahrscheinlicher, wird sie zum Hauptszenario."}
       </p>
-      <p className="text-[12px] text-stone-500">Die Prozente zeigen, wie gut die Zählungen zu den Elliott-Regeln passen – keine Eintrittswahrscheinlichkeit. Gemessen an 84.000 Fällen (1963–2026) erreicht das Hauptszenario sein Ziel vor der Ungültig-Grenze in rund 46 % der Fälle, egal ob 52 % oder 75 % angezeigt werden.</p>
     </div>
   );
 }
