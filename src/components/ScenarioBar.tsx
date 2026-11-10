@@ -18,7 +18,11 @@ export function ScenarioBar({ elliott }: { elliott: Pick<ElliottResult, "best" |
         <div className="bg-stone-600" style={{ width: `${100 - m}%` }} />
       </div>
       <p className={`text-[13px] ${notfall ? "text-amber-300" : "text-stone-400"}`}>
-        {notfall ? "Notfall: Die Alternative ist fast gleich stark und zeigt in die Gegenrichtung – kein neuer Einstieg, abwarten." : "Gehandelt wird nur das Hauptszenario. Wird die Alternative wahrscheinlicher, wird sie zum Hauptszenario."}
+        {notfall
+          ? "Notfall: Die Alternative ist fast gleich stark und zeigt in die Gegenrichtung – kein neuer Einstieg, abwarten."
+          : s.alt > 0 && !s.opposite
+            ? "Die Alternative zeigt in dieselbe Richtung – kein Widerspruch. Gehandelt wird das Hauptszenario."
+            : "Gehandelt wird nur das Hauptszenario. Wird die Alternative wahrscheinlicher, wird sie zum Hauptszenario."}
       </p>
     </div>
   );
