@@ -19,6 +19,7 @@ import { HORIZON_LABEL } from "@/lib/types";
 import { ACCOUNT, ADD, computeAccount } from "@/lib/client/account";
 import { makeOrderSlip } from "@/lib/client/orderSlip";
 import { BuyHold } from "@/components/BuyHold";
+import { useAssetSheet } from "@/components/AssetSheet";
 
 const eur = (x: number, sign = false) => `${sign && x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const signed = (x: number, d = 2) => `${x >= 0 ? "+" : ""}${x.toFixed(d).replace(".", ",")} %`;
@@ -42,7 +43,7 @@ function statusText(t: Trade) {
   };
 }
 
-function TradeCard({ t, price, onAction, nachkauf }: { t: Trade; price?: number; onAction: (t: Trade) => void; nachkauf?: ReactNode }) {
+function TradeCard({ t, price, onAction, onOpenAsset, nachkauf }: { t: Trade; price?: number; onAction: (t: Trade) => void; onOpenAsset: (t: Trade) => void; nachkauf?: ReactNode }) {
   const [dx, setDx] = useState(0);
   const start = useRef<number | null>(null);
   const [open, setOpen] = useState(false);
@@ -73,14 +74,21 @@ function TradeCard({ t, price, onAction, nachkauf }: { t: Trade; price?: number;
         onClick={() => (dx ? setDx(0) : setOpen(!open))}
       >
         <div className="flex items-start justify-between gap-3">
-          <Link href={`/analyse?sym=${encodeURIComponent(t.symbol)}&kind=${t.kind}`} className="min-w-0 active:opacity-70" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="min-w-0 text-left active:opacity-70"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenAsset(t);
+            }}
+          >
             <div className="truncate text-[16px] font-semibold text-stone-50">
               {t.name} <span className="text-[14px] font-normal text-gold">›</span>
             </div>
             <div className="text-[13px] text-stone-400">
               {t.symbol} · {HORIZON_LABEL[t.horizon]}
             </div>
-          </Link>
+          </button>
           <div className="text-right">
             <div className={`num text-[19px] font-semibold ${ret == null ? "text-amber-300" : ret >= 0 ? "text-up" : "text-down"}`}>{ret == null ? "–" : signed(ret)}</div>
             <div className="text-[13px] text-stone-400">{t.status === "closed" ? "Ergebnis" : "Stand"}</div>
@@ -127,6 +135,11 @@ function TradeCard({ t, price, onAction, nachkauf }: { t: Trade; price?: number;
             {isLt ? `${t.stop ? money(t.stop, tradeCurrency(t)) : "kein Stop"} / ${t.targets[0] != null ? money(t.targets[0], tradeCurrency(t)) : "–"}` : `${money(t.stop, tradeCurrency(t))} / ${t.targets[0] != null ? money(t.targets[0], tradeCurrency(t)) : "–"}`}
           </span>
         </div>
+        {t.strategy === "longterm" && !!t.tranches?.length && (
+          <div className="mt-2 rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
+            <TrancheList t={t} />
+          </div>
+        )}
         {open && (
           <div className="mt-3 space-y-2 border-t border-white/10 pt-3 text-[14px] text-stone-300">
             <p className="text-stone-400">Übernommen am {new Date(t.openedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</p>
@@ -139,7 +152,6 @@ function TradeCard({ t, price, onAction, nachkauf }: { t: Trade; price?: number;
             )}
             {t.strategy === "longterm" && (
               <div className="space-y-1 rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
-                <TrancheList t={t} />
                 {(t.partials ?? []).map((p, i) => (
                   <p key={i}>
                     Teilausstieg {Math.round(p.fraction * 100)} % bei {money(p.price, tradeCurrency(t))} ({new Date(p.at).toLocaleDateString("de-DE")})
@@ -226,6 +238,8 @@ export default function DepotPage() {
 
 function BlacktraderDepot() {
   const trades = useAppData((d) => d.trades);
+  // Tipp auf den Namen: dieselbe Ansicht wie in der Watchlist (Einstieg oben, darunter Chart und Analyse)
+  const { open: openSheet, sheet } = useAssetSheet();
   const resets = useAppData((d) => d.accountResets);
   const [showOld, setShowOld] = useState(false);
   const notice = useAppData((d) => d.migrationNotice);
@@ -383,6 +397,7 @@ function BlacktraderDepot() {
               key={t.id}
               t={t}
               price={live[instrumentKey(t)]?.price}
+              onOpenAsset={(x) => openSheet({ kind: x.kind, symbol: x.symbol, name: x.name, binanceSymbol: x.binanceSymbol, yahooSymbol: x.yahooSymbol, currency: x.currency }, x.strategy === "longterm" || x.strategy === "core" ? "long" : x.horizon, { withEntry: true })}
               onAction={(x) => {
                 setAction(x);
                 setExitPrice(String(+((live[instrumentKey(x)]?.price ?? x.lastPrice ?? x.entry) * (eurPerUnit(tradeCurrency(x)) ?? 1)).toPrecision(6)));
@@ -453,6 +468,7 @@ function BlacktraderDepot() {
           </div>
         )}
       </Sheet>
+      {sheet}
     </div>
   );
 }
