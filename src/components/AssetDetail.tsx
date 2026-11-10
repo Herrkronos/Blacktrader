@@ -2,6 +2,7 @@
 // Detailansicht eines Werts (als Bottom-Sheet oder eigene Seite): großer Chart mit Wellenzählung und
 // Fibo-Zonen, Signal mit Teil-Scores, Langfristiger Einstieg, Begründung, Fundamentalzahlen, News.
 import { displayCurrency, tradeCurrency } from "@/lib/client/eur";
+import { useGermanQuote } from "@/lib/client/germanQuote";
 import { effectiveWeights, learnedParams, useTrainerVersion } from "@/lib/client/trainerParams";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -21,6 +22,9 @@ import type { ChartEntry } from "./chartZones";
 import { PriceChart } from "./PriceChart";
 import { StatusPill } from "./StatusPill";
 import { TradeDialog } from "./TradeDialog";
+
+/** Ohne bekannte Währung: Symbol ohne Börsen-Endung = US-Börse (Dollar) */
+const analysisCurrencyGuess = (a: { kind: string; symbol: string; yahooSymbol?: string }) => (a.kind === "stock" && !/[.=^]/.test(a.yahooSymbol ?? a.symbol) ? "USD" : undefined);
 
 type DetailAsset = ResolvedAsset & { id?: string };
 /**
@@ -109,6 +113,7 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
   const ltZone = useMemo(() => (candles.length >= 150 ? findLongTermZone(candles) : null), [candles]);
   const myLt = useAppData((d) => d.trades.find((t) => t.strategy === "longterm" && t.status !== "closed" && t.symbol === asset.symbol));
   const currency = displayCurrency(asset, live?.currency ?? asset.currency);
+  const deQuote = useGermanQuote(asset, live?.currency ?? asset.currency ?? analysisCurrencyGuess(asset));
   const trainerV = useTrainerVersion();
   const analysis = useMemo(
     () =>
@@ -165,6 +170,11 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
             {asset.exchange ? ` · ${asset.exchange}` : ""}
           </div>
           <div className="num text-[24px] font-semibold text-stone-50">{live?.price != null ? money(live.price, currency) : analysis ? money(analysis.price, currency) : "–"}</div>
+          {deQuote && (
+            <div className="text-[13px] text-stone-400">
+              In Deutschland (Xetra, {deQuote.symbol}): <span className="num text-stone-200">{money(deQuote.price, "EUR")}</span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             {live?.changePct != null && <span className={`num text-[15px] ${live.changePct >= 0 ? "text-up" : "text-down"}`}>{`${live.changePct >= 0 ? "+" : ""}${live.changePct.toFixed(2).replace(".", ",")} %`}</span>}
             {/* Werte außerhalb von Watchlist/Depot haben keinen Live-Kurs – dann Status der geladenen Kerzen statt ewig „Lädt“ */}

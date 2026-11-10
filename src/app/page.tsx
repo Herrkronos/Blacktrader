@@ -1,5 +1,6 @@
 "use client";
 // Übersicht: Gesamtperformance, Top-3-Chancen, offene Trades (live), News zur Watchlist.
+import { WeeklyReport } from "@/components/WeeklyReport";
 import Link from "next/link";
 import { useEffect, useMemo } from "react";
 import { EntryTile } from "@/components/EntryTile";
@@ -61,6 +62,7 @@ export default function Uebersicht() {
     })
     .filter((x): x is number => x != null);
 
+  const chanceCount = useMemo(() => Math.min(20, scan.entries.filter((e) => isChance(e) && isTopChance(e) && potential(e) != null).length), [scan.entries]);
   const top = useMemo(() => {
     // Wie bei den Chancen: aus den Trainings-Werten die 3 mit dem größten Potenzial
     return scan.entries
@@ -99,6 +101,8 @@ export default function Uebersicht() {
           <p className="mt-2 text-[14px] text-stone-500">Sobald du Papier-Trades übernimmst und diese geschlossen werden, erscheint hier deine Kurve.</p>
         )}
       </section>
+
+      <WeeklyReport equity={acc.equity} chances={chanceCount} />
 
       <Section title="Top 3 Chancen heute" href="/chancen">
         {scan.busy && top.length === 0 && <div className="card p-4 text-[15px] text-stone-400">Blacktrader sucht Chancen … {Math.round(scan.progress * 100)} %</div>}

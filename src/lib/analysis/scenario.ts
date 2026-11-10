@@ -1,4 +1,6 @@
 // Haupt- und Alternativszenario der Elliott-Zählung als Anteile (zusammen 100 %).
+// KALIBRIERUNG (191 Werte, Tag+Woche, 84.034 Fälle): Ziel vor Ungültig-Grenze in ~46 % – unabhängig vom Anteil
+// (50–55 %: 46,4 %, 60–70 %: 45,2 %, 80–90 %: 40,4 %). Die Prozente sind Regel-Passung, keine Wahrscheinlichkeit.
 //
 // Blacktrader handelt immer nur das Hauptszenario. Wird die Alternative wahrscheinlicher, wird sie automatisch zum
 // Hauptszenario (die Zählung mit der höchsten Wahrscheinlichkeit ist immer das Hauptszenario).

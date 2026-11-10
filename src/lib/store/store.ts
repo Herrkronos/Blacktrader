@@ -135,6 +135,8 @@ export interface AppData {
   holdings: Holding[];
   /** Live-Bilanz aller Chancen (ab dem ersten Erscheinen mitgeschrieben) */
   chanceLog: ChanceLogEntry[];
+  /** Wochenbericht: Stand beim letzten Lesen (Vergleichsbasis) */
+  weekly?: { at: number; equity: number; ziel: number; stop: number; bhValue?: number } | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -182,6 +184,7 @@ function sanitize(raw: unknown): AppData {
     migrations: Array.isArray(d.migrations) ? d.migrations : [],
     migrationNotice: d.migrationNotice ?? null,
     accountResets: Array.isArray(d.accountResets) ? d.accountResets.filter((x) => Number.isFinite(x)) : [],
+    weekly: d.weekly && typeof d.weekly.at === "number" ? d.weekly : null,
     chanceLog: Array.isArray(d.chanceLog) ? d.chanceLog.filter((x) => x && x.key && x.symbol) : [],
     holdings: Array.isArray(d.holdings) ? d.holdings.filter((h) => h && h.id && h.symbol).map((h) => ({ ...h, txs: Array.isArray(h.txs) ? h.txs.filter((t) => t && t.qty > 0 && t.price > 0) : [] })) : [],
     settings: {
@@ -384,6 +387,9 @@ export const actions = {
     // Wiederhergestellt: Trades gelten als selbst übernommen, Migration nicht erneut ausführen
     update(() => ({ ...parsed, trades: parsed.trades.map((t) => ({ ...t, source: "manual" as const, unverified: false })), migrations: [...new Set([...parsed.migrations, "v2-manual-journal", "v3-blacktrader"])], migrationNotice: null }));
   },
+  setWeekly(w: AppData["weekly"]) {
+    update((d) => ({ ...d, weekly: w }));
+  },
   setChanceLog(log: ChanceLogEntry[]) {
     update((d) => ({ ...d, chanceLog: log }));
   },
@@ -405,6 +411,9 @@ export const actions = {
   },
   removeHoldingTx(id: string, txId: string) {
     update((d) => ({ ...d, holdings: d.holdings.map((x) => (x.id === id ? { ...x, txs: x.txs.filter((t) => t.id !== txId) } : x)).filter((x) => x.txs.length > 0) }));
+  },
+  setHoldingTrend(id: string, trend: 1 | -1 | 0) {
+    update((d) => ({ ...d, holdings: d.holdings.map((x) => (x.id === id ? { ...x, trend } : x)) }));
   },
   removeHolding(id: string) {
     update((d) => ({ ...d, holdings: d.holdings.filter((x) => x.id !== id) }));

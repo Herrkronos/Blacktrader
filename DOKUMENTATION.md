@@ -270,3 +270,12 @@ Turnier in Euro (10 Teilnehmer, 50 Versuche à 5 Jahre, KESt sofort je Gewinn, S
 **Live-Bilanz der Chancen:** Jede Chance aus der Liste wird ab dem ersten Erscheinen mitgeschrieben – auch nicht übernommene. Bei jeder Suche wird geprüft: Ziel nach dem Einstieg (Treffer), Stop (Blau: Schlusskurs unter der Ungültig-Grenze), verpasst (Ziel ohne Einstieg) oder läuft noch. Anzeige oben in den Chancen.
 
 **Sicherung:** Die App fragt beim Browser dauerhaften Speicher an und speichert bei jedem neuen, geschlossenen oder geänderten Trade, beim Neustart des Kontos und bei Buy & Hold automatisch eine Sicherungsdatei in den Ordner „Downloads“ (abschaltbar unter Mehr → Backups). Dort auch „Jetzt sichern“ und „Aus Datei wiederherstellen“. Die Datei enthält Watchlist, Trades, Konto, Buy & Hold, Live-Bilanz und Einstiegs-Verlauf (ohne API-Schlüssel).
+
+## Buy & Hold: Blacktrader schaut mit, Dividenden, Steuer, Wochenbericht, Kurs in Deutschland
+
+- **Blacktrader schaut auf Buy & Hold:** Für jeden gehaltenen Wert zeigt die Karte den großen Trend (Wochenchart, Elliott) und den aktuellen Einstieg. Kippt der Trend nach unten, kommt einmal eine Nachricht – verkauft wird nichts.
+- **Dividenden:** im Wert „Dividende eintragen“ (Datum, Betrag brutto in €). Zählen zum Gewinn und zur KESt.
+- **Steuer-Jahresübersicht** (Depot, unten): Blacktrader-Trades, Buy-&-Hold-Verkäufe und Dividenden je Jahr verrechnet, 27,5 % KESt geschätzt.
+- **Wochenbericht** (Übersicht, alle 7 Tage): Konto-Veränderung, neue Ergebnisse der Live-Bilanz, Chancen, Stops zum Anpassen, Buy-&-Hold-Warnungen; „Gelesen“ setzt die neue Vergleichsbasis.
+- **Kurs in Deutschland:** bei US-Aktien zusätzlich der Euro-Kurs an Xetra (zum Vergleich mit gettex/Tradegate); die Analyse bleibt auf der US-Börse.
+- **Prüfung der Szenario-Prozente** (84.034 Fälle, 191 Werte, Tag und Woche): Das Hauptszenario erreicht sein Ziel vor der Ungültig-Grenze in rund 46 % der Fälle – unabhängig vom angezeigten Anteil (50–55 %: 46,4 %; 60–70 %: 45,2 %; 80–90 %: 40,4 %). Die Prozente sind Regel-Passung, keine Eintrittswahrscheinlichkeit; die Leiste sagt das jetzt dazu.

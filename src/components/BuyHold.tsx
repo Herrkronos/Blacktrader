@@ -1,6 +1,9 @@
 "use client";
 // Buy & Hold: eigene Käufe von Aktien und ETFs. Eingabe: Datum, Preis je Stück (€), Stückzahl, Gebühr (Standard 7,90 €).
 // Verkauft wird nur, wenn du es eingibst. Kurs jetzt: Börsenkurs, in Euro umgerechnet.
+import { runScan, useScan } from "@/lib/client/scanner";
+import { holdTrend } from "@/lib/client/holdingWatch";
+import { COLOR_LABEL } from "./AssetCard";
 import { useEffect, useMemo, useState } from "react";
 import { AddAsset } from "./AddAsset";
 import { Sheet } from "./Sheet";
@@ -20,7 +23,7 @@ const num = (s: string) => {
 };
 const today = () => new Date().toISOString().slice(0, 10);
 
-type Form = { mode: "buy" | "sell"; holding?: Holding; asset?: ResolvedAsset } | null;
+type Form = { mode: "buy" | "sell" | "div"; holding?: Holding; asset?: ResolvedAsset } | null;
 
 /** Aktueller Kurs in Euro je Wert (alle 60 Sekunden) */
 function usePrices(holdings: Holding[]) {
@@ -49,8 +52,27 @@ function usePrices(holdings: Holding[]) {
   return prices;
 }
 
+/** Was Blacktrader zu deinem Wert sagt: großer Trend (Wochenchart) und aktueller Einstieg – nur zur Info, kein Verkauf. */
+function BlacktraderView({ h }: { h: Holding }) {
+  const scan = useScan();
+  const e = scan.entries.find((x) => x.asset.kind === h.kind && x.asset.symbol === h.symbol);
+  if (!e) return <div className="mt-1 text-[13px] text-stone-500">{scan.busy ? "Blacktrader rechnet …" : "Blacktrader: noch keine Analyse"}</div>;
+  const t = holdTrend(e);
+  return (
+    <div className={`mt-1.5 rounded-lg px-2.5 py-1.5 text-[13px] ${t === -1 ? "bg-red-500/15 text-red-200" : "bg-white/5 text-stone-300"}`}>
+      Blacktrader: großer Trend {t === 1 ? "steigend ↑" : t === -1 ? "fallend ↓ – Achtung, prüfe deine Position" : "unklar"} · aktuell {COLOR_LABEL[e.best.color]}
+    </div>
+  );
+}
+
 export function BuyHold() {
   const holdings = useAppData((d) => d.holdings);
+  const scan = useScan();
+  // Blacktrader-Analyse für deine Werte: Suche starten; fehlt ein neu eingetragener Wert, nach 1 Minute erneut suchen
+  const missing = holdings.some((h) => !scan.entries.some((x) => x.asset.kind === h.kind && x.asset.symbol === h.symbol));
+  useEffect(() => {
+    void runScan(missing ? 60e3 : undefined);
+  }, [missing]);
   const prices = usePrices(holdings);
   const [form, setForm] = useState<Form>(null);
   const [detail, setDetail] = useState<Holding | null>(null);
@@ -73,8 +95,9 @@ export function BuyHold() {
   const openPl = held.reduce((a, r) => a + (r.open ?? 0), 0);
   const realized = rows.reduce((a, r) => a + r.s.realized, 0);
   const fees = rows.reduce((a, r) => a + r.s.fees, 0);
+  const dividends = rows.reduce((a, r) => a + r.s.dividends, 0);
   const tax = totalTax(rows.map((r) => r.s));
-  const total = openPl + realized - fees - tax;
+  const total = openPl + realized + dividends - fees - tax;
 
   return (
     <div className="space-y-4">
@@ -93,6 +116,10 @@ export function BuyHold() {
         <div className="card px-3 py-2.5">
           <div className="label">Gewinn verkauft</div>
           <div className={`num text-[17px] font-semibold ${realized >= 0 ? "text-up" : "text-down"}`}>{eur(realized, true)}</div>
+        </div>
+        <div className="card px-3 py-2.5">
+          <div className="label">Dividenden (brutto)</div>
+          <div className="num text-[17px] font-semibold text-stone-50">{eur(dividends)}</div>
         </div>
         <div className="card px-3 py-2.5">
           <div className="label">Gebühren</div>
@@ -126,6 +153,7 @@ export function BuyHold() {
               </div>
             </div>
             <div className="mt-1 text-[13px] text-stone-400">Kurs jetzt {price != null ? eur(price) : "–"} · gekauft für {eur(s.cost)}</div>
+            <BlacktraderView h={h} />
           </button>
         ))}
         {sold.length > 0 && (
@@ -148,13 +176,13 @@ export function BuyHold() {
       <TxSheet form={form} onClose={() => setForm(null)} />
 
       <Sheet open={!!detail} onClose={() => setDetail(null)} title={detail?.name ?? ""}>
-        {detail && <HoldingDetail id={detail.id} onBuy={(h) => (setDetail(null), setForm({ mode: "buy", holding: h }))} onSell={(h) => (setDetail(null), setForm({ mode: "sell", holding: h }))} onClose={() => setDetail(null)} />}
+        {detail && <HoldingDetail id={detail.id} onBuy={(h) => (setDetail(null), setForm({ mode: "buy", holding: h }))} onSell={(h) => (setDetail(null), setForm({ mode: "sell", holding: h }))} onDiv={(h) => (setDetail(null), setForm({ mode: "div", holding: h }))} onClose={() => setDetail(null)} />}
       </Sheet>
     </div>
   );
 }
 
-function HoldingDetail({ id, onBuy, onSell, onClose }: { id: string; onBuy: (h: Holding) => void; onSell: (h: Holding) => void; onClose: () => void }) {
+function HoldingDetail({ id, onBuy, onSell, onDiv, onClose }: { id: string; onBuy: (h: Holding) => void; onSell: (h: Holding) => void; onDiv: (h: Holding) => void; onClose: () => void }) {
   const h = useAppData((d) => d.holdings.find((x) => x.id === id));
   if (!h) return <p className="text-stone-400">Gelöscht.</p>;
   const s = summarizeHolding(h);
@@ -170,6 +198,9 @@ function HoldingDetail({ id, onBuy, onSell, onClose }: { id: string; onBuy: (h: 
         <button className="btn" disabled={s.qty <= 0} onClick={() => onSell(h)}>
           Verkaufen
         </button>
+        <button className="btn col-span-2" onClick={() => onDiv(h)}>
+          Dividende eintragen
+        </button>
       </div>
       <div className="label">Käufe und Verkäufe</div>
       <ul className="divide-y divide-white/5 rounded-xl border border-white/10">
@@ -178,8 +209,15 @@ function HoldingDetail({ id, onBuy, onSell, onClose }: { id: string; onBuy: (h: 
           .map((t) => (
             <li key={t.id} className="flex items-center justify-between gap-2 px-3 py-2">
               <span className="num text-[14px] text-stone-300">
-                {new Date(t.date).toLocaleDateString("de-DE")} · <span className={t.type === "buy" ? "text-up" : "text-down"}>{t.type === "buy" ? "Kauf" : "Verkauf"}</span> {t.qty.toLocaleString("de-DE", { maximumFractionDigits: 4 })} × {eur(t.price)}
-                {t.fee ? ` + ${eur(t.fee)} Gebühr` : ""}
+                {new Date(t.date).toLocaleDateString("de-DE")} ·{" "}
+                {t.type === "div" ? (
+                  <span className="text-sky-200">Dividende {eur(t.price)}</span>
+                ) : (
+                  <>
+                    <span className={t.type === "buy" ? "text-up" : "text-down"}>{t.type === "buy" ? "Kauf" : "Verkauf"}</span> {t.qty.toLocaleString("de-DE", { maximumFractionDigits: 4 })} × {eur(t.price)}
+                    {t.fee ? ` + ${eur(t.fee)} Gebühr` : ""}
+                  </>
+                )}
               </span>
               <button
                 className="text-[13px] text-stone-500 underline"
@@ -218,6 +256,7 @@ function TxSheet({ form, onClose }: { form: Form; onClose: () => void }) {
   if (!form) return <Sheet open={false} onClose={onClose}>{null}</Sheet>;
   const h = form.holding;
   const sell = form.mode === "sell";
+  const div = form.mode === "div";
   const held = h ? summarizeHolding(h).qty : 0;
   const target = h ?? asset;
   const save = () => {
@@ -226,6 +265,11 @@ function TxSheet({ form, onClose }: { form: Form; onClose: () => void }) {
     const f = num(fee);
     if (!target) return setErr("Bitte zuerst den Wert suchen und auswählen.");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return setErr("Bitte ein Datum eingeben.");
+    if (div) {
+      if (!(p > 0) || !h) return setErr("Bitte den Dividenden-Betrag (brutto, in €) eingeben.");
+      actions.addHoldingTx(h.id, { type: "div", date, price: p, qty: 1, fee: 0 });
+      return onClose();
+    }
     if (!(p > 0)) return setErr("Bitte den Preis je Stück in Euro eingeben.");
     if (!(q > 0)) return setErr("Bitte die Stückzahl eingeben.");
     if (sell && q > held + 1e-9) return setErr(`Du hast nur ${held.toLocaleString("de-DE")} Stück.`);
@@ -237,7 +281,7 @@ function TxSheet({ form, onClose }: { form: Form; onClose: () => void }) {
   const p = num(price);
   const q = num(qty);
   return (
-    <Sheet open onClose={onClose} title={sell ? `Verkauf: ${h?.name}` : h ? `Nachkauf: ${h.name}` : "Kauf eintragen"}>
+    <Sheet open onClose={onClose} title={div ? `Dividende: ${h?.name}` : sell ? `Verkauf: ${h?.name}` : h ? `Nachkauf: ${h.name}` : "Kauf eintragen"}>
       <div className="space-y-3 text-[15px]">
         {!h &&
           (asset ? (
@@ -257,6 +301,13 @@ function TxSheet({ form, onClose }: { form: Form; onClose: () => void }) {
           Datum
           <input className="input mt-1" type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} />
         </label>
+        {div ? (
+          <label className="block text-stone-300">
+            Dividende gesamt in € (brutto, vor Steuer)
+            <input className="input num mt-1" inputMode="decimal" placeholder="z. B. 12,40" value={price} onChange={(e) => setPrice(e.target.value)} />
+          </label>
+        ) : (
+          <>
         <label className="block text-stone-300">
           Preis je Stück in €
           <input className="input num mt-1" inputMode="decimal" placeholder="z. B. 123,45" value={price} onChange={(e) => setPrice(e.target.value)} />
@@ -269,10 +320,12 @@ function TxSheet({ form, onClose }: { form: Form; onClose: () => void }) {
           Gebühr in €
           <input className="input num mt-1" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} />
         </label>
-        {p > 0 && q > 0 && <p className="num text-stone-400">{sell ? "Erlös" : "Betrag"}: {eur(p * q)} {sell ? "−" : "+"} {eur(num(fee))} Gebühr</p>}
+          </>
+        )}
+        {!div && p > 0 && q > 0 && <p className="num text-stone-400">{sell ? "Erlös" : "Betrag"}: {eur(p * q)} {sell ? "−" : "+"} {eur(num(fee))} Gebühr</p>}
         {err && <p className="text-red-300">{err}</p>}
         <button className="btn-primary w-full" onClick={save}>
-          {sell ? "Verkauf speichern" : "Kauf speichern"}
+          {div ? "Dividende speichern" : sell ? "Verkauf speichern" : "Kauf speichern"}
         </button>
       </div>
     </Sheet>

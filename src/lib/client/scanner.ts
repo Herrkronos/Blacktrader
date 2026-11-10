@@ -2,6 +2,8 @@
 // Chancen-Scanner (geteilt von Übersicht, Chancen und Watchlist): Blacktrader rechnet die Zeiträume im Hintergrund
 // und wählt GENAU EINEN aktuellen Einstieg pro Wert (blau / grün / rot / gelb). Shorts nur bei bärischem Gesamtmarkt, Aktien und Krypto ohne
 // kurzfristige Signale, Rohstoffe kurzfristig nur bei bullischem Gesamtmarkt (S&P 500).
+import { summarizeHolding } from "./holdings";
+import { checkHoldings } from "./holdingWatch";
 import { updateChanceLog, type ChanceCandidate } from "./chanceLog";
 import { isFxPair } from "./eur";
 import { basePotential, BLUE_RULE, MIN_POTENTIAL, passesBlueRule, type PotentialColor } from "../analysis/potential";
@@ -81,8 +83,10 @@ export function scanAssets(): ResolvedAsset[] {
   const d = getData();
   // Offene Trades mitrechnen (für Hochstufung und nachgezogenen Stop)
   const fromTrades: ResolvedAsset[] = d.trades.filter((t) => t.status !== "closed").map((t) => ({ kind: t.kind, symbol: t.symbol, name: t.name, binanceSymbol: t.binanceSymbol, yahooSymbol: t.yahooSymbol }));
-  // Markt für die Chancen (rund 190 Werte) + Watchlist (nur für die Watchlist) + offene Trades
-  for (const a of [...d.watchlist, ...MARKET_ASSETS, ...fromTrades]) if (!map.has(`${a.kind}:${a.symbol}`)) map.set(`${a.kind}:${a.symbol}`, a);
+  // Buy & Hold: noch gehaltene eigene Werte (Blacktrader schaut mit und warnt, wenn der große Trend kippt)
+  const fromHoldings: ResolvedAsset[] = d.holdings.filter((h) => summarizeHolding(h).qty > 0).map((h) => ({ kind: h.kind, symbol: h.symbol, name: h.name, binanceSymbol: h.binanceSymbol, yahooSymbol: h.yahooSymbol, currency: h.currency, isin: h.isin, exchange: h.exchange }));
+  // Markt für die Chancen (rund 190 Werte) + Watchlist (nur für die Watchlist) + offene Trades + Buy & Hold
+  for (const a of [...d.watchlist, ...MARKET_ASSETS, ...fromTrades, ...fromHoldings]) if (!map.has(`${a.kind}:${a.symbol}`)) map.set(`${a.kind}:${a.symbol}`, a);
   return [...map.values()];
 }
 
@@ -102,7 +106,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
   // Watchlist und offene Trades bekommen immer die volle Analyse (mit Firmenzahlen und Nachrichten);
   // Markt-Werte erst, wenn sie zu den aussichtsreichsten gehören (2. Schritt) – so bleibt die Suche schnell.
   const d0 = getData();
-  const personal = new Set([...d0.watchlist, ...d0.trades.filter((t) => t.status !== "closed")].map((a) => assetKey(a)));
+  const personal = new Set([...d0.watchlist, ...d0.trades.filter((t) => t.status !== "closed"), ...d0.holdings].map((a) => assetKey(a)));
   const fullAnalysis = async (asset: ResolvedAsset, horizon: Horizon, candles: Candle[]) => {
     const interval = settings.intervals[horizon];
     const [f, n] = await Promise.allSettled([api.fundamentals(asset), api.news(asset)]);
@@ -218,6 +222,11 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
     applyPromotions(entries);
   } catch {
     /* Hochstufung beim nächsten Durchlauf */
+  }
+  try {
+    checkHoldings(entries);
+  } catch {
+    /* beim nächsten Durchlauf */
   }
   try {
     // Live-Bilanz: die Chancen dieser Suche (wie in der Liste: höchstens 20, nach Potenzial) mitschreiben, offene prüfen

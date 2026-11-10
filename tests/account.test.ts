@@ -66,3 +66,24 @@ describe("Buy & Hold", () => {
     expect(totalTax([s, loss])).toBeCloseTo(50 * 0.275, 6);
   });
 });
+
+describe("Dividenden und Steuer-Jahresübersicht", () => {
+  it("Dividenden zählen zur KESt und werden mit Verlusten verrechnet; Blacktrader-Trades und Buy & Hold zusammen", async () => {
+    const { taxYears } = await import("../src/lib/client/taxYear");
+    const h = { id: "h", symbol: "X", name: "X", kind: "stock" as const, txs: [
+      { id: "1", type: "buy" as const, date: "2026-01-02", price: 100, qty: 10, fee: 7.9 },
+      { id: "2", type: "div" as const, date: "2026-03-01", price: 40, qty: 1, fee: 0 },
+      { id: "3", type: "sell" as const, date: "2026-06-01", price: 90, qty: 10, fee: 7.9 },
+    ] };
+    const s = summarizeHolding(h);
+    expect(s.dividends).toBe(40);
+    expect(s.realized).toBeCloseTo(-100, 6);
+    const trade = T("A", Date.UTC(2026, 1, 1), 20, Date.UTC(2026, 2, 1), { stakeEur: 500 });
+    const [y] = taxYears([trade], [h]);
+    expect(y.year).toBe("2026");
+    expect(y.trades).toBeCloseTo(100, 6);
+    expect(y.sold).toBeCloseTo(-100, 6);
+    expect(y.dividends).toBe(40);
+    expect(y.kest).toBeCloseTo(40 * 0.275, 6);
+  });
+});

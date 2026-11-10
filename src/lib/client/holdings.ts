@@ -9,7 +9,8 @@ export const HOLD_TAX = 0.275;
 
 export interface HoldingTx {
   id: string;
-  type: "buy" | "sell";
+  /** Kauf, Verkauf oder Dividende (bei Dividende: price = Betrag brutto in €, qty = 1) */
+  type: "buy" | "sell" | "div";
   /** Datum JJJJ-MM-TT */
   date: string;
   /** Preis je Stück in Euro */
@@ -29,6 +30,8 @@ export interface Holding {
   exchange?: string;
   currency?: string;
   txs: HoldingTx[];
+  /** Großer Trend laut Blacktrader (1 steigend, −1 fallend, 0 unklar) – für die Meldung bei Änderung */
+  trend?: 1 | -1 | 0;
 }
 
 export interface HoldingSummary {
@@ -42,12 +45,15 @@ export interface HoldingSummary {
   fees: number;
   /** Geschätzte KESt auf verkaufte Gewinne (je Jahr verrechnet) */
   tax: number;
-  /** Realisierter Gewinn je Kalenderjahr (für die Verrechnung über alle Werte) */
+  /** Realisierter Gewinn je Kalenderjahr inkl. Dividenden (für die Verrechnung über alle Werte) */
   realizedByYear: Record<string, number>;
+  /** Dividenden brutto */
+  dividends: number;
   invested: number;
 }
 
-const byDate = (a: HoldingTx, b: HoldingTx) => a.date.localeCompare(b.date) || (a.type === "buy" ? -1 : 1);
+const ORDER = { buy: 0, div: 1, sell: 2 } as const;
+const byDate = (a: HoldingTx, b: HoldingTx) => a.date.localeCompare(b.date) || ORDER[a.type] - ORDER[b.type];
 
 export function summarizeHolding(h: Pick<Holding, "txs">): HoldingSummary {
   let qty = 0;
@@ -56,8 +62,16 @@ export function summarizeHolding(h: Pick<Holding, "txs">): HoldingSummary {
   let fees = 0;
   let invested = 0;
   const realizedByYear: Record<string, number> = {};
+  let dividends = 0;
   for (const t of [...h.txs].sort(byDate)) {
     fees += t.fee;
+    if (t.type === "div") {
+      // Dividenden sind in Österreich KESt-pflichtig und mit Kursverlusten verrechenbar
+      dividends += t.price;
+      const y = t.date.slice(0, 4);
+      realizedByYear[y] = (realizedByYear[y] ?? 0) + t.price;
+      continue;
+    }
     if (t.type === "buy") {
       qty += t.qty;
       cost += t.qty * t.price;
@@ -79,7 +93,7 @@ export function summarizeHolding(h: Pick<Holding, "txs">): HoldingSummary {
     }
   }
   const tax = Object.values(realizedByYear).reduce((s, g) => s + Math.max(0, g) * HOLD_TAX, 0);
-  return { qty, avg: qty > 0 ? cost / qty : 0, cost, realized, fees, tax, realizedByYear, invested };
+  return { qty, avg: qty > 0 ? cost / qty : 0, cost, realized, fees, tax, realizedByYear, invested, dividends };
 }
 
 /** KESt über alle Werte: Gewinne und Verluste eines Jahres werden verrechnet. */

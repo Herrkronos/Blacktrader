@@ -1,5 +1,6 @@
 "use client";
 // Depot (früher Journal): nur selbst übernommene Papier-Trades, als Karten-Liste.
+import { TaxOverview } from "@/components/TaxOverview";
 import { brokerStop } from "@/lib/client/brokerStop";
 import { closeLongTerm } from "@/lib/client/longterm";
 import Link from "next/link";
@@ -181,6 +182,7 @@ export default function DepotPage() {
         ))}
       </div>
       {tab === "bt" ? <BlacktraderDepot /> : <BuyHold />}
+      <TaxOverview />
     </div>
   );
 }
