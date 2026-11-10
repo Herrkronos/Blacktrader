@@ -24,6 +24,8 @@ export interface SessionConfig {
   extra: { symbol: string; kind: AssetKind; yahooSymbol?: string }[];
   /** Ausgangswerte je Bereich (der Server prüft, ob sie noch gelten) */
   baseParams: Partial<Record<CellKey, LearnableParams>>;
+  /** Live-Bilanz: Beginn (Unix-Sekunden) und Zahl abgeschlossener Ergebnisse – für die Live-Prüfung beim Lernen */
+  live?: { start: number; done: number };
 }
 
 export interface CellOutcome {
@@ -86,7 +88,15 @@ export interface SessionIO {
   afterTraining?: (st: SessionState) => Promise<void>;
   /** Lernen bis zu dieser Zeit (ms) unterbrechen – das Turnier spielt dazwischen eine Runde */
   pauseAtMs?: number;
+  /**
+   * Live-Prüfung (Stufe 2, erst ab LIVE_LEARN_MIN abgeschlossenen Ergebnissen der Live-Bilanz): Ein neuer Stand wird nur
+   * übernommen, wenn er im Zeitraum seit Beginn der Live-Bilanz nicht schlechter ist. Rückgabe: Grund für ein Nein.
+   */
+  liveVeto?: (cell: CellKey, baseParams: LearnableParams, cand: LearnableParams, st: SessionState) => Promise<string | null>;
 }
+
+/** Ab so vielen abgeschlossenen Ergebnissen der Live-Bilanz prüft das Lernen zusätzlich den Live-Zeitraum */
+export const LIVE_LEARN_MIN = 500;
 
 const PHASE_ORDER: WFPhase[] = ["load", "backtest", "select", "verify", "done"];
 
@@ -166,6 +176,14 @@ async function trySave(st: SessionState, cell: CellKey, io: SessionIO) {
   const r = improvementCheck(st.wf, last);
   if (!r || !r.decision.accept) return;
   const baseParams = last?.params ?? st.wf.pool[st.wf.baseKey].params;
+  // Live-Prüfung (Stufe 2): neuer Stand darf im Live-Zeitraum nicht schlechter sein
+  if (io.liveVeto && (st.cfg.live?.done ?? 0) >= LIVE_LEARN_MIN) {
+    const why = await io.liveVeto(cell, baseParams, r.deployed, st);
+    if (why) {
+      st.detail = `Nicht übernommen – ${why}`;
+      return;
+    }
+  }
   const ok = await io.onImprovement(cell, r, baseParams, st);
   if (ok) st.saved[cell] = { key: keyOf(r.deployed), oos: r.cand, params: r.deployed };
 }

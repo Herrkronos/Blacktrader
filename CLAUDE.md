@@ -16,3 +16,4 @@
 - Update (getestet, Nutzer-OK): ein Signal wie in den Chancen auch in Turnier/EchoChart (tradeRules.suppressedBy); grüne Box bis 1 % über dem Stop (LOCKED.zone.bottomAboveStop); Nachkauf NUR bei Blau, max. 4 × 250 € (ADD / RULES.addMax/addStake, nachkauf.ts); eine Position je Wert sonst.
 - Finanz-Filter (analysis/finance.ts) nur live, nicht im Turnier/EchoChart (keine historischen Firmenzahlen → kein Look-ahead).
 - Härtetest-Skripte liegen nur im Scratchpad; Ergebnis: +7,4 %/J netto vs. bisher +5,5 %, ETF-Modell +7,9 %.
+- Live-Kontrolle: Stufe 1 Warnung ab 100 Ergebnissen (liveCheck.ts, Erwartung Grün 50,3 / Blau 59,7 / Rot 19,1 %), Stufe 2 Live-Veto beim Lernen ab 500 (session.ts LIVE_LEARN_MIN, Worker liveVeto). Blacktrader lernt NICHT aus Nutzer-Handlungen.

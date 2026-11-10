@@ -5,7 +5,8 @@ import { primaryRate } from "./engine";
 import { runSession, checkpoint, type CellOutcome, type SessionIO, type SessionState } from "./session";
 import { cagr, RULES, type PoolTrade, type TournamentReport } from "./tournament";
 import { blacktraderPool, buildReport, playRound, prepareTournament } from "./tournamentRun";
-import type { CellKey, SeriesSpec } from "./universe";
+import { universe, type CellKey, type SeriesSpec } from "./universe";
+import { backtestSeries } from "./engine";
 
 let stop = false;
 const pending = new Map<string, (ok: boolean) => void>();
@@ -68,6 +69,32 @@ self.onmessage = async (e: MessageEvent) => {
           setTimeout(() => pending.has(id) && (pending.delete(id), res(false)), 60_000);
         }),
       onMeasured: (cell, base, baseParams) => postMessage({ type: "measured", cell, base, baseParams }),
+      // Live-Prüfung (Stufe 2): Zonen-Quote im Live-Zeitraum, neuer gegen bisherigen Stand (nur Kerzen ab Beginn der
+      // Live-Bilanz werden gewertet, davor 150 Kerzen Vorlauf). Zu wenige Zonen → keine Aussage, kein Nein.
+      liveVeto: async (cell, baseParams, cand, s) => {
+        const start = s.cfg.live?.start;
+        if (!start) return null;
+        const rate = async (p: typeof cand) => {
+          let ok = 0;
+          let n = 0;
+          for (const spec of universe(cell)) {
+            const c = await load(spec);
+            if (!c) continue;
+            const i = c.findIndex((x) => x.time >= start);
+            if (i < 0) continue;
+            const slice = c.slice(Math.max(0, i - 150));
+            for (const z of backtestSeries({ name: spec.symbol, kind: spec.kind, horizon: spec.horizon, interval: spec.interval, candles: slice }, p, { step: spec.step }).zones) {
+              if (z.t < start) continue;
+              n++;
+              ok += z.ok;
+            }
+          }
+          return { n, r: n ? ok / n : 0 };
+        };
+        const [b, c] = await Promise.all([rate(baseParams), rate(cand)]);
+        if (b.n < 30 || c.n < 30) return null;
+        return c.r < b.r ? `im Live-Zeitraum schlechter (Zonen-Quote ${(c.r * 100).toFixed(1)} % gegen ${(b.r * 100).toFixed(1)} %)` : null;
+      },
       onProtocol: (cell, entries) => postMessage({ type: "protocol", cell, entries }),
       // Abschluss eines Bereichs (nur Anzeige)
       onCellDone: (o: CellOutcome, s) =>

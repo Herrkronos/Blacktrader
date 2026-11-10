@@ -4,6 +4,8 @@
 // So entsteht eine ehrliche Trefferquote ab heute, die nicht nachträglich schöngerechnet ist.
 import type { Candle } from "../types";
 import { actions, getData } from "../store/store";
+import { notify } from "./alerts";
+import { liveCheck } from "./liveCheck";
 
 export type ChanceResult = "ziel" | "stop" | "verpasst";
 
@@ -93,7 +95,26 @@ export function updateChanceLog(cands: ChanceCandidate[], now = Math.floor(Date.
       changed = true;
     }
   }
-  if (changed) actions.setChanceLog(log);
+  if (changed) {
+    actions.setChanceLog(log);
+    warnIfWorse(log);
+  }
+}
+
+/** Einmal melden, wenn die Live-Bilanz deutlich schlechter ist als erwartet (Stufe 1 der Kontrolle) */
+function warnIfWorse(log: ChanceLogEntry[]) {
+  const c = liveCheck(log);
+  if (!c.warn) return;
+  try {
+    const key = "bt-live-warned";
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, String(Date.now()));
+  } catch {
+    return;
+  }
+  const s = getData().settings;
+  const rate = c.all.rate != null ? Math.round(c.all.rate * 100) : null;
+  void notify("Live-Bilanz schlechter als erwartet", `Treffer ${rate ?? "–"} % bei ${c.all.n} Ergebnissen – laut Test wären etwa ${Math.round(c.all.expected * 100)} % zu erwarten. Das ist mehr als Zufall – die Regeln sollten geprüft werden.`, { sound: s.sound, notifications: s.notifications, kind: "info" });
 }
 
 export interface ChanceStats {

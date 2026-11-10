@@ -3,6 +3,9 @@
 // gegen 9 andere Analysten/Bots an (10 Teilnehmer): 50 Versuche à 5 Jahre, 8.000 € Startkapital, in bullischen,
 // neutralen, bärischen und gemischten Szenarien. Alle Werte (Aktien, Krypto, Rohstoffe) werden verwendet.
 // Danach: Rangliste und wo sich Blacktrader verbessert hat.
+import { useAppData } from "@/lib/store/store";
+import { LIVE_CHECK, liveCheck } from "@/lib/client/liveCheck";
+import { LIVE_LEARN_MIN } from "@/lib/trainer/session";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { IconInfo } from "@/components/Icons";
@@ -195,6 +198,8 @@ export default function TrainerPage() {
         </Link>
       </div>
 
+      <LiveControl />
+
       <section className="card space-y-3 p-4">
         <div className="text-center">
           <div className="text-[14px] text-stone-400">Ziel Zonen-Quote · alle Werte</div>
@@ -369,4 +374,26 @@ async function exportResults(local: unknown) {
   a.download = `blacktrader-trainer-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+/** Live-Bilanz als Kontrolle (Stufe 1, ab 100 Ergebnissen) und als Prüfstein beim Lernen (Stufe 2, ab 500) */
+function LiveControl() {
+  const log = useAppData((d) => d.chanceLog);
+  const chk = liveCheck(log);
+  const pc = (x: number | null) => (x == null ? "–" : `${Math.round(x * 100)} %`);
+  return (
+    <section className={`card space-y-1 p-4 text-[14px] ${chk.warn ? "edge-short" : ""}`}>
+      <div className="text-[15px] font-medium text-gold-light">Live-Kontrolle</div>
+      <p className={chk.warn ? "text-red-200" : "text-stone-300"}>
+        {chk.all.verdict === "zu-wenig"
+          ? `Vergleich mit dem Test ab ${LIVE_CHECK.minAll} Ergebnissen (bisher ${chk.all.n}).`
+          : chk.warn
+            ? `⚠️ Live schlechter als erwartet: ${pc(chk.all.rate)} statt ca. ${pc(chk.all.expected)} (${chk.all.n} Ergebnisse) – Regeln prüfen.`
+            : `Live ${pc(chk.all.rate)} bei ${chk.all.n} Ergebnissen – im erwarteten Bereich (Test ca. ${pc(chk.all.expected)}).`}
+      </p>
+      <p className="text-stone-400">
+        Live-Prüfung beim Lernen: {chk.all.n >= LIVE_LEARN_MIN ? "aktiv – ein neuer Stand muss auch im Live-Zeitraum bestehen." : `wartet auf ${LIVE_LEARN_MIN} Ergebnisse (bisher ${chk.all.n}).`}
+      </p>
+    </section>
+  );
 }

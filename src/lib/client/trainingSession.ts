@@ -238,7 +238,10 @@ export async function startTraining(durationMs: number, cells: CellKey[] = [...A
     const [k, h] = c.split(":") as [never, never];
     return [c, resolveParams(params, k, h)];
   }));
-  const st = newSession({ id: String(Date.now()), durationMs, cells, baseVersion: version, paramSet: params, extra, baseParams });
+  // Live-Bilanz für die Live-Prüfung beim Lernen (erst ab 500 abgeschlossenen Ergebnissen aktiv)
+  const log = getData().chanceLog;
+  const live = log.length ? { start: Math.min(...log.map((x) => x.from)), done: log.filter((x) => x.result === "ziel" || x.result === "stop").length } : undefined;
+  const st = newSession({ id: String(Date.now()), durationMs, cells, baseVersion: version, paramSet: params, extra, baseParams, live });
   write(KEY, st);
   spawn(st);
 }

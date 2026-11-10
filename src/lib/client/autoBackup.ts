@@ -6,11 +6,16 @@
 import { actions, getData, subscribeData, type AppData } from "../store/store";
 
 const SIG_KEY = "bt-autobackup-sig";
+const LOG_KEY = "bt-autobackup-log"; // Anzahl fertiger Ergebnisse der Live-Bilanz beim letzten Sichern
+const LOG_AT_KEY = "bt-autobackup-log-at";
+/** Live-Bilanz: Anzahl fertiger Ergebnisse (Ziel, Stop, verpasst) – neue Ergebnisse höchstens einmal am Tag sichern */
+const logDone = (d: Pick<AppData, "chanceLog">) => d.chanceLog.filter((x) => x.result).length;
 const AT_KEY = "bt-autobackup-at";
 
 /** Kennung der wichtigen Daten (Kursaktualisierungen lösen keine neue Datei aus) */
 export function backupSignature(d: Pick<AppData, "trades" | "holdings" | "accountResets">): string {
   return JSON.stringify([
+    // Depot (Trades, Konto, Buy & Hold) – jede Änderung sofort sichern
     d.trades.map((t) => [t.id, t.status, t.returnPct ?? null, t.closedAt ?? null, (t.tranches ?? []).filter((x) => x.filledAt).length, (t.partials ?? []).length]),
     d.holdings.map((h) => [h.id, h.txs.map((x) => x.id)]),
     d.accountResets,
@@ -30,6 +35,7 @@ export function downloadBackup(): void {
   try {
     localStorage.setItem(AT_KEY, String(Date.now()));
     localStorage.setItem(SIG_KEY, backupSignature(getData()));
+    localStorage.setItem(LOG_KEY, String(logDone(getData())));
   } catch {
     /* ohne Speicher */
   }
@@ -73,7 +79,22 @@ export function startAutoBackup() {
       }
       return;
     }
-    if (sig === last) return;
+    if (sig === last) {
+      // Nur die Live-Bilanz hat neue Ergebnisse: höchstens einmal pro Tag eine Sicherungsdatei
+      try {
+        const n = logDone(d);
+        const lastN = Number(localStorage.getItem(LOG_KEY) ?? "0");
+        const lastAt = Number(localStorage.getItem(LOG_AT_KEY) ?? "0");
+        if (n > lastN && Date.now() - lastAt > 24 * 3600e3) {
+          localStorage.setItem(LOG_KEY, String(n));
+          localStorage.setItem(LOG_AT_KEY, String(Date.now()));
+          downloadBackup();
+        }
+      } catch {
+        /* ohne Speicher */
+      }
+      return;
+    }
     if (timer) clearTimeout(timer);
     // kurz warten, damit mehrere Änderungen (z. B. „Alle übernehmen“) in einer Datei landen
     timer = setTimeout(() => {

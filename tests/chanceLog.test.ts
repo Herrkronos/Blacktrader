@@ -39,3 +39,17 @@ describe("Order-Zettel für flatex", () => {
     expect(lt.text).toContain("ungültig unter 70,00 €");
   });
 });
+
+describe("Kontrolle der Live-Bilanz", () => {
+  it("warnt erst ab 100 Ergebnissen und nur bei sehr deutlicher Abweichung", async () => {
+    const { liveCheck } = await import("../src/lib/client/liveCheck");
+    const mk = (n: number, hits: number, color: "gruen" | "blau" | "rot" = "gruen") =>
+      Array.from({ length: n }, (_, i) => ({ ...base, key: `${color}${i}`, color, result: (i < hits ? "ziel" : "stop") as "ziel" | "stop" }));
+    expect(liveCheck(mk(60, 10)).all.verdict).toBe("zu-wenig");
+    expect(liveCheck(mk(100, 45)).warn).toBe(false); // 45 % statt 50 % – Zufall
+    const bad = liveCheck(mk(120, 30)); // 25 % statt 50 %
+    expect(bad.warn).toBe(true);
+    expect(bad.byColor.gruen.verdict).toBe("schlechter");
+    expect(liveCheck(mk(100, 75)).all.verdict).toBe("besser");
+  });
+});

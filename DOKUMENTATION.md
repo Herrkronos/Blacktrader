@@ -291,3 +291,9 @@ Getestet (Härtetest, 191 Werte, 1963–2026, 10 Mio. Durchgänge à 5 Jahre, 8.
 3. **Nachkauf nur bei Blau:** Liegt ein Wert im Depot, gibt es keinen zweiten grünen/roten Trade. Bei einem weiteren blauen Bereich höchstens 4 Nachkäufe zu je 250 € (eine Order an der Oberkante).
 4. **Finanz-Prüfung (Filter):** Aktien mit Schulden über dem Doppelten des Eigenkapitals UND (Geld verbrennen ODER Gewinnmarge schlechter als −20 % ODER Umsatz −30 % und mehr) kommen nicht in Chancen/Top 3 und bekommen keinen Einstieg; in Watchlist und Depot steht „Finanzen schwach“. Nur live – im Turnier/EchoChart nicht, weil es keine alten Firmenzahlen gibt (sonst Blick in die Zukunft).
 5. **„Nachkauf möglich“ im Depot:** blaues Abzeichen bei der Position, mit neuem Bereich, „noch X von 4“ und Order-Zettel für 250 €.
+
+## Live-Kontrolle
+
+- **Stufe 1 (ab 100 Ergebnissen):** Die echte Trefferquote der Live-Bilanz wird mit der Erwartung aus der Vergangenheit verglichen – gleiche Definition (nach dem Einstieg zuerst Ziel gegen Stop), neue Regeln, 1963–2026: Grün 50,3 % (2.104 Fälle), Blau 59,7 % (129), Rot 19,1 % (152). Gewarnt wird nur bei sehr deutlicher Abweichung nach unten (z ≤ −2,5; ab 50 Ergebnissen je Farbe): rote Zeile in der Live-Bilanz und auf der Trainer-Seite, einmal eine Nachricht. Blacktrader ändert dabei nichts selbst.
+- **Stufe 2 (ab 500 Ergebnissen):** Beim Lernen muss ein neuer Stand zusätzlich im Zeitraum seit Beginn der Live-Bilanz bestehen (Zonen-Quote nicht schlechter als der bisherige Stand, mindestens 30 Zonen). Vorher schläft die Prüfung; der Stand steht auf der Trainer-Seite.
+- **Sicherung:** Die Live-Bilanz liegt lokal auf dem Gerät. Neue Ergebnisse werden höchstens einmal am Tag automatisch in eine Sicherungsdatei geschrieben (zusätzlich zu jeder Depot-Änderung).
