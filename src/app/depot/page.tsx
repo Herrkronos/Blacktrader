@@ -46,7 +46,6 @@ function statusText(t: Trade) {
 function TradeCard({ t, price, onAction, onOpenAsset, nachkauf }: { t: Trade; price?: number; onAction: (t: Trade) => void; onOpenAsset: (t: Trade) => void; nachkauf?: ReactNode }) {
   const [dx, setDx] = useState(0);
   const start = useRef<number | null>(null);
-  const [open, setOpen] = useState(false);
   const isLt = t.strategy === "core" || t.strategy === "longterm" || !!t.promotedAt;
   const edge = isLt ? "edge-core" : t.direction === "long" ? "edge-trade" : "edge-short";
   const kind = t.nachkauf ? <span className="badge-core">Nachkauf (Blau)</span> : t.promotedAt ? <span className="badge-core">Blau (hochgestuft)</span> : t.strategy === "longterm" || t.strategy === "core" ? <span className="badge-core">Langfristig</span> : t.direction === "long" ? <span className="badge-trade">Trade</span> : <span className="badge-short">Short</span>;
@@ -138,49 +137,7 @@ function TradeCard({ t, price, onAction, onOpenAsset, nachkauf }: { t: Trade; pr
         {t.strategy === "longterm" && !!t.tranches?.length && (
           <div className="mt-2 rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
             <TrancheList t={t} />
-          </div>
-        )}
-        <button
-          type="button"
-          className="mt-2 flex min-h-[40px] w-full items-center justify-between border-t border-white/10 pt-2 text-[14px] text-stone-400"
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen(!open);
-          }}
-          aria-expanded={open}
-        >
-          <span>Details & Aktionen</span>
-          <span>{open ? "▲" : "▼"}</span>
-        </button>
-        {open && (
-          <div className="mt-1 space-y-2 text-[14px] text-stone-300" onClick={(e) => e.stopPropagation()}>
-            <p className="text-stone-400">Übernommen am {new Date(t.openedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</p>
-            <p className="whitespace-pre-wrap">{t.reason}</p>
-            {t.promotedAt && (
-              <p className="rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
-                Hochgestuft zu Blau am {new Date(t.promotedAt).toLocaleDateString("de-DE")}: {t.promoteReason}
-                {t.initialStop != null && t.initialStop !== t.stop ? ` Stop von ${money(t.initialStop, tradeCurrency(t))} auf ${money(t.stop, tradeCurrency(t))} nachgezogen.` : ""}
-              </p>
-            )}
-            {t.strategy === "longterm" && (!!t.partials?.length || !!t.lastActionText) && (
-              <div className="space-y-1 rounded-xl bg-sky-500/10 p-2.5 text-[13px] text-sky-100">
-                {(t.partials ?? []).map((p, i) => (
-                  <p key={i}>
-                    Teilausstieg {Math.round(p.fraction * 100)} % bei {money(p.price, tradeCurrency(t))} ({new Date(p.at).toLocaleDateString("de-DE")})
-                  </p>
-                ))}
-                {t.lastActionText && <p className="text-sky-200">Letzte Meldung: {t.lastActionText}</p>}
-              </div>
-            )}
-            <button
-              className="btn w-full"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAction(t);
-              }}
-            >
-              Aktionen
-            </button>
+            {t.lastActionText && <p className="mt-1.5 border-t border-sky-400/20 pt-1.5 text-sky-200">Letzte Meldung: {t.lastActionText}</p>}
           </div>
         )}
       </article>
