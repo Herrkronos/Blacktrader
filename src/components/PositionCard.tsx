@@ -40,6 +40,13 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
   // Namen der Käufe der Reihe nach (Wunsch des Nutzers): Zentraldepot, 2. Kauf, 3. Kauf …
   const lotName = (_t: Trade, k: number) => (k <= 0 ? "Zentraldepot" : `${k + 1}. Kauf`);
   const pending = group.every((t) => t.status === "pending");
+  // Einstiege fortlaufend zählen (Wunsch des Nutzers): gekaufte Teile nach Kaufzeit über alle Käufe, danach die
+  // wartenden – z. B. Zentraldepot Teil 1, 2. Kauf (= 2. Einstieg), dann Zentraldepot Teil 3 und 4 (wartend)
+  const entryNo = new Map<string, number>();
+  {
+    const all = group.flatMap((t, g) => trancheRows(t).map((x, i) => ({ k: `${t.id}:${i}`, at: x.filledAt ?? Infinity, g, i })));
+    all.sort((a, b) => a.at - b.at || a.g - b.g || a.i - b.i).forEach((x, n) => entryNo.set(x.k, n + 1));
+  }
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
@@ -122,7 +129,7 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
               {rows.map((x, i) => (
                 <div key={i} className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-2 py-0.5">
                   {/* „Teil“ nur im Zentraldepot (mehrere Teil-Orders); 2., 3. … Kauf ist eine einzige Order */}
-                  <span className="text-sky-300">{rows.length > 1 ? `Teil ${i + 1}` : "Kauf"}</span>
+                  <span className="text-sky-300">{rows.length > 1 ? `Teil ${entryNo.get(`${t.id}:${i}`) ?? i + 1}` : "Kauf"}</span>
                   <span>
                     {money(x.price, cur)} · {qtyStr(x.qty)} {unit} · {eur(x.eur)}
                   </span>

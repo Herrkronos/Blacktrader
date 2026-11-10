@@ -77,7 +77,8 @@ export interface Trade {
   /** "longterm" = Langfristiger Einstieg (blau); "core" = alte Kernposition (vor dem Update); sonst Zonen-Trade */
   strategy?: "zone" | "core" | "longterm";
   /** Langfrist-Bereich (nur strategy "longterm") */
-  lt?: { zoneTop: number; zoneBottom: number; invalidation: number; targets: number[]; key: string };
+  /** highTime: Hoch der Welle 1 (Beginn des Bereichs, Unix-Sekunden) – für die Anzeige im Chart */
+  lt?: { zoneTop: number; zoneBottom: number; invalidation: number; targets: number[]; key: string; highTime?: number };
   /** Einstieg in Teilen (Langfrist): Preis und Zeitpunkt der Ausführung */
   /** Teil-Orders: Limit (Währung des Werts), Stückzahl und Betrag in € (ab Nov. 2026 gespeichert) */
   tranches?: { price: number; filledAt?: number; qty?: number; eur?: number }[];

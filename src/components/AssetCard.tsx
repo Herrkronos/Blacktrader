@@ -119,7 +119,7 @@ export function AssetCard({
   // Ältere eigene Käufe (Zentraldepot, 2. Kauf …) grau; der neueste bleibt der aktuelle Einstieg
   const buys = trades.filter((t) => t.strategy === "longterm" && t.status !== "closed" && t.symbol === asset.symbol && t.lt).sort((a, b) => a.openedAt - b.openedAt);
   const past = (entry?.history.past ?? []).slice(0, 10);
-  const pastChart = [...buys.slice(0, -1).map((t, k) => ({ from: Math.floor(t.openedAt / 1000), to: Math.floor(buys[k + 1].openedAt / 1000), zoneTop: t.lt!.zoneTop, zoneBottom: t.lt!.zoneBottom })), ...past];
+  const pastChart = [...buys.slice(0, -1).map((t) => ({ from: t.lt!.highTime ?? Math.floor(t.openedAt / 1000) - 60 * 86400, zoneTop: t.lt!.zoneTop, zoneBottom: t.lt!.zoneBottom })), ...past];
   const openHorizon: Horizon = b?.horizon ?? entry?.ltHorizon ?? "medium";
 
   // Alle Charts in Tageskerzen (Wellenpunkte aus Wochenkerzen auf die passende Tageskerze gelegt)

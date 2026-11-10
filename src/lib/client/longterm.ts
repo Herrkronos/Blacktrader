@@ -79,7 +79,7 @@ export function openLongTermTrade(asset: Asset, z: LongTermZone, horizon: Horizo
     signal: "buy",
     pattern: "Langfrist-Einstiegsbereich",
     lastPrice: price,
-    lt: { zoneTop: z.zoneTop, zoneBottom: z.zoneBottom, invalidation: z.invalidation, targets: [...z.targets], key: z.key },
+    lt: { zoneTop: z.zoneTop, zoneBottom: z.zoneBottom, invalidation: z.invalidation, targets: [...z.targets], key: z.key, highTime: z.high.time },
     tranches,
     partials: [],
     remaining: 1,

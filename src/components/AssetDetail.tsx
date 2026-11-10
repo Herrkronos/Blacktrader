@@ -162,7 +162,9 @@ export function AssetDetailView({ asset, initialHorizon, hideTake = false }: { a
     buys.forEach((t, k) => {
       const latest = k === buys.length - 1;
       const name = k === 0 ? "Zentraldepot" : `${k + 1}. Kauf`;
-      out.push({ color: latest ? "blau" : "grau", from: Math.floor(t.openedAt / 1000), to: latest ? undefined : Math.floor(buys[k + 1].openedAt / 1000), top: t.lt!.zoneTop, bottom: t.lt!.zoneBottom, invalidation: latest ? t.lt!.invalidation : undefined, target: latest ? t.lt!.targets[0] : undefined, label: name });
+      // Bereich ab seiner Entstehung (Hoch der Welle 1); ältere Käufe grau bis heute (Position ist noch offen)
+      const from = t.lt!.highTime ?? Math.floor(t.openedAt / 1000) - 60 * 86400;
+      out.push({ color: latest ? "blau" : "grau", from, top: t.lt!.zoneTop, bottom: t.lt!.zoneBottom, invalidation: latest ? t.lt!.invalidation : undefined, target: latest ? t.lt!.targets[0] : undefined, label: name });
     });
     const b = best?.best;
     const lastT = chartCandles[chartCandles.length - 1]?.time ?? 0;
