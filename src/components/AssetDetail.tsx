@@ -209,7 +209,7 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
 
       {analysis ? (
         <>
-          {showTradePlan && <SignalCard a={analysis} onTrade={() => setTrade(true)} shortAllowed={scan.ctx.spBear === true} />}
+          {showTradePlan && <SignalCard a={analysis} onTrade={() => setTrade(true)} shortAllowed={scan.ctx.spBear === true} main={mainColor === "gruen" || mainColor === "rot" || mainColor === "gelb" ? mainColor : undefined} />}
           {!showTradePlan && <LongTermSignalCard a={analysis} zone={ltZone} currency={currency} />}
           {showLongTerm && <LongTermCard
             zone={ltZone}

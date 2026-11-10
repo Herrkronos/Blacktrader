@@ -14,30 +14,45 @@ import { useAppData } from "@/lib/store/store";
 import type { Fundamentals, NewsItem } from "@/lib/types";
 import { ScoreBar, SignalBadge } from "./ui";
 
-export function SignalCard({ a, onTrade, shortAllowed = true }: { a: AnalysisResult; onTrade: () => void; shortAllowed?: boolean }) {
+/**
+ * Punkte-System passend zum Hauptszenario (Blau hat eigene Punkte: LongTermSignalCard):
+ *  Grün = Trading-Kauf (Punkte wie berechnet, über 50 = guter Kauf)
+ *  Rot  = Short (Punkte umgedreht: 100 − Wert, über 50 = guter Short)
+ *  Gelb = Abwarten (neutral, kein Einstieg, kein Order-Knopf)
+ */
+export function SignalCard({ a, onTrade, shortAllowed = true, main }: { a: AnalysisResult; onTrade: () => void; shortAllowed?: boolean; main?: "gruen" | "rot" | "gelb" }) {
   const w = a.weights;
   const sum = w.elliott + w.fundamental + w.volume || 1;
   const expert = useAppData((d) => d.settings.expertMode);
-  // Kauf (grün) oder Short (rot); sonst Abwarten
-  const active = !!a.plan && a.decision.level !== "neutral";
-  const buy = active && a.plan!.direction === "long";
-  const sell = active && a.plan!.direction === "short";
+  // Kauf (grün) oder Short (rot); sonst Abwarten – das Hauptszenario von Blacktrader hat Vorrang
+  const hasSignal = !!a.plan && a.decision.level !== "neutral";
+  const mode = main ?? (hasSignal ? (a.plan!.direction === "long" ? "gruen" : "rot") : "gelb");
+  const buy = mode === "gruen" && hasSignal && a.plan!.direction === "long";
+  const sell = mode === "rot" && hasSignal && a.plan!.direction === "short";
+  const active = buy || sell;
+  const inv = (x: number) => (mode === "rot" ? 100 - x : x);
+  const pts = Math.round(inv(a.total));
+  const verdict =
+    mode === "gelb"
+      ? a.total > 55 ? "leicht steigend – noch kein Einstieg" : a.total < 45 ? "leicht fallend – noch kein Einstieg" : "neutral – kein klarer Trend"
+      : `${pts >= 65 ? "starker" : pts >= 55 ? "solider" : pts >= 45 ? "durchschnittlicher" : "schwacher"} ${mode === "gruen" ? "Trading-Kauf" : "Short"}`;
+  const scale = mode === "gruen" ? "über 50 = eher guter Trading-Kauf" : mode === "rot" ? "über 50 = eher guter Short (fallende Kurse)" : "unter 45 eher fallend, über 55 eher steigend";
   return (
-    <div className={`panel space-y-3 p-4 ${buy ? "trade-bg" : sell ? "sell-bg" : ""}`}>
-      <div className="flex items-center justify-between">
+    <div className={`panel space-y-3 p-4 ${mode === "gruen" ? "trade-bg" : mode === "rot" ? "sell-bg" : ""}`}>
+      <div className="flex items-center justify-between gap-2">
         <span className="panel-title">
           Signal{" "}
-          {buy ? <span className="trade-tag ml-1 align-middle">Kauf</span> : sell ? <span className="sell-tag ml-1 align-middle">Short</span> : <span className="badge-wait ml-1 align-middle">Abwarten</span>}
+          {mode === "gruen" ? <span className="trade-tag ml-1 align-middle">Trading-Kauf</span> : mode === "rot" ? <span className="sell-tag ml-1 align-middle">Short</span> : <span className="badge-wait ml-1 align-middle">Abwarten</span>}
         </span>
-        {active && <SignalBadge level={a.decision.level} />}
+        <span className={`text-right text-[14px] ${mode === "gruen" ? "text-emerald-300" : mode === "rot" ? "text-red-300" : "text-amber-200"}`}>{verdict}</span>
       </div>
       <div className="flex items-end gap-2">
-        <span className="num font-display text-4xl text-gold-light">{a.total.toFixed(0)}</span>
-        <span className="pb-1 text-sm text-stone-400">/ 100 {expert ? "Gesamtscore" : "Punkte (über 50 = eher steigend)"}</span>
+        <span className="num font-display text-4xl text-gold-light">{pts}</span>
+        <span className="pb-1 text-sm text-stone-400">/ 100 {expert ? `Gesamtscore${mode === "rot" ? " (umgedreht für Short)" : ""}` : `Punkte (${scale})`}</span>
       </div>
-      <ScoreBar value={a.elliott.score} label={expert ? `Elliott (${Math.round((w.elliott / sum) * 100)} %)` : "Chartbild"} />
-      <ScoreBar value={a.fundamental.score} label={expert ? `Fundamental/News (${Math.round((w.fundamental / sum) * 100)} %)` : "Firmenzahlen & Nachrichten"} />
-      <ScoreBar value={a.volume.score} label={expert ? `Volumen/RSI (${Math.round((w.volume / sum) * 100)} %)` : "Kaufinteresse"} />
+      <ScoreBar value={inv(a.elliott.score)} label={expert ? `Elliott (${Math.round((w.elliott / sum) * 100)} %)` : mode === "rot" ? "Chartbild (fallend)" : "Chartbild"} />
+      <ScoreBar value={inv(a.fundamental.score)} label={expert ? `Fundamental/News (${Math.round((w.fundamental / sum) * 100)} %)` : mode === "rot" ? "Firmenzahlen & Nachrichten (Schwäche)" : "Firmenzahlen & Nachrichten"} />
+      <ScoreBar value={inv(a.volume.score)} label={expert ? `Volumen/RSI (${Math.round((w.volume / sum) * 100)} %)` : mode === "rot" ? "Verkaufsdruck" : "Kaufinteresse"} />
       <ScenarioBar elliott={a.elliott} />
       {expert && a.decision.vetoes.length > 0 && (
         <div className="rounded-lg border border-gold/20 bg-black/40 p-2 text-xs text-stone-300">
@@ -47,6 +62,7 @@ export function SignalCard({ a, onTrade, shortAllowed = true }: { a: AnalysisRes
       {sell && !shortAllowed && (
         <p className="rounded-lg bg-amber-500/10 p-2 text-sm text-amber-100">Hinweis: Der Gesamtmarkt (S&P 500) ist gerade nicht bärisch. Blacktrader nimmt Shorts nur in bärischen Märkten als aktuellen Einstieg – dieser Short ist nur zur Information.</p>
       )}
+      {mode === "gelb" && <p className="rounded-lg bg-amber-500/10 p-2 text-sm text-amber-100">Blacktrader wartet: Gerade gibt es kein Szenario, das klar genug für einen Einstieg ist.</p>}
       {a.plan && (expert || active) ? (
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
           <dt className="text-stone-400">Richtung</dt>
