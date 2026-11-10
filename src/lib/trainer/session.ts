@@ -26,6 +26,8 @@ export interface SessionConfig {
   baseParams: Partial<Record<CellKey, LearnableParams>>;
   /** Live-Bilanz: Beginn (Unix-Sekunden) und Zahl abgeschlossener Ergebnisse – für die Live-Prüfung beim Lernen */
   live?: { start: number; done: number };
+  /** Champions der Turnier-Gegner aus dem letzten Turnier (id → Stellschrauben) */
+  champions?: Record<string, Record<string, number>>;
 }
 
 export interface CellOutcome {
@@ -56,6 +58,10 @@ export interface SessionState {
   focus: string;
   /** Zuletzt gespeicherter Stand je Bereich in dieser Sitzung */
   saved: Partial<Record<CellKey, SavedPoint>>;
+  /** Schon abgelehnte Stände (Bereich|Schlüssel → Grund), damit die teuren Prüfungen nicht wiederholt laufen */
+  vetoed?: Record<string, string>;
+  /** Regelwerk B7: geprüfte und abgelehnte Stände */
+  b7?: { checked: number; rejected: number; notes: string[] };
   /** Aktuell beste Trefferquote auf unbekannten Daten (nur Anzeige) und alter Stand */
   live?: { cell: CellKey; best: number | null; old: number | null };
   /** Turnier: Blacktrader gegen 9 Bots (5 Runden, dazwischen wird gelernt) */
@@ -93,6 +99,8 @@ export interface SessionIO {
    * übernommen, wenn er im Zeitraum seit Beginn der Live-Bilanz nicht schlechter ist. Rückgabe: Grund für ein Nein.
    */
   liveVeto?: (cell: CellKey, baseParams: LearnableParams, cand: LearnableParams, st: SessionState) => Promise<string | null>;
+  /** Regelwerk B7: Turnier-Prüfung – neuer Stand darf im Turnier nicht schlechter sein und nie ausscheiden. Rückgabe: Grund für ein Nein. */
+  tournamentVeto?: (cell: CellKey, baseParams: LearnableParams, cand: LearnableParams, st: SessionState) => Promise<string | null>;
 }
 
 /** Ab so vielen abgeschlossenen Ergebnissen der Live-Bilanz prüft das Lernen zusätzlich den Live-Zeitraum */
@@ -146,7 +154,7 @@ export async function runSession(st: SessionState, io: SessionIO): Promise<Sessi
       const r = st.wf.result;
       const series = st.wf.info.filter((x) => x && x !== "failed").length;
       const o: CellOutcome = r && series > 0
-        ? { cell, base: r.base, cand: st.saved[cell]?.oos ?? r.cand, accept: !!st.saved[cell], reasons: st.saved[cell] ? [] : r.decision.reasons, deployed: st.saved[cell]?.params ?? null, changes: r.changes, series }
+        ? { cell, base: r.base, cand: st.saved[cell]?.oos ?? r.cand, accept: !!st.saved[cell], reasons: st.saved[cell] ? [] : [...r.decision.reasons, ...(st.vetoed?.[`${cell}|${keyOf(r.deployed)}`] ? [`Nicht übernommen – ${st.vetoed[`${cell}|${keyOf(r.deployed)}`]}`] : [])], deployed: st.saved[cell]?.params ?? null, changes: r.changes, series }
         : { cell, base: null, cand: null, accept: false, reasons: [series ? "Zu wenig Zeit für einen Vergleich" : "Keine Kursdaten erreichbar"], deployed: null, changes: "keine", series };
       st.results.push(o);
       if (r && series > 0 && !st.saved[cell] && st.wf) io.onMeasured?.(cell, r.base, st.wf.pool[st.wf.baseKey].params);
@@ -176,12 +184,27 @@ async function trySave(st: SessionState, cell: CellKey, io: SessionIO) {
   const r = improvementCheck(st.wf, last);
   if (!r || !r.decision.accept) return;
   const baseParams = last?.params ?? st.wf.pool[st.wf.baseKey].params;
+  const vk = `${cell}|${keyOf(r.deployed)}`;
+  st.vetoed ??= {};
+  if (st.vetoed[vk]) return;
+  const veto = (why: string) => {
+    st.vetoed![vk] = why;
+    st.detail = `Nicht übernommen – ${why}`;
+  };
   // Live-Prüfung (Stufe 2): neuer Stand darf im Live-Zeitraum nicht schlechter sein
   if (io.liveVeto && (st.cfg.live?.done ?? 0) >= LIVE_LEARN_MIN) {
     const why = await io.liveVeto(cell, baseParams, r.deployed, st);
+    if (why) return veto(why);
+  }
+  // Regelwerk B7: Turnier-Prüfung (nicht schlechter, nie ausgeschieden)
+  if (io.tournamentVeto) {
+    const why = await io.tournamentVeto(cell, baseParams, r.deployed, st);
+    st.b7 ??= { checked: 0, rejected: 0, notes: [] };
+    st.b7.checked++;
     if (why) {
-      st.detail = `Nicht übernommen – ${why}`;
-      return;
+      st.b7.rejected++;
+      st.b7.notes = [...st.b7.notes, `${cell}: ${why}`].slice(-10);
+      return veto(why);
     }
   }
   const ok = await io.onImprovement(cell, r, baseParams, st);

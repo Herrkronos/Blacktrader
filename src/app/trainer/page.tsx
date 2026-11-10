@@ -12,11 +12,13 @@ import { IconInfo } from "@/components/Icons";
 import { HORIZON_RANK } from "@/lib/analysis/bestEntry";
 import { allHistories } from "@/lib/client/entries";
 import { refreshTrainerParams, useTrainerCells } from "@/lib/client/trainerParams";
+import { initVersionsSeen, newVersions } from "@/lib/client/versionNotice";
 import { loadReports, startTraining, stopTraining, TOKEN_KEY, useTraining } from "@/lib/client/trainingSession";
 import { primaryCount, primaryRate, TARGET_HIT_RATE } from "@/lib/trainer/engine";
 import { goalProgress, goalReached } from "@/lib/trainer/goal";
 import { DURATIONS } from "@/lib/trainer/session";
-import { eur0, OPPONENTS, pct1, reportLines, RULES, SCENARIO_LABEL, SCENARIOS, type TournamentReport } from "@/lib/trainer/tournament";
+import { GROUP_LABEL, OPPONENTS, type OpponentGroup } from "@/lib/trainer/opponents";
+import { eur0, pct1, reportLines, RULES, SCENARIO_LABEL, SCENARIOS, type TournamentReport } from "@/lib/trainer/tournament";
 import { ACTIVE_CELL_KEYS, type CellKey } from "@/lib/trainer/universe";
 import { HORIZON_LABEL, KIND_LABEL, type AssetKind, type Horizon } from "@/lib/types";
 
@@ -68,6 +70,7 @@ function Ranking({ rep }: { rep: TournamentReport }) {
       </div>
       {rep.ranking.map((c) => {
         const me = c.id === "blacktrader";
+        const v = rep.opponents?.find((o) => o.id === c.id);
         return (
           <div key={c.id} className={`grid grid-cols-[2rem_1fr_auto] items-center gap-x-2 border-t border-white/5 px-3 py-2 ${me ? "bg-gold/15" : ""}`}>
             <span className={`num text-[17px] font-semibold ${c.rank === 1 ? "text-gold" : "text-stone-300"}`}>{c.rank}.</span>
@@ -79,6 +82,11 @@ function Ranking({ rep }: { rep: TournamentReport }) {
               <span className="num block text-[12px] text-stone-500">
                 KESt {eur0(c.avgTax)}{c.avgFees != null ? ` · Gebühren ${eur0(c.avgFees)}` : ""} · Treffer {Math.round(c.winRate * 100)} %{c.broke ? ` · ${c.broke}× ausgeschieden` : ""}
               </span>
+              {v && (
+                <span className="block text-[12px] text-sky-300/80">
+                  Variante: {v.label} ({v.origin === "champion" ? "Champion bleibt" : v.origin === "neu" ? `neue Variante, beste von ${v.tried}` : "Startwerte"})
+                </span>
+              )}
             </span>
             <span className={`num text-right text-[16px] font-semibold ${c.avgPerYear >= 0 ? "text-up" : "text-down"}`}>{pct1(c.avgPerYear)}</span>
           </div>
@@ -236,18 +244,23 @@ export default function TrainerPage() {
       </section>
 
       <section className="card space-y-2 p-4">
-        <h2 className="text-[17px] text-gold-light">Turnier: Blacktrader gegen 9 Gegner</h2>
+        <h2 className="text-[17px] text-gold-light">Turnier: Blacktrader gegen {OPPONENTS.length} Gegner</h2>
         <p className="text-[14px] text-stone-400">
-          {RULES.reps} Versuche à {RULES.years} Jahre echte Zeit: {eur(RULES.start)} Startkapital, {eur(RULES.stake)} je Trade, 7,90 € Gebühr je Order (flatex) und 27,5 % KESt. Gehandelt wird nur die obere Hälfte der Signale nach Potenzial und mit Blau-Regel – genau wie in den Chancen (zur Kontrolle wird jedes Mal auch ohne Blau-Regel gerechnet). Wer kein Geld mehr hat, scheidet aus. Zeiträume bullisch, neutral, bärisch und gemischt; gewertet wird der Durchschnitt. Blacktrader spielt in {RULES.rounds} Runden und lernt dazwischen – Verbesserungen werden sofort gespeichert. Alle Werte, gleiche Daten, kein Blick in die Zukunft.
+          {RULES.reps} Versuche à {RULES.years} Jahre echte Zeit: {eur(RULES.start)} Startkapital, {eur(RULES.stake)} je Trade, 7,90 € Gebühr je Order (flatex) und 27,5 % KESt – für alle gleich. Wer kein Geld mehr hat, scheidet aus. Blacktrader handelt wie in den Chancen (mit Blau-Regel) und lernt zwischen den {RULES.rounds} Runden. Die Gegner wechseln ihre Variante: vor jedem Turnier tritt ihr Champion gegen neue Varianten an (auf eigenen Zeiträumen, nie gegen Blacktrader abgestimmt) – der Beste spielt. Der S&P-500-ETF läuft nur zum Vergleich mit.
         </p>
-        <ul className="space-y-1 text-[14px]">
-          {OPPONENTS.map((o) => (
-            <li key={o.id} className="flex gap-2">
-              <span className="shrink-0 text-stone-100">{o.name}</span>
-              <span className="text-stone-500">– {o.desc}</span>
-            </li>
-          ))}
-        </ul>
+        {(Object.keys(GROUP_LABEL) as OpponentGroup[]).map((g) => (
+          <div key={g}>
+            <h3 className="pt-1 text-[15px] text-stone-300">{GROUP_LABEL[g]}</h3>
+            <ul className="space-y-1 text-[14px]">
+              {OPPONENTS.filter((o) => o.group === g).map((o) => (
+                <li key={o.id} className="flex gap-2">
+                  <span className="shrink-0 text-stone-100">{o.name}</span>
+                  <span className="text-stone-500">– {o.desc}{o.source ? ` (${o.source})` : ""}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </section>
 
       <section className="card space-y-3 p-4">
@@ -380,6 +393,14 @@ async function exportResults(local: unknown) {
 function LiveControl() {
   const log = useAppData((d) => d.chanceLog);
   const chk = liveCheck(log);
+  const cells = useTrainerCells();
+  const [fresh, setFresh] = useState<ReturnType<typeof newVersions>>([]);
+  // Regelwerk C2: neue Lern-Versionen melden (erst wenn die Bereiche geladen sind)
+  useEffect(() => {
+    if (!Object.keys(cells).length) return;
+    initVersionsSeen();
+    setFresh(newVersions());
+  }, [cells]);
   const pc = (x: number | null) => (x == null ? "–" : `${Math.round(x * 100)} %`);
   return (
     <section className={`card space-y-1 p-4 text-[14px] ${chk.warn ? "edge-short" : ""}`}>
@@ -391,6 +412,16 @@ function LiveControl() {
             ? `⚠️ Live schlechter als erwartet: ${pc(chk.all.rate)} statt ca. ${pc(chk.all.expected)} (${chk.all.n} Ergebnisse) – Regeln prüfen.`
             : `Live ${pc(chk.all.rate)} bei ${chk.all.n} Ergebnissen – im erwarteten Bereich (Test ca. ${pc(chk.all.expected)}).`}
       </p>
+      {chk.warn && (
+        <Link href="/regelwerk" className="block text-[14px] text-gold underline-offset-4 active:underline">
+          Rückweg-Vorschlag im Regelwerk ansehen
+        </Link>
+      )}
+      {fresh.length > 0 && (
+        <Link href="/regelwerk" className="block text-[14px] text-sky-300 underline-offset-4 active:underline">
+          Neue Version: {fresh.map((v) => `${cellLabel(v.cell)} V${v.version}`).join(", ")} – im Regelwerk ansehen
+        </Link>
+      )}
       <p className="text-stone-400">
         Live-Prüfung beim Lernen: {chk.all.n >= LIVE_LEARN_MIN ? "aktiv – ein neuer Stand muss auch im Live-Zeitraum bestehen." : `wartet auf ${LIVE_LEARN_MIN} Ergebnisse (bisher ${chk.all.n}).`}
       </p>

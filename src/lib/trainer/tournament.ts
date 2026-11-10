@@ -1,4 +1,4 @@
-// Turnier: Blacktrader gegen 9 andere Analysten/Bots (insgesamt 10 Teilnehmer) – fair und ohne Blick in die Zukunft.
+// Turnier: Blacktrader gegen 15 Gegner (5 Bots, 5 Bank-Analysten, 5 bekannte Strategien; insgesamt 16 Teilnehmer) – fair und ohne Blick in die Zukunft.
 //
 // Jeder Teilnehmer erzeugt aus DENSELBEN Kursdaten (alle Werte: Aktien, Krypto, Rohstoffe, 15 Jahre) seine Trades (die Bots nur Käufe, Blacktrader auch Shorts).
 // Jedes Signal kennt nur Kerzen bis zu seinem Tag; Einstieg und Ausstieg zum Eröffnungskurs der nächsten Kerze.
@@ -12,7 +12,7 @@
 // 50 Versuche mit verschiedenen Startzeitpunkten – für alle Teilnehmer dieselben. Jeder Zeitraum wird nach der
 // Marktlage (S&P 500) als bullisch, neutral, bärisch oder gemischt eingeordnet. Gewertet wird der Durchschnitt.
 import { KestYear } from "../analysis/kest";
-import { ema, rsi, sma } from "../analysis/indicators";
+import { sma } from "../analysis/indicators";
 import type { Candle } from "../types";
 
 export type Regime = "bullisch" | "neutral" | "baerisch";
@@ -39,10 +39,7 @@ export interface PoolTrade {
   blueRuleOut?: boolean;
 }
 
-export interface Series {
-  symbol: string;
-  candles: Candle[];
-}
+export type { BotSeries as Series } from "./opponents";
 
 /** fee: Gebühr je Order in € (flatex 7,90 €); KESt in Österreich auf den Gewinn ohne Abzug der Spesen */
 /** addMax/addStake: Nachkauf nur bei Blau, höchstens 4× zu je 250 € (getestet: weniger Risiko, Klumpenrisiko begrenzt) */
@@ -72,263 +69,7 @@ export function regimeIndex(spx: Candle[]) {
   };
 }
 
-// ---------------------------------------------------------------------------------------------
-// Die 9 Gegner (Tageskerzen, nur Kauf-Einstiege)
-
-const trade = (sym: string, c: Candle[], i: number, j: number): PoolTrade | null => (j < c.length && i < j && c[i].open > 0 ? { sym, entry: c[i].time, exit: c[j].time, r: (c[j].open / c[i].open - 1) * 100, px: c[i].open } : null);
-
-/** Kleiner, reproduzierbarer Zufallsgenerator */
-export function rng(seed: number) {
-  let s = (seed * 2654435761) >>> 0 || 1;
-  return () => {
-    s ^= s << 13;
-    s ^= s >>> 17;
-    s ^= s << 5;
-    return ((s >>> 0) % 1_000_000) / 1_000_000;
-  };
-}
-
-function zufall(data: Series[], seed = 7, n = 3000, hold = 20): PoolTrade[] {
-  const r = rng(seed);
-  const out: PoolTrade[] = [];
-  const usable = data.filter((d) => d.candles.length > 250);
-  for (let k = 0; k < n && usable.length; k++) {
-    const d = usable[Math.floor(r() * usable.length)];
-    const i = 201 + Math.floor(r() * (d.candles.length - hold - 203));
-    const t = trade(d.symbol, d.candles, i, i + hold);
-    if (t) out.push(t);
-  }
-  return out;
-}
-
-function kaufenHalten(data: Series[]): PoolTrade[] {
-  const out: PoolTrade[] = [];
-  for (const { symbol, candles: c } of data) for (let i = 201; i + 126 < c.length; i += 21) {
-    const t = trade(symbol, c, i, i + 126);
-    if (t) out.push(t);
-  }
-  return out;
-}
-
-function trendfolger(data: Series[]): PoolTrade[] {
-  const out: PoolTrade[] = [];
-  for (const { symbol, candles: c } of data) {
-    const cl = c.map((x) => x.close);
-    const m = sma(cl, 200);
-    let inAt = -1;
-    for (let i = 201; i < c.length - 1; i++) {
-      if (m[i] == null || m[i - 1] == null) continue;
-      if (inAt < 0 && cl[i] > m[i]! && cl[i - 1] <= m[i - 1]!) inAt = i + 1;
-      else if (inAt >= 0 && cl[i] < m[i]!) {
-        const t = trade(symbol, c, inAt, i + 1);
-        if (t) out.push(t);
-        inAt = -1;
-      }
-    }
-  }
-  return out;
-}
-
-function rsiBot(data: Series[]): PoolTrade[] {
-  const out: PoolTrade[] = [];
-  for (const { symbol, candles: c } of data) {
-    const cl = c.map((x) => x.close);
-    const r = rsi(cl);
-    let inAt = -1;
-    for (let i = 30; i < c.length - 1; i++) {
-      if (r[i] == null) continue;
-      if (inAt < 0 && r[i]! < 30) inAt = i + 1;
-      else if (inAt >= 0 && i >= inAt && (r[i]! > 55 || i - inAt >= 20 || cl[i] < c[inAt].open * 0.9)) {
-        const t = trade(symbol, c, inAt, i + 1);
-        if (t) out.push(t);
-        inAt = -1;
-      }
-    }
-  }
-  return out;
-}
-
-function macdBot(data: Series[]): PoolTrade[] {
-  const out: PoolTrade[] = [];
-  for (const { symbol, candles: c } of data) {
-    const cl = c.map((x) => x.close);
-    const e12 = ema(cl, 12);
-    const e26 = ema(cl, 26);
-    const macd = cl.map((_, i) => (e12[i] != null && e26[i] != null ? e12[i]! - e26[i]! : 0));
-    const sig = ema(macd.slice(26), 9);
-    const sg = (i: number) => (i >= 26 ? sig[i - 26] : null);
-    let inAt = -1;
-    for (let i = 40; i < c.length - 1; i++) {
-      const a = sg(i);
-      const b = sg(i - 1);
-      if (a == null || b == null) continue;
-      const up = macd[i] > a && macd[i - 1] <= b;
-      const down = macd[i] < a && macd[i - 1] >= b;
-      if (inAt < 0 && up) inAt = i + 1;
-      else if (inAt >= 0 && down) {
-        const t = trade(symbol, c, inAt, i + 1);
-        if (t) out.push(t);
-        inAt = -1;
-      }
-    }
-  }
-  return out;
-}
-
-function ausbruch(data: Series[]): PoolTrade[] {
-  const out: PoolTrade[] = [];
-  for (const { symbol, candles: c } of data) {
-    let inAt = -1;
-    for (let i = 56; i < c.length - 1; i++) {
-      let hi = -Infinity;
-      for (let k = i - 55; k < i; k++) hi = Math.max(hi, c[k].high);
-      let lo = Infinity;
-      for (let k = i - 20; k < i; k++) lo = Math.min(lo, c[k].low);
-      if (inAt < 0 && c[i].close > hi) inAt = i + 1;
-      else if (inAt >= 0 && c[i].close < lo) {
-        const t = trade(symbol, c, inAt, i + 1);
-        if (t) out.push(t);
-        inAt = -1;
-      }
-    }
-  }
-  return out;
-}
-
-/** KI-Bot: logistische Regression, lernt je Kalenderjahr NUR mit Fällen, deren Ergebnis vor Jahresbeginn feststand. */
-function kiBot(data: Series[]): PoolTrade[] {
-  type Row = { sym: string; c: Candle[]; i: number; f: number[]; y: number; known: number };
-  const rows: Row[] = [];
-  for (const { symbol, candles: c } of data) {
-    const cl = c.map((x) => x.close);
-    const r = rsi(cl);
-    const m = sma(cl, 200);
-    for (let i = 200; i < c.length - 22; i++) {
-      if (m[i] == null || r[i] == null) continue;
-      const lr: number[] = [];
-      for (let k = i - 19; k <= i; k++) lr.push(Math.log(cl[k] / cl[k - 1]));
-      const mean = lr.reduce((a, b) => a + b, 0) / lr.length;
-      const vol = Math.sqrt(lr.reduce((a, b) => a + (b - mean) ** 2, 0) / lr.length);
-      rows.push({ sym: symbol, c, i, f: [cl[i] / cl[i - 5] - 1, cl[i] / cl[i - 20] - 1, cl[i] / cl[i - 60] - 1, r[i]! / 100, cl[i] / m[i]! - 1, vol], y: c[i + 21].open > c[i + 1].open ? 1 : 0, known: c[i + 21].time });
-    }
-  }
-  if (rows.length < 2000) return [];
-  const year = (t: number) => new Date(t * 1000).getUTCFullYear();
-  let t0 = Infinity;
-  let t1 = -Infinity;
-  for (const x of rows) {
-    const t = x.c[x.i].time;
-    if (t < t0) t0 = t;
-    if (t > t1) t1 = t;
-  }
-  const out: PoolTrade[] = [];
-  for (let Y = year(t0); Y <= year(t1); Y++) {
-    const y0 = Date.UTC(Y, 0, 1) / 1000;
-    const y1 = Date.UTC(Y + 1, 0, 1) / 1000;
-    const all = rows.filter((x) => x.known < y0);
-    // Rechenzeit (Handy): höchstens ~30.000 Lernfälle, gleichmäßig verteilt
-    const stride = Math.max(1, Math.ceil(all.length / 30000));
-    const tr = stride > 1 ? all.filter((_, n) => n % stride === 0) : all;
-    const te = rows.filter((x) => x.c[x.i].time >= y0 && x.c[x.i].time < y1);
-    if (tr.length < 1000 || !te.length) continue;
-    const d = tr[0].f.length;
-    const mu = Array(d).fill(0);
-    const sd = Array(d).fill(0);
-    for (const x of tr) x.f.forEach((v, k) => (mu[k] += v / tr.length));
-    for (const x of tr) x.f.forEach((v, k) => (sd[k] += (v - mu[k]) ** 2 / tr.length));
-    for (let k = 0; k < d; k++) sd[k] = Math.sqrt(sd[k]) + 1e-9;
-    const X = tr.map((x) => x.f.map((v, k) => (v - mu[k]) / sd[k]));
-    const w = Array(d).fill(0);
-    let b = 0;
-    for (let it = 0; it < 200; it++) {
-      const g = Array(d).fill(0);
-      let gb = 0;
-      for (let n = 0; n < X.length; n++) {
-        let z = b;
-        for (let k = 0; k < d; k++) z += X[n][k] * w[k];
-        const e = 1 / (1 + Math.exp(-z)) - tr[n].y;
-        for (let k = 0; k < d; k++) g[k] += e * X[n][k];
-        gb += e;
-      }
-      for (let k = 0; k < d; k++) w[k] -= (0.1 * g[k]) / X.length;
-      b -= (0.1 * gb) / X.length;
-    }
-    const busy = new Map<string, number>();
-    for (const x of te) {
-      let z = b;
-      x.f.forEach((v, k) => (z += ((v - mu[k]) / sd[k]) * w[k]));
-      if (1 / (1 + Math.exp(-z)) > 0.58 && x.c[x.i].time >= (busy.get(x.sym) ?? 0)) {
-        const t = trade(x.sym, x.c, x.i + 1, x.i + 21);
-        if (t) {
-          out.push(t);
-          busy.set(x.sym, t.exit);
-        }
-      }
-    }
-  }
-  return out;
-}
-
-/** Bollinger-Bot: Kauf unter dem unteren Band (20 Tage, 2 Standardabweichungen), Verkauf an der Mittellinie. */
-function bollinger(data: Series[]): PoolTrade[] {
-  const out: PoolTrade[] = [];
-  for (const { symbol, candles: c } of data) {
-    const cl = c.map((x) => x.close);
-    let inAt = -1;
-    for (let i = 21; i < c.length - 1; i++) {
-      let m = 0;
-      for (let k = i - 19; k <= i; k++) m += cl[k];
-      m /= 20;
-      let v = 0;
-      for (let k = i - 19; k <= i; k++) v += (cl[k] - m) ** 2;
-      const sd = Math.sqrt(v / 20);
-      if (inAt < 0 && cl[i] < m - 2 * sd) inAt = i + 1;
-      else if (inAt >= 0 && i >= inAt && (cl[i] > m || i - inAt >= 20 || cl[i] < c[inAt].open * 0.9)) {
-        const t = trade(symbol, c, inAt, i + 1);
-        if (t) out.push(t);
-        inAt = -1;
-      }
-    }
-  }
-  return out;
-}
-
-/** Momentum-Bot: am Monatsanfang Werte mit starkem Halbjahres-Trend (+10 %, über der 50-Tage-Linie) kaufen, 1 Monat halten. */
-function momentum(data: Series[]): PoolTrade[] {
-  const out: PoolTrade[] = [];
-  for (const { symbol, candles: c } of data) {
-    const cl = c.map((x) => x.close);
-    const m50 = sma(cl, 50);
-    for (let i = 127; i + 22 < c.length; i++) {
-      const newMonth = new Date(c[i].time * 1000).getUTCMonth() !== new Date(c[i - 1].time * 1000).getUTCMonth();
-      if (!newMonth || m50[i] == null) continue;
-      if (cl[i] / cl[i - 126] - 1 > 0.1 && cl[i] > m50[i]!) {
-        const t = trade(symbol, c, i + 1, i + 22);
-        if (t) out.push(t);
-      }
-    }
-  }
-  return out;
-}
-
-export interface Opponent {
-  id: string;
-  name: string;
-  desc: string;
-  build: (data: Series[]) => PoolTrade[];
-}
-
-export const OPPONENTS: Opponent[] = [
-  { id: "zufall", name: "Zufalls-Bot", desc: "kauft an zufälligen Tagen, hält 20 Tage", build: (d) => zufall(d) },
-  { id: "halten", name: "Kaufen & Halten", desc: "kauft jeden Monat, hält ein halbes Jahr", build: kaufenHalten },
-  { id: "trend", name: "Trendfolger", desc: "kauft über der 200-Tage-Linie, verkauft darunter", build: trendfolger },
-  { id: "rsi", name: "RSI-Bot", desc: "kauft bei RSI unter 30, verkauft bei Erholung", build: rsiBot },
-  { id: "macd", name: "MACD-Bot", desc: "kauft beim MACD-Kreuz nach oben, verkauft beim Kreuz nach unten", build: macdBot },
-  { id: "ausbruch", name: "Ausbruchs-Bot", desc: "kauft beim 55-Tage-Hoch, verkauft beim 20-Tage-Tief (Turtle)", build: ausbruch },
-  { id: "bollinger", name: "Bollinger-Bot", desc: "kauft unter dem unteren Bollinger-Band, verkauft an der Mittellinie", build: bollinger },
-  { id: "momentum", name: "Momentum-Bot", desc: "kauft monatlich Werte mit starkem Halbjahres-Trend, hält einen Monat", build: momentum },
-  { id: "ki", name: "KI-Bot", desc: "lernende KI (logistische Regression), lernt jedes Jahr neu", build: kiBot },
-];
+// Die 15 Gegner stehen in ./opponents.ts
 
 // ---------------------------------------------------------------------------------------------
 // Ein Versuch: 5 Jahre echte Zeit
@@ -569,6 +310,10 @@ export interface TournamentReport {
   blueRule?: { on: number; off: number } | null;
   /** Bereiche, die das Lernen verbessert hat (Zonen-Quote alt → neu) */
   improvedCells?: { cell: string; old: number | null; neu: number | null }[];
+  /** Gespielte Varianten der Gegner (Champion bleibt fürs nächste Turnier) */
+  opponents?: { id: string; name: string; params: Record<string, number>; label: string; origin: "champion" | "start" | "neu"; tried: number }[];
+  /** Regelwerk B7: Prüfung eines neuen Lern-Stands im Turnier */
+  b7?: { checked: number; rejected: number; notes: string[] };
   note?: string;
 }
 
@@ -612,6 +357,12 @@ export function reportLines(rep: TournamentReport, previous?: TournamentReport |
       .filter(Boolean);
     if (parts.length) lines.push(`Getrennt: ${parts.join(" · ")}.`);
   }
+  if (rep.opponents?.length) {
+    const kept = rep.opponents.filter((o) => o.origin === "champion").length;
+    const fresh = rep.opponents.filter((o) => o.origin === "neu").length;
+    lines.push(`Gegner-Varianten: ${kept} Champions haben sich gehalten, ${fresh} Gegner spielen mit einer neuen Variante (ausgewählt auf eigenen Zeiträumen, nicht gegen Blacktrader).`);
+  }
+  if (rep.b7?.checked) lines.push(`Regelwerk B7: ${rep.b7.checked} neue Lern-Stände im Turnier geprüft, ${rep.b7.rejected} abgelehnt (schlechter oder ausgeschieden).`);
   // Nur vergleichen, wenn die Regeln gleich sind (z. B. nicht 5.000 € gegen 8.000 € Startkapital)
   if (previous && previous.rules?.start === rep.rules.start && previous.rules?.fee === rep.rules.fee) {
     const pb = previous.ranking.find((c) => c.id === "blacktrader");

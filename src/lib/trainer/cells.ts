@@ -6,6 +6,7 @@ import { KIND_LABEL, type AssetKind, type Horizon } from "../types";
 import { decide, primaryRate, type Decision, type Metrics } from "./engine";
 import { CELL_KEYS, type CellKey } from "./universe";
 import { describeChanges } from "./walkforward";
+import { stepLimitErrors } from "./moves";
 
 const KIND_KEY: Record<AssetKind, string> = { stock: "aktien", crypto: "krypto", commodity: "rohstoffe" };
 const HORIZON_KEY: Record<Horizon, string> = { short: "kurz", medium: "mittel", long: "lang" };
@@ -88,7 +89,7 @@ export function applyProposal(rec: CellRecord, p: Proposal, now = new Date()): A
   const active = recordParams(rec);
   const d = decide(p.base, p.cand);
   if (JSON.stringify({ ...DEFAULT_PARAMS, ...p.baseParams }) !== JSON.stringify(active)) d.reasons.unshift("Ausgangsstand hat sich inzwischen geändert");
-  d.reasons.push(...validateParams(p.deployed), ...strictnessErrors(active, p.deployed));
+  d.reasons.push(...validateParams(p.deployed), ...strictnessErrors(active, p.deployed), ...stepLimitErrors(active, p.deployed));
   if (JSON.stringify(p.deployed) === JSON.stringify(active)) d.reasons.push("keine geänderten Werte");
   d.accept = d.reasons.length === 0;
   const r: CellRecord = { ...rec, versions: [...rec.versions], log: [...rec.log] };

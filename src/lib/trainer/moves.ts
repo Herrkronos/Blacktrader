@@ -68,3 +68,32 @@ export function candidateMoves(p: LearnableParams): { params: LearnableParams; c
   }
   return out;
 }
+
+/**
+ * Regelwerk C1 – kleine Schritte: Ein gespeicherter neuer Stand darf sich vom bisherigen höchstens um 2 Lernschritte je
+ * Stellschraube unterscheiden (Gewichtung höchstens ±10 Punkte, Wellengrade höchstens ±32 %) und höchstens 3 Stellschrauben
+ * auf einmal ändern. Ein-/Aus-Schalter zählen als ein Schritt.
+ */
+export const STEP_LIMIT = { stepsPerKey: 2, maxKeys: 3, weightPoints: 10, degreeFactor: 1.15 * 1.15 } as const;
+
+export function stepLimitErrors(prev: LearnableParams, next: LearnableParams): string[] {
+  const e: string[] = [];
+  let changed = 0;
+  for (const k of Object.keys(STEP) as NumKey[]) {
+    const a = prev[k];
+    const b = next[k];
+    if (typeof a !== "number" || typeof b !== "number" || Math.abs(a - b) < 1e-9) continue;
+    changed++;
+    if (Math.abs(a - b) > STEP[k] * STEP_LIMIT.stepsPerKey + 1e-9) e.push(`zu großer Schritt bei ${k} (${a} → ${b}, höchstens ${STEP_LIMIT.stepsPerKey} Lernschritte)`);
+  }
+  if (JSON.stringify(prev.elliottDegrees) !== JSON.stringify(next.elliottDegrees)) {
+    changed++;
+    if (prev.elliottDegrees.some((x, i) => { const f = next.elliottDegrees[i] / x; return f > STEP_LIMIT.degreeFactor + 1e-6 || f < 1 / STEP_LIMIT.degreeFactor - 1e-6; })) e.push(`zu großer Schritt bei den Wellengraden (${prev.elliottDegrees.join("/")} → ${next.elliottDegrees.join("/")})`);
+  }
+  if (JSON.stringify(prev.weights) !== JSON.stringify(next.weights)) {
+    changed++;
+    if ((["elliott", "fundamental", "volume"] as (keyof WeightSet)[]).some((k) => Math.abs(prev.weights[k] - next.weights[k]) > STEP_LIMIT.weightPoints)) e.push(`zu großer Schritt bei der Gewichtung (höchstens ±${STEP_LIMIT.weightPoints} Punkte)`);
+  }
+  if (changed > STEP_LIMIT.maxKeys) e.push(`zu viele Stellschrauben auf einmal (${changed}, höchstens ${STEP_LIMIT.maxKeys})`);
+  return e;
+}

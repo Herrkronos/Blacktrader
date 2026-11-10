@@ -8,7 +8,7 @@
 import { strictnessErrors, type LearnableParams } from "../analysis/params";
 import type { Candle } from "../types";
 import { backtestSeries, decide, metrics, preselect, primaryRate, splitHoldout, walkForwardFolds, withZones, type Decision, type Metrics } from "./engine";
-import { candidateMoves } from "./moves";
+import { candidateMoves, stepLimitErrors } from "./moves";
 import type { CellKey, SeriesSpec } from "./universe";
 
 export interface RunData {
@@ -337,7 +337,7 @@ export function finalizeWF(st: WFState): WFResult | null {
   const deployedKey = complete(st, st.climbers[st.folds]) ? st.climbers[st.folds] : st.baseKey;
   const deployed = st.pool[deployedKey].params;
   const d = decide(base, cand);
-  const strict = strictnessErrors(st.pool[st.baseKey].params, deployed);
+  const strict = [...strictnessErrors(st.pool[st.baseKey].params, deployed), ...stepLimitErrors(st.pool[st.baseKey].params, deployed)];
   if (deployedKey === st.baseKey) d.reasons.push("Auf allen Lerndaten zusammen keine bessere Einstellung gefunden");
   const cons = consistencyError(st, st.climbers.slice(0, st.folds).map((k) => (complete(st, k) ? k : st.baseKey)), st.baseKey);
   if (cons) d.reasons.push(cons);
@@ -390,7 +390,7 @@ export function improvementCheck(st: WFState, last?: SavedPoint): WFResult | nul
   const refKey = last && complete(st, last.key) ? last.key : st.baseKey;
   const cons = consistencyError(st, st.climbers.slice(0, st.folds).map((k) => (complete(st, k) ? k : st.baseKey)), refKey);
   if (cons) d.reasons.push(cons);
-  d.reasons.push(...strictnessErrors(prev, deployed));
+  d.reasons.push(...strictnessErrors(prev, deployed), ...stepLimitErrors(prev, deployed));
   d.accept = d.reasons.length === 0;
   return { base, cand, decision: d, deployed, changes: describeChanges(prev, deployed), improved: d.accept };
 }

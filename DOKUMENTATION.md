@@ -26,7 +26,7 @@ src/app/                Seiten (Next.js App Router) und API-Routen
                         Filter Alle · Blau · Grün · Rot, Aktien/Krypto/Rohstoffe; reine Watchlist-Werte nicht
   watchlist/            Watchlist: kompakte Kacheln mit Mini-Chart (auch Gelb); Antippen = Details + übernehmen
   depot/                Depot (früher Journal): Papier-Trades, Filter Alle · Blau · Grün; /journal leitet weiter
-  trainer/              Trainer: Training + Turnier gegen 9 Bots, Rangliste und Auswertung
+  trainer/              Trainer: Training + Turnier gegen 15 Gegner, Rangliste und Auswertung
   echochart/            Rückblick: Wie hätten die Zonen früher gehalten?
   einstellungen/        Gewichtung (in festen Grenzen), Kerzengrößen, Push, Keys
   api/                  candles, quote, fundamentals, news, resolve, llm, history,
@@ -44,7 +44,9 @@ src/lib/analysis/       BLACKTRADER-KERN (reine Funktionen, ohne React/Browser)
   locked-config.ts      feste Werte (vom Trainer nie veränderbar)
   params.ts             lernbare Parameter mit Grenzen
 src/lib/trainer/        Trainer (Walk-Forward, Zellen je Klasse × Zeitraum, Speicher)
-  tournament.ts         Turnier: 9 Gegner, Marktlage, Simulation, Rangliste, Auswertung in Worten
+  tournament.ts         Turnier: Marktlage, Simulation, Rangliste, Auswertung in Worten
+  opponents.ts          Die 15 Gegner (Bots, Bank-Analysten, Strategien) mit fairen Stellschrauben und Varianten
+  rulebook.ts           Regelwerk A/B/C (Anzeige auf /regelwerk)
   tournamentRun.ts      Turnier rechnen (Daten laden, Blacktrader vor/nach dem Training)
 src/lib/client/         Browser: Scanner (Blacktrader im Hintergrund), Verlauf, Live-Kurse, Push
 src/lib/store/          lokaler Speicher (localStorage), Migrationen mit Backup, Export/Import
@@ -146,20 +148,29 @@ Der Trainer hat zwei Teile – beide laufen im Browser (Web Worker), die App ble
 
 **Messung:** Zonen-Quote wie HKCM, Walk-Forward mit gesperrten Testdaten (letzte 12 Monate). Gespeichert wird nur, was dort besser ist – und **kein Zufall** ist: (1) die höhere Quote muss statistisch gesichert sein (einseitiger Test, 95 % Sicherheit), (2) sie muss in mindestens 3 von 4 Prüfzeiträumen auftreten, nicht nur in einem. Dazu wie bisher mindestens 200 Zonen, Gewinnfaktor nicht niedriger, Rückgang nicht größer, höchstens −40 % Signale pro Monat. Das gilt für das Training, das Lernen im Turnier und die Prüfung beim Server.
 
-### 4.2 Turnier: Blacktrader gegen 9 Gegner (10 Teilnehmer)
-Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen neun Analysten/Bots an:
+### 4.2 Turnier: Blacktrader gegen 15 Gegner (16 Teilnehmer)
+Nach jedem Training (oder „Nur Turnier“) tritt Blacktrader gegen 15 Gegner an (`src/lib/trainer/opponents.ts`):
 
-| Gegner | Regel |
-|---|---|
-| Zufalls-Bot | kauft an zufälligen Tagen, hält 20 Tage |
-| Kaufen & Halten | kauft jeden Monat, hält ein halbes Jahr |
-| Trendfolger | kauft über der 200-Tage-Linie, verkauft darunter |
-| RSI-Bot | kauft bei RSI < 30, verkauft bei Erholung (RSI > 55, 20 Tage oder −10 %) |
-| MACD-Bot | kauft beim MACD-Kreuz nach oben, verkauft beim Kreuz nach unten |
-| Ausbruchs-Bot | kauft beim 55-Tage-Hoch, verkauft beim 20-Tage-Tief (Turtle) |
-| Bollinger-Bot | kauft unter dem unteren Bollinger-Band (20 Tage, 2 Standardabweichungen), verkauft an der Mittellinie (spätestens nach 20 Tagen oder bei −10 %) |
-| Momentum-Bot | kauft am Monatsanfang Werte mit +10 % in 6 Monaten über der 50-Tage-Linie, hält einen Monat |
-| KI-Bot | logistische Regression, lernt jedes Jahr nur mit bereits bekannten Ergebnissen |
+| Gruppe | Gegner | Regel (Startwerte · faire Bereiche) |
+|---|---|---|
+| Bots | Zufalls-Bot | kauft an zufälligen Tagen, hält 20 Tage (10–60) |
+| Bots | Kaufen & Halten | kauft alle 21 Tage (10–42), hält 126 Tage (63–252) |
+| Bots | Trendfolger | kauft über der 200-Tage-Linie (100–250), verkauft darunter |
+| Bots | Ausbruchs-Bot (Turtle) | 55-Tage-Hoch (20–60) / 20-Tage-Tief (10–30) |
+| Bots | KI-Bot | logistische Regression, lernt jedes Jahr nur mit bekannten Ergebnissen; ab 58 % (54–62), hält 20 Tage (10–30) |
+| Bank-Analysten | Goldman Sachs, Morgan Stanley, JPMorgan, Bank of America | kauft am Handelstag NACH einer Hochstufung/Erstbewertung auf Kaufen/Übergewichten, hält 252 Tage (63–252), Verkauf bei Abstufung (an/aus), auf Wunsch auch bei bestätigter Kaufempfehlung |
+| Bank-Analysten | Analysten-Konsens | kauft, wenn mindestens 2 Banken (2–4) innerhalb von 30 Tagen (15–45) hochstufen; hält 252 Tage (63–252) |
+| Strategien | Dogs of the Dow (O'Higgins 1991) | jährlich die 10 (5–10) Dow-Werte mit der höchsten Dividendenrendite, ein Jahr halten; Kaufmonat Januar (variabel); Dow-Mitgliedschaft mit Aufnahme-/Austrittsdatum |
+| Strategien | Dual Momentum (Antonacci 2014) | monatlich die 10 (5–15) stärksten Aktien über 12 Monate (6–12), nur wenn der S&P 500 über denselben Zeitraum im Plus ist, sonst Bargeld |
+| Strategien | 52-Wochen-Hoch (George & Hwang 2004) | monatlich die 10 (5–15) Aktien am nächsten am Jahreshoch (mind. 90 %, 85–98), 6 Monate (3–12) halten |
+| Strategien | Connors RSI-2 (2008) | über der 200-Tage-Linie (150–250) und RSI(2) < 10 (2–10) kaufen, über der 5-Tage-Linie (5–10) verkaufen |
+| Strategien | Sell in May (Bouman & Jacobsen 2002) | im November (Okt/Nov) einen Korb aus 15 (10–15) Aktien kaufen, im Mai (Apr–Jun) verkaufen |
+
+Bank-Einstufungen kommen von Yahoo (`/api/analysts`, meist ab 2012, nur US-Aktien), Dividenden aus der Kurshistorie (`/api/history`). Der S&P-500-ETF (SXR8) läuft nur zum Vergleich mit, er ist kein Gegner.
+
+**Veränderliche Gegner:** Vor jedem Turnier tritt der Champion jedes Gegners (aus dem letzten Turnier) gegen neue Varianten an (2 Abwandlungen + 1 ganz neue, KI-Bot 1). Ausgewählt wird auf **eigenen Auswahl-Zeiträumen** (20 × 3 Jahre, andere Startzeitpunkte als die 50 Turnier-Zeiträume) und **nur nach dem eigenen Ergebnis** – nie gegen Blacktrader abgestimmt. Der Sieger spielt das Turnier und bleibt Champion (gespeichert in der Auswertung, `opponents`). Die Rangliste zeigt je Gegner die gespielte Variante.
+
+Erster Lauf mit echten Daten (Standard-Stand von Blacktrader, Varianten-Zufallszahl 1): Kaufen & Halten +21,9 %, Blacktrader +19,0 %, Analysten-Konsens +8,9 %, 52-Wochen-Hoch +6,8 % … Connors RSI-2 −36,1 % (trifft vor Gebühren 71 %, aber Ø +0,6 % auf 500 € sind ca. 3 € gegen 15,80 € Gebühren je Kauf+Verkauf – kurze Trades lohnen sich bei 7,90 € je Order nicht).
 
 **Fair, ohne Tricks:** gleiche Werte (alle Aktien, Krypto, Rohstoffe), gleiche Zeiträume, nur Kauf-Einstiege, Ein- und Ausstieg zum Eröffnungskurs der nächsten Kerze, jedes Signal kennt nur die Vergangenheit (Tests prüfen: abgeschnittene Zukunft ändert keine früheren Trades).
 
@@ -297,3 +308,11 @@ Getestet (Härtetest, 191 Werte, 1963–2026, 10 Mio. Durchgänge à 5 Jahre, 8.
 - **Stufe 1 (ab 100 Ergebnissen):** Die echte Trefferquote der Live-Bilanz wird mit der Erwartung aus der Vergangenheit verglichen – gleiche Definition (nach dem Einstieg zuerst Ziel gegen Stop), neue Regeln, 1963–2026: Grün 50,3 % (2.104 Fälle), Blau 59,7 % (129), Rot 19,1 % (152). Gewarnt wird nur bei sehr deutlicher Abweichung nach unten (z ≤ −2,5; ab 50 Ergebnissen je Farbe): rote Zeile in der Live-Bilanz und auf der Trainer-Seite, einmal eine Nachricht. Blacktrader ändert dabei nichts selbst.
 - **Stufe 2 (ab 500 Ergebnissen):** Beim Lernen muss ein neuer Stand zusätzlich im Zeitraum seit Beginn der Live-Bilanz bestehen (Zonen-Quote nicht schlechter als der bisherige Stand, mindestens 30 Zonen). Vorher schläft die Prüfung; der Stand steht auf der Trainer-Seite.
 - **Sicherung:** Die Live-Bilanz liegt lokal auf dem Gerät. Neue Ergebnisse werden höchstens einmal am Tag automatisch in eine Sicherungsdatei geschrieben (zusätzlich zu jeder Depot-Änderung).
+
+## Regelwerk (/regelwerk)
+
+**A – ändert Blacktrader nie selbst:** Elliott ≥ 60 % und Elliott-Grundregeln; Risiko-Logik (500 € je Trade, Nachkauf nur Blau 4 × 250 €, eine Position je Wert, CRV ≥ 1,5); Konto 8.000 €, 7,90 € Gebühr, 27,5 % KESt; feste Handelsregeln (Sektor-Regel, Shorts nur im Bärenmarkt, ein Signal je Wert, grüne Box, Finanz-Filter, Blau-Regel); die Prüfregeln selbst. Blacktrader lernt nicht aus Nutzer-Handlungen.
+
+**B – ein neuer Lern-Stand nur, wenn ALLES erfüllt ist:** B1 auf unbekannten Daten besser · B2 kein Zufall (95 %, mind. 200 Zonen) · B3 Profit-Faktor nicht schlechter · B4 Rückgang nicht schlechter · B5 höchstens −40 % Signale, Mindest-Signalstärke nur steigend · B6 in 3 von 4 Prüfzeiträumen besser · **B7 Turnier-Prüfung (neu):** mit dem neuen Stand spielt Blacktrader alle 50 Turnier-Zeiträume (nur Werte dieser Klasse, gleiche Regeln) – im Schnitt nicht schlechter und nie ausgeschieden (schied schon der alte Stand aus: nicht öfter). Läuft beim Lernen im Turnier (`b7Check` in `tournamentRun.ts`, `tournamentVeto` in `session.ts`); abgelehnte Stände werden je Sitzung nur einmal geprüft. Die Auswertung nennt „Regelwerk B7: x geprüft, y abgelehnt“.
+
+**C – wie geändert wird:** C1 kleine Schritte (`stepLimitErrors` in `moves.ts`: höchstens 2 Lernschritte je Stellschraube, höchstens 3 Stellschrauben, Gewichtung ±10 Punkte, Wellengrade zwei 15-%-Schritte – gilt im Browser und beim Server) · C2 Versionsnummer je Bereich, neue Versionen werden im Trainer und im Regelwerk gemeldet, bis „Gesehen“ · C3 Rückweg: Warnt die Live-Kontrolle, schlägt das Regelwerk vor, die seit Beginn der Live-Bilanz gelernten Bereiche auf die vorige Version zurückzusetzen (Zugangscode nötig, der Nutzer entscheidet) · C4 Live-Prüfung ab 500 Ergebnissen.

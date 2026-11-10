@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cagr, makeWindows, OPPONENTS, rank, regimeIndex, reportLines, RULES, runWindow, summarizeRuns, type PoolTrade, type Series, type Window } from "../src/lib/trainer/tournament";
+import { cleanParams, isBuyGrade, isDowMember, makeVariants, OPPONENTS } from "../src/lib/trainer/opponents";
+import { cagr, makeWindows, rank, regimeIndex, reportLines, RULES, runWindow, summarizeRuns, type PoolTrade, type Series, type Window } from "../src/lib/trainer/tournament";
 import type { Candle } from "../src/lib/types";
 
 // Kursverlauf mit Auf und Ab (deterministisch)
@@ -23,9 +24,12 @@ const T = (sym: string, d0: number, d1: number, r: number): PoolTrade => ({ sym,
 const flat = () => 100;
 
 describe("Turnier: Regeln", () => {
-  it("8.000 € Start (wie das Depot), 5 Jahre, 50 Versuche, 9 Gegner (10 Teilnehmer), KESt 27,5 %", () => {
+  it("8.000 € Start (wie das Depot), 5 Jahre, 50 Versuche, 15 Gegner (16 Teilnehmer), KESt 27,5 %", () => {
     expect(RULES).toMatchObject({ start: 8000, years: 5, reps: 50, stake: 500, tax: 0.275 });
-    expect(OPPONENTS).toHaveLength(9);
+    expect(OPPONENTS).toHaveLength(15);
+    for (const g of ["bot", "bank", "strategie"]) expect(OPPONENTS.filter((o) => o.group === g)).toHaveLength(5);
+    expect(OPPONENTS.map((o) => o.id)).not.toContain("rsi");
+    expect(new Set(OPPONENTS.map((o) => o.id)).size).toBe(15);
   });
   it("ohne Trades bleibt das Geld liegen", () => {
     const r = runWindow([], W(1_500_000_000), flat);
@@ -96,18 +100,76 @@ describe("Turnier: Regeln", () => {
 });
 
 describe("Turnier: kein Teilnehmer schaut in die Zukunft", () => {
-  const data: Series[] = [{ symbol: "X", candles: series(1500, 5) }, { symbol: "Y", candles: series(1500, 9, -0.0002) }];
+  // Aktien mit Dow-Namen, Dividenden und Bank-Einstufungen (alle Gegner sollen handeln können)
+  const FIRMS = ["Goldman Sachs", "Morgan Stanley", "JP Morgan", "B of A Securities", "Citigroup", "Barclays"];
+  const GRADES = ["Buy", "Neutral", "Overweight", "Underweight", "Outperform", "Hold"];
+  const ACTIONS = ["up", "down", "init", "main", "reit"];
+  const data: Series[] = ["KO", "JNJ", "PG", "MRK", "MSFT", "CVX", "HD", "WMT", "X"].map((symbol, n) => {
+    const candles = series(1500, 5 + n * 4, n % 3 === 0 ? -0.0002 : 0.0004);
+    const dividends = candles.filter((_, i) => i % 91 === 30).map((c) => ({ time: c.time, amount: 0.5 + (n % 4) * 0.3 }));
+    let s = 11 + n;
+    const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    const analysts = candles.filter((_, i) => i % 9 === n % 9).map((c) => ({ time: c.time + 3600, firm: FIRMS[Math.floor(r() * FIRMS.length)], toGrade: GRADES[Math.floor(r() * GRADES.length)], fromGrade: "", action: ACTIONS[Math.floor(r() * ACTIONS.length)] }));
+    return { symbol, candles, kind: "stock" as const, dividends, analysts };
+  });
   for (const o of OPPONENTS.filter((x) => x.id !== "zufall" && x.id !== "ki")) {
     it(`${o.name}: Trades bis zu einem Tag ändern sich nicht, wenn spätere Kurse fehlen`, () => {
       const cut = 1100;
-      const full = o.build(data);
-      const part = o.build(data.map((d) => ({ ...d, candles: d.candles.slice(0, cut) })));
+      const p = cleanParams(o, null);
+      const full = o.build(data, p);
+      const part = o.build(data.map((d) => ({ ...d, candles: d.candles.slice(0, cut) })), p);
       const limit = data[0].candles[cut - 1].time;
       const done = (l: PoolTrade[]) => l.filter((t) => t.exit < limit).map((t) => `${t.sym}:${t.entry}:${t.exit}:${t.r.toFixed(6)}`).sort();
       expect(done(part)).toEqual(done(full));
       expect(full.length).toBeGreaterThan(0);
     });
   }
+  it("Bank-Analysten kaufen erst am Handelstag NACH der Einstufung", () => {
+    for (const id of ["gs", "ms", "jpm", "bofa", "konsens"]) {
+      const o = OPPONENTS.find((x) => x.id === id)!;
+      for (const t of o.build(data, cleanParams(o, null))) {
+        const d = data.find((x) => x.symbol === t.sym)!;
+        const ev = d.analysts!.filter((a) => a.time < t.entry);
+        expect(ev.length).toBeGreaterThan(0);
+        expect(Math.floor(t.entry / 86400)).toBeGreaterThan(Math.floor(ev[ev.length - 1].time / 86400) - 1);
+      }
+    }
+  });
+  it("Kaufempfehlung erkennen", () => {
+    for (const g of ["Buy", "Strong Buy", "Outperform", "Overweight", "Sector Outperform"]) expect(isBuyGrade(g)).toBe(true);
+    for (const g of ["Neutral", "Hold", "Underweight", "Underperform", "Sell", "Equal-Weight", "Market Perform"]) expect(isBuyGrade(g)).toBe(false);
+  });
+  it("Dow-Mitglieder mit Aufnahme-Datum (Apple erst ab März 2015, Exxon bis August 2020)", () => {
+    expect(isDowMember("AAPL", Date.UTC(2014, 0, 1) / 1000)).toBe(false);
+    expect(isDowMember("AAPL", Date.UTC(2016, 0, 1) / 1000)).toBe(true);
+    expect(isDowMember("XOM", Date.UTC(2021, 0, 1) / 1000)).toBe(false);
+    expect(isDowMember("SAP.DE", Date.UTC(2021, 0, 1) / 1000)).toBe(false);
+  });
+});
+
+describe("Veränderliche Gegner", () => {
+  it("Varianten bleiben in den fairen Bereichen; der Champion steht vorne", () => {
+    for (const o of OPPONENTS) {
+      const champ = cleanParams(o, { ...o.defaults, [o.space[0].key]: o.space[0].max });
+      const v = makeVariants(o, champ, 42);
+      expect(v[0]).toEqual({ params: champ, origin: "champion" });
+      expect(v.length).toBeGreaterThan(1);
+      expect(new Set(v.map((x) => JSON.stringify(x.params))).size).toBe(v.length);
+      for (const { params } of v) for (const d of o.space) {
+        expect(params[d.key]).toBeGreaterThanOrEqual(d.min);
+        expect(params[d.key]).toBeLessThanOrEqual(d.max);
+      }
+    }
+  });
+  it("ohne Champion: Startwerte aus der veröffentlichten Methode; kaputte Werte werden begrenzt", () => {
+    const o = OPPONENTS.find((x) => x.id === "ausbruch")!;
+    expect(makeVariants(o, null, 1)[0]).toEqual({ params: { entry: 55, exit: 20 }, origin: "start" });
+    expect(cleanParams(o, { entry: 999, exit: Number.NaN })).toEqual({ entry: 60, exit: 20 });
+  });
+  it("jedes Turnier andere neue Varianten (andere Zufallszahl)", () => {
+    const o = OPPONENTS.find((x) => x.id === "high52")!;
+    expect(JSON.stringify(makeVariants(o, null, 1))).not.toBe(JSON.stringify(makeVariants(o, null, 2)));
+  });
 });
 
 describe("Vergleich: echter ETF", () => {

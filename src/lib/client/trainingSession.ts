@@ -241,7 +241,10 @@ export async function startTraining(durationMs: number, cells: CellKey[] = [...A
   // Live-Bilanz für die Live-Prüfung beim Lernen (erst ab 500 abgeschlossenen Ergebnissen aktiv)
   const log = getData().chanceLog;
   const live = log.length ? { start: Math.min(...log.map((x) => x.from)), done: log.filter((x) => x.result === "ziel" || x.result === "stop").length } : undefined;
-  const st = newSession({ id: String(Date.now()), durationMs, cells, baseVersion: version, paramSet: params, extra, baseParams, live });
+  // Turnier-Gegner: jeder startet mit seinem Champion aus dem letzten Turnier
+  const lastWith = view.reports.find((r) => r.opponents?.length);
+  const champions = lastWith ? Object.fromEntries(lastWith.opponents!.map((o) => [o.id, o.params])) : undefined;
+  const st = newSession({ id: String(Date.now()), durationMs, cells, baseVersion: version, paramSet: params, extra, baseParams, live, champions });
   write(KEY, st);
   spawn(st);
 }

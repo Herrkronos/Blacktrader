@@ -4,8 +4,9 @@ import type { AssetKind, Candle, Horizon } from "../types";
 import { primaryRate } from "./engine";
 import { runSession, checkpoint, type CellOutcome, type SessionIO, type SessionState } from "./session";
 import { cagr, RULES, type PoolTrade, type TournamentReport } from "./tournament";
-import { blacktraderPool, buildReport, playRound, prepareTournament } from "./tournamentRun";
+import { b7Check, blacktraderPool, buildReport, playRound, prepareTournament, type Prepared } from "./tournamentRun";
 import { universe, type CellKey, type SeriesSpec } from "./universe";
+import type { AnalystEvent } from "./opponents";
 import { backtestSeries } from "./engine";
 
 let stop = false;
@@ -20,6 +21,31 @@ function load(spec: SeriesSpec): Promise<Candle[] | null> {
   return cache.get(k)!;
 }
 
+// Dividenden kommen mit den Tageskerzen (für Dogs of the Dow)
+const divs = new Map<string, { time: number; amount: number }[]>();
+async function dividends(symbol: string) {
+  await load({ symbol, kind: "stock", horizon: "medium", interval: "1d", days: 15 * 365, step: 1 });
+  return divs.get(symbol) ?? null;
+}
+
+// Bank-Analysten: Hoch-/Herabstufungen (nur US-Aktien)
+async function analysts(symbol: string) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch(`/api/analysts?symbol=${encodeURIComponent(symbol)}`);
+      if (r.status === 429) {
+        await new Promise((res) => setTimeout(res, 3000 * (i + 1)));
+        continue;
+      }
+      if (!r.ok) return null;
+      return ((await r.json()) as { actions?: AnalystEvent[] }).actions ?? null;
+    } catch {
+      await new Promise((res) => setTimeout(res, 1500));
+    }
+  }
+  return null;
+}
+
 async function fetchSeries(spec: SeriesSpec): Promise<Candle[] | null> {
   const url = `/api/history?yahoo=${encodeURIComponent(spec.symbol)}&interval=${spec.interval}&days=${spec.days}`;
   for (let i = 0; i < 4; i++) {
@@ -30,7 +56,8 @@ async function fetchSeries(spec: SeriesSpec): Promise<Candle[] | null> {
         continue;
       }
       if (!r.ok) return null;
-      const j = (await r.json()) as { candles?: Candle[] };
+      const j = (await r.json()) as { candles?: Candle[]; dividends?: { time: number; amount: number }[] };
+      if (spec.interval === "1d" && j.dividends) divs.set(spec.symbol, j.dividends);
       return j.candles ?? null;
     } catch {
       await new Promise((res) => setTimeout(res, 1500));
@@ -95,6 +122,20 @@ self.onmessage = async (e: MessageEvent) => {
         if (b.n < 30 || c.n < 30) return null;
         return c.r < b.r ? `im Live-Zeitraum schlechter (Zonen-Quote ${(c.r * 100).toFixed(1)} % gegen ${(b.r * 100).toFixed(1)} %)` : null;
       },
+      // Regelwerk B7: Turnier-Prüfung des neuen Stands (nur Werte dieser Klasse, alle 50 Zeiträume)
+      tournamentVeto: async (cell, baseParams, cand, s) => {
+        if (!prepRef) return null;
+        const [kind, horizon] = cell.split(":") as [AssetKind, Horizon];
+        const cur = (k: AssetKind, h: Horizon) => s.saved?.[`${k}:${h}` as CellKey]?.params ?? resolveParams(s.cfg.paramSet, k, h);
+        const with_ = (p: typeof cand) => (k: AssetKind, h: Horizon) => (k === kind && h === horizon ? p : cur(k, h));
+        const bk = `${cell}|${JSON.stringify(baseParams)}|${JSON.stringify(["medium", "long"].map((h) => cur(kind, h as Horizon)))}`;
+        const prevText = s.detail;
+        const r = await b7Check(prepRef, kind, with_(baseParams), with_(cand), { ...tio, onProgress: () => post() }, b7Base.get(bk));
+        s.detail = prevText;
+        if (!r) return null;
+        if (r.basePool) b7Base.set(bk, r.basePool);
+        return r.veto;
+      },
       onProtocol: (cell, entries) => postMessage({ type: "protocol", cell, entries }),
       // Abschluss eines Bereichs (nur Anzeige)
       onCellDone: (o: CellOutcome, s) =>
@@ -105,11 +146,14 @@ self.onmessage = async (e: MessageEvent) => {
           setTimeout(() => pending.has(id) && (pending.delete(id), res()), 30_000);
         }),
     };
-    const tio = { load, extra: st.cfg.extra, shouldStop: () => stop, onProgress: (f: number, text: string) => T(f, text, st.tournament?.round) };
+    let prepRef: Prepared | null = null;
+    const b7Base = new Map<string, PoolTrade[]>();
+    const tio = { load, analysts, dividends, champions: st.cfg.champions, seed: Number(st.cfg.id) % 1_000_003 || 1, extra: st.cfg.extra, shouldStop: () => stop, onProgress: (f: number, text: string) => T(f, text, st.tournament?.round) };
     // Turnier: vorbereiten, dann 5 Runden – vor jeder Runde lernt Blacktrader (ein Fünftel der Zeit) und speichert sofort
     try {
       T(0, "Turnier vorbereiten");
       const prep = await prepareTournament({ ...tio, onProgress: (f, t) => T(f * 0.15, t) });
+      prepRef = prep;
       if (!prep) {
         st.tournament = { progress: 1, text: "", done: true, failed: stop ? "Gestoppt" : "Keine Kursdaten für das Turnier erreichbar" };
       } else {
@@ -155,6 +199,7 @@ self.onmessage = async (e: MessageEvent) => {
         if (!stop && pool && runs.length === prep.windows.length) {
           const improvedCells = st.results.filter((r) => r.accept && r.base && r.cand).map((r) => ({ cell: r.cell, old: primaryRate(r.base!), neu: primaryRate(r.cand!) }));
           const report = buildReport(prep, runs, rounds, pool, improvedCells);
+          if (st.b7) report.b7 = st.b7;
           if (st.cfg.durationMs === 0) report.note = `${report.note ?? ""} Ohne Lernen gespielt.`.trim();
           postMessage({ type: "report", report });
           st.tournament = { progress: 1, text: "Auswertung fertig", done: true };

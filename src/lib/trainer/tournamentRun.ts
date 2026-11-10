@@ -1,4 +1,4 @@
-// Turnier rechnen (im Web Worker): Kursdaten laden, Trades aller 8 Teilnehmer erzeugen und 50 Versuche à 5 Jahre
+// Turnier rechnen (im Web Worker): Kursdaten laden, Trades aller 16 Teilnehmer erzeugen und 50 Versuche à 5 Jahre
 // in echter Zeit durchspielen. Blacktrader spielt in 5 Runden zu je 10 Versuchen; zwischen den Runden lernt er
 // (Strenge-Regeln unverändert) und spielt die nächste Runde mit seinem neuesten gespeicherten Stand.
 import { runLongTermEcho } from "../analysis/longterm";
@@ -6,14 +6,34 @@ import type { LearnableParams } from "../analysis/params";
 import type { AssetKind, Candle, Horizon } from "../types";
 import { backtestSeries } from "./engine";
 import { blueTrade, greenRedTrade, suppressedBy, type ActiveIntervals } from "../analysis/tradeRules";
-import { benchmarkRun, makeWindows, OPPONENTS, regimeIndex, rank, RULES, runWindow, SCENARIOS, summarizeRuns, type ContestantResult, type PoolTrade, type RunResult, type Scenario, type Series, type TournamentReport, type Window } from "./tournament";
+import { benchmarkRun, makeWindows, regimeIndex, rank, RULES, runWindow, SCENARIOS, summarizeRuns, type ContestantResult, type PoolTrade, type RunResult, type Scenario, type Series, type TournamentReport, type Window } from "./tournament";
 import { universe, type CellKey, type SeriesSpec } from "./universe";
+import { isUsStock, makeVariants, OPPONENTS, type AnalystEvent, type BotParams, type VariantOrigin } from "./opponents";
 
 export interface TournamentIO {
   load: (spec: SeriesSpec) => Promise<Candle[] | null>;
   onProgress: (fraction: number, text: string) => void;
   shouldStop: () => boolean;
   extra?: { symbol: string; kind: AssetKind; yahooSymbol?: string }[];
+  /** Bank-Analysten: Hoch-/Herabstufungen eines Werts (nur US-Aktien) */
+  analysts?: (symbol: string) => Promise<AnalystEvent[] | null>;
+  /** Dividenden eines Werts (für Dogs of the Dow) */
+  dividends?: (symbol: string) => Promise<{ time: number; amount: number }[] | null>;
+  /** Champions der Gegner aus dem letzten Turnier (id → Stellschrauben) */
+  champions?: Record<string, BotParams>;
+  /** Zufallszahl für neue Varianten (jedes Turnier anders) */
+  seed?: number;
+}
+
+/** Welche Variante ein Gegner gespielt hat (steht in der Auswertung) */
+export interface LineupEntry {
+  id: string;
+  name: string;
+  params: BotParams;
+  label: string;
+  origin: VariantOrigin;
+  /** Zahl der geprüften Varianten */
+  tried: number;
 }
 
 export type Params = (kind: AssetKind, horizon: Horizon) => LearnableParams;
@@ -44,12 +64,18 @@ export interface Prepared {
   /** Marktlage des S&P 500 zum Zeitpunkt t */
   regimeAt: (t: number) => "bullisch" | "neutral" | "baerisch" | null;
   bots: ContestantResult[];
+  /** Gespielte Varianten der Gegner */
+  lineup: LineupEntry[];
   /** Vergleich: echter S&P-500-ETF (handelt nicht mit) */
   benchmark?: ContestantResult | null;
   note: string;
 }
 
-/** Daten laden, Zeiträume festlegen und die 9 Gegner spielen lassen (die lernen nicht mit). */
+/**
+ * Daten laden, Zeiträume festlegen und die 15 Gegner spielen lassen (die lernen nicht von Blacktrader).
+ * Jeder Gegner wählt vorher seine beste Variante (Champion gegen neue Varianten) auf EIGENEN Auswahl-Zeiträumen
+ * (3 Jahre, andere Startzeitpunkte) – nur nach seinem eigenen Ergebnis, nie gegen Blacktrader.
+ */
 export async function prepareTournament(io: TournamentIO, span: [number, number] = [0, 1]): Promise<Prepared | null> {
   const P = (f: number, t: string) => io.onProgress(span[0] + (span[1] - span[0]) * f, t);
   const specs = new Map<string, { kind: AssetKind; daily: SeriesSpec; weekly: SeriesSpec }>();
@@ -86,6 +112,16 @@ export async function prepareTournament(io: TournamentIO, span: [number, number]
     const [daily, weekly] = await Promise.all([io.load(s.daily), io.load(s.weekly)]);
     if (daily && daily.length > 300) assets.push({ symbol, kind: s.kind, daily, weekly });
   }
+  // Bank-Analysten (nur US-Aktien) und Dividenden – fehlen sie, handeln die betroffenen Gegner eben nicht
+  const extraData = new Map<string, { analysts?: AnalystEvent[]; dividends?: { time: number; amount: number }[] }>();
+  const stocks = assets.filter((a) => a.kind === "stock");
+  for (let k = 0; k < stocks.length; k++) {
+    if (io.shouldStop()) return null;
+    const a = stocks[k];
+    P(0.6 + (0.1 * k) / stocks.length, `Analysten und Dividenden laden: ${a.symbol}`);
+    const [an, dv] = await Promise.all([isUsStock(a.symbol) && io.analysts ? io.analysts(a.symbol) : null, io.dividends ? io.dividends(a.symbol) : null]);
+    extraData.set(a.symbol, { analysts: an ?? undefined, dividends: dv ?? undefined });
+  }
   if (assets.length < 10) return null;
   const from = spx[200].time;
   const windows = makeWindows(spx, from);
@@ -117,28 +153,45 @@ export async function prepareTournament(io: TournamentIO, span: [number, number]
     const c = closeAt(bySym.get(sym), t);
     return c == null ? null : c * eurPer(sym, t);
   };
-  const data: Series[] = assets.map((a) => ({ symbol: a.symbol, candles: a.daily }));
+  const data: Series[] = assets.map((a) => ({ symbol: a.symbol, candles: a.daily, kind: a.kind, ...extraData.get(a.symbol) }));
+  const ctx = { spx };
+  // Auswahl-Zeiträume: 20 × 3 Jahre, andere Startzeitpunkte als die 50 Turnier-Zeiträume
+  const selWindows = makeWindows(spx, from + 45 * 86400, 20, 3);
   const bots: ContestantResult[] = [];
+  const lineup: LineupEntry[] = [];
+  const seed = io.seed ?? 1;
   for (let k = 0; k < OPPONENTS.length; k++) {
     if (io.shouldStop()) return null;
     const o = OPPONENTS[k];
-    P(0.6 + (0.4 * k) / OPPONENTS.length, `${o.name} handelt`);
-    await tick();
-    const pool = toEur(o.build(data).filter((t) => t.entry >= from));
-    bots.push(summarizeRuns(o.id, o.name, o.desc, windows.map((w) => ({ w, r: runWindow(pool, w, priceAt) }))));
+    const vars = makeVariants(o, io.champions?.[o.id], seed * 101 + k * 7919);
+    let best: { v: (typeof vars)[number]; pool: PoolTrade[]; score: number } | null = null;
+    for (let n = 0; n < vars.length; n++) {
+      P(0.7 + (0.3 * (k + n / vars.length)) / OPPONENTS.length, `${o.name}: Variante ${n + 1}/${vars.length} wird geprüft`);
+      await tick();
+      if (io.shouldStop()) return null;
+      const pool = toEur(o.build(data, vars[n].params, ctx).filter((t) => t.entry >= from));
+      const runs = selWindows.map((w) => runWindow(pool, w, priceAt));
+      const score = runs.reduce((a, r) => a + (r.end > 0 ? Math.pow(r.end / RULES.start, 1 / 3) - 1 : -1), 0) / Math.max(1, runs.length);
+      // Bei Gleichstand bleibt der Champion
+      if (!best || score > best.score + 1e-9) best = { v: vars[n], pool, score };
+    }
+    const label = o.describe(best!.v.params);
+    lineup.push({ id: o.id, name: o.name, params: best!.v.params, label, origin: best!.v.origin, tried: vars.length });
+    bots.push(summarizeRuns(o.id, o.name, `${o.desc} – Variante: ${label}`, windows.map((w) => ({ w, r: runWindow(best!.pool, w, priceAt) }))));
   }
   // Vergleich nur, wenn der ETF den ganzen Zeitraum abdeckt (Kurs in Euro, Dividenden im Kurs enthalten)
   const benchmark = etf && etf.length > 300 && etf[0].time <= from + 7 * 86400 ? summarizeRuns("etf", BENCHMARK.name, BENCHMARK.desc, windows.map((w) => ({ w, r: benchmarkRun(etf, w) }))) : null;
   const cnt: Partial<Record<Scenario, number>> = {};
   for (const w of windows) cnt[w.scenario] = (cnt[w.scenario] ?? 0) + 1;
-  const note = `Alle Beträge in Euro (Wechselkurs am Kauf- und Verkaufstag${eurusd?.length ? "" : " – Euro/Dollar-Kurs nicht erreichbar, ohne Umrechnung"}). ${assets.length} Werte (Aktien, Krypto, Rohstoffe), Daten ab ${new Date(from * 1000).toLocaleDateString("de-DE")}, ${windows.length} Zeiträume à 5 Jahre (${SCENARIOS.filter((s) => cnt[s]).map((s) => `${cnt[s]}× ${s === "baerisch" ? "bärisch" : s}`).join(", ")}). Rohstoffe kurzfristig (Stundenkerzen) sind nicht enthalten.`;
-  return { assets, windows, from, priceAt, techWeakAt, toEur, regimeAt: regimeIndex(spx), bots, benchmark, note };
+  const note = `Alle Beträge in Euro (Wechselkurs am Kauf- und Verkaufstag${eurusd?.length ? "" : " – Euro/Dollar-Kurs nicht erreichbar, ohne Umrechnung"}). ${assets.length} Werte (Aktien, Krypto, Rohstoffe), Daten ab ${new Date(from * 1000).toLocaleDateString("de-DE")}, ${windows.length} Zeiträume à 5 Jahre (${SCENARIOS.filter((s) => cnt[s]).map((s) => `${cnt[s]}× ${s === "baerisch" ? "bärisch" : s}`).join(", ")}). Rohstoffe kurzfristig (Stundenkerzen) sind nicht enthalten. Bank-Analysten: Einstufungen erst ab etwa 2012 und nur für US-Aktien (${[...extraData.values()].filter((x) => x.analysts?.length).length} Werte mit Daten).`;
+  return { assets, windows, from, priceAt, techWeakAt, toEur, regimeAt: regimeIndex(spx), bots, lineup, benchmark, note };
 }
 
 /** Alle Trades von Blacktrader mit einem Parameter-Stand (grün/rot: Tag + Woche; blau: Langfrist-Bereich). */
-export async function blacktraderPool(prep: Prepared, params: Params, io: TournamentIO, span: [number, number], label: string): Promise<PoolTrade[] | null> {
+export async function blacktraderPool(prep: Prepared, params: Params, io: TournamentIO, span: [number, number], label: string, only?: AssetKind): Promise<PoolTrade[] | null> {
   const out: PoolTrade[] = [];
-  const { assets, from, techWeakAt, regimeAt } = prep;
+  const { from, techWeakAt, regimeAt } = prep;
+  const assets = only ? prep.assets.filter((a) => a.kind === only) : prep.assets;
   for (let k = 0; k < assets.length; k++) {
     if (io.shouldStop()) return null;
     const a = assets[k];
@@ -201,7 +254,7 @@ export function buildReport(prep: Prepared, btRuns: { w: Window; r: RunResult }[
   };
   const scenarioCount: Partial<Record<Scenario, number>> = {};
   for (const w of prep.windows) scenarioCount[w.scenario] = (scenarioCount[w.scenario] ?? 0) + 1;
-  return { v: 2, at: new Date().toISOString(), rules: { ...RULES }, ranking, scenarioCount, rounds, split: { blau: only("blau"), gruen: only("gruen"), rot: only("rot") }, benchmark: prep.benchmark ?? null, blueRule: blueRuleCheck(prep, finalPool), improvedCells, note: prep.note };
+  return { v: 2, at: new Date().toISOString(), rules: { ...RULES }, ranking, scenarioCount, rounds, split: { blau: only("blau"), gruen: only("gruen"), rot: only("rot") }, benchmark: prep.benchmark ?? null, blueRule: blueRuleCheck(prep, finalPool), improvedCells, opponents: prep.lineup, note: prep.note };
 }
 
 /** Kontrolle: derselbe Stand mit und ohne Blau-Regel über alle Zeiträume – zeigt, ob die Regel noch hilft. */
@@ -210,4 +263,26 @@ function blueRuleCheck(prep: Prepared, pool: PoolTrade[]): { on: number; off: nu
   const all = pool.map((t) => (t.blueRuleOut ? { ...t, blueRuleOut: undefined } : t));
   const avg = (p: PoolTrade[]) => summarizeRuns("x", "", "", prep.windows.map((w) => ({ w, r: runWindow(p, w, prep.priceAt) }))).avgPerYear;
   return { on: avg(activePool(pool)), off: avg(all) };
+}
+
+/**
+ * Regelwerk B7 – Turnier-Prüfung: Ein neuer Lern-Stand für einen Bereich (z. B. Aktien mittelfristig) wird nur
+ * übernommen, wenn Blacktrader mit ihm in allen 50 Turnier-Zeiträumen (nur Werte dieser Klasse, gleiche Regeln:
+ * 8.000 €, 500 € je Trade, Gebühren, KESt) im Schnitt NICHT schlechter abschneidet und NIE ausscheidet
+ * (schied schon der bisherige Stand aus, dann jedenfalls nicht öfter). Rückgabe: Grund für ein Nein, sonst null.
+ */
+export async function b7Check(prep: Prepared, kind: AssetKind, base: Params, cand: Params, io: TournamentIO, basePool?: PoolTrade[] | null): Promise<{ veto: string | null; basePool: PoolTrade[] | null; base: number; cand: number } | null> {
+  const span: [number, number] = [0, 1];
+  const bp = basePool ?? (await blacktraderPool(prep, base, io, span, "Prüfung B7: bisheriger Stand", kind));
+  if (!bp) return null;
+  const cp = await blacktraderPool(prep, cand, io, span, "Prüfung B7: neuer Stand", kind);
+  if (!cp) return null;
+  const sum = (pool: PoolTrade[]) => summarizeRuns("x", "", "", prep.windows.map((w) => ({ w, r: runWindow(activePool(pool), w, prep.priceAt) })));
+  const b = sum(bp);
+  const c = sum(cp);
+  const pc = (x: number) => `${(x * 100).toFixed(1).replace(".", ",")} %`;
+  let veto: string | null = null;
+  if (c.broke > 0 && (b.broke === 0 || c.broke > b.broke)) veto = `im Turnier ${c.broke}× ausgeschieden`;
+  else if (c.avgPerYear < b.avgPerYear - 1e-9) veto = `im Turnier schlechter (${pc(c.avgPerYear)} statt ${pc(b.avgPerYear)} pro Jahr)`;
+  return { veto, basePool: bp, base: b.avgPerYear, cand: c.avgPerYear };
 }
