@@ -1,6 +1,7 @@
 "use client";
 // Analyse-Karte (Chancen, Watchlist): GENAU EIN aktueller Einstieg pro Wert – Blacktrader rechnet im Hintergrund.
 // Zeile 1 Name/Kurs · Zeile 2 Mini-Chart (alte Einstiege grau) · Zeile 3 Einstieg/Stop/Ziel · Grund · Verlauf · max. 2 Buttons.
+import { displayCurrency } from "@/lib/client/eur";
 import { useState } from "react";
 import type { AnalysisResult } from "@/lib/analysis/analyze";
 import type { BestEntry, HistEntry } from "@/lib/analysis/bestEntry";
@@ -92,7 +93,7 @@ export function AssetCard({
   const [showPast, setShowPast] = useState(false);
   const trades = useAppData((d) => d.trades);
   const expert = useAppData((d) => d.settings.expertMode);
-  const cur = asset.currency ?? entry?.asset.currency;
+  const cur = displayCurrency(asset, asset.currency ?? entry?.asset.currency);
   const b = entry?.best;
   const view = entry ? viewCandles(entry) : { candles: [], res: null };
   const res = view.res;

@@ -48,6 +48,7 @@ export default function WatchlistPage() {
             status={lv?.status}
             source={lv?.source}
             chart
+            showChance
             onOpen={() => open(w, entry?.best.horizon ?? entry?.ltHorizon, { withEntry: true, onRemove: () => actions.removeWatch(w.id) })}
           />
         );

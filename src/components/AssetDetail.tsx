@@ -1,7 +1,7 @@
 "use client";
 // Detailansicht eines Werts (als Bottom-Sheet oder eigene Seite): großer Chart mit Wellenzählung und
 // Fibo-Zonen, Signal mit Teil-Scores, Langfristiger Einstieg, Begründung, Fundamentalzahlen, News.
-import { tradeCurrency } from "@/lib/client/eur";
+import { displayCurrency, tradeCurrency } from "@/lib/client/eur";
 import { effectiveWeights, learnedParams, useTrainerVersion } from "@/lib/client/trainerParams";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -108,7 +108,7 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
 
   const ltZone = useMemo(() => (candles.length >= 150 ? findLongTermZone(candles) : null), [candles]);
   const myLt = useAppData((d) => d.trades.find((t) => t.strategy === "longterm" && t.status !== "closed" && t.symbol === asset.symbol));
-  const currency = live?.currency ?? asset.currency;
+  const currency = displayCurrency(asset, live?.currency ?? asset.currency);
   const trainerV = useTrainerVersion();
   const analysis = useMemo(
     () =>

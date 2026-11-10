@@ -2,6 +2,7 @@
 // Chancen-Scanner (geteilt von Übersicht, Chancen und Watchlist): Blacktrader rechnet die Zeiträume im Hintergrund
 // und wählt GENAU EINEN aktuellen Einstieg pro Wert (blau / grün / rot / gelb). Shorts nur bei bärischem Gesamtmarkt, Aktien und Krypto ohne
 // kurzfristige Signale, Rohstoffe kurzfristig nur bei bullischem Gesamtmarkt (S&P 500).
+import { isFxPair } from "./eur";
 import { basePotential, BLUE_RULE, MIN_POTENTIAL, passesBlueRule, type PotentialColor } from "../analysis/potential";
 import { effectiveWeights, learnedParams, refreshTrainerParams } from "./trainerParams";
 import { useSyncExternalStore } from "react";
@@ -129,7 +130,7 @@ export async function runScan(maxAgeMs = 15 * 60e3) {
       const interval = settings.intervals[horizon];
       const { candles, currency } = await api.candles(entry.asset, interval, 60e3);
       // Watchlist-Werte ohne bekannte Währung: aus den Kursdaten übernehmen (sonst stünden $-Preise ohne Umrechnung da)
-      if (!entry.asset.currency && currency) entry.asset = { ...entry.asset, currency };
+      if (!entry.asset.currency && currency && !isFxPair(entry.asset)) entry.asset = { ...entry.asset, currency };
       const asset = entry.asset;
       const params = learnedParams(asset.kind, horizon);
       let res = analyze({ symbol: asset.symbol, name: asset.name, candles, horizon, interval, weights: effectiveWeights(settings, asset.kind, horizon), kind: asset.kind, currency: asset.currency, params });

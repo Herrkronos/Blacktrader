@@ -25,3 +25,8 @@ export function toEurReturn(nativePct: number, t: Pick<Trade, "symbol" | "kind">
 
 /** Aktuelle bzw. Schluss-Rendite eines Trades in Euro */
 export const tradeReturnEur = (t: Trade, price: number) => toEurReturn(tradeReturnPct(t.direction, t.entry, price), t);
+
+/** Devisenpaar (z. B. EURUSD=X): Kurs ist ein Wechselkurs – nicht in Euro umrechnen */
+export const isFxPair = (a: { symbol: string; yahooSymbol?: string }) => /=X$/i.test(a.yahooSymbol ?? a.symbol);
+/** Währung für die Anzeige (Devisenpaare ohne Umrechnung) */
+export const displayCurrency = (a: { symbol: string; yahooSymbol?: string }, cur?: string) => (isFxPair(a) ? undefined : cur);

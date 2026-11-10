@@ -2,6 +2,7 @@
 // Kompakte Kachel: Name, Signalart, Abstand zur Zone, Mini-Chart (Elliott-Wellen, Richtung, Zone, alte Einstiege grau),
 // Einstieg/Stop/Ziel. Bewusst ohne Texte – Begründung, Wellen-Beschreibung, Risiko-Hinweis und „worauf Blacktrader
 // wartet“ stehen in den Details (Antippen), dort auch „übernehmen“.
+import { displayCurrency } from "@/lib/client/eur";
 import { money } from "@/lib/analysis/persona";
 import type { LiveStatus } from "@/lib/client/market";
 import { lastPrice, potential, type ScanEntry } from "@/lib/client/scanner";
@@ -15,7 +16,7 @@ const BADGE = { blau: "badge-core", gruen: "badge-trade", rot: "badge-short", ge
 
 export function EntryTile({ asset, entry, price, changePct, status, source, chart = false, showChance = false, onOpen }: { asset: ResolvedAsset; entry?: ScanEntry; price?: number; changePct?: number; status?: LiveStatus; source?: string; chart?: boolean; showChance?: boolean; onOpen: () => void }) {
   const b = entry?.best;
-  const cur = asset.currency ?? entry?.asset.currency;
+  const cur = displayCurrency(asset, asset.currency ?? entry?.asset.currency);
   const p = price ?? (entry ? lastPrice(entry) : undefined);
   const short = b?.color === "rot";
   // Abstand zur Zone: Kauf – Kurs fällt bis zur Oberkante; Short – Kurs steigt bis zur Unterkante
