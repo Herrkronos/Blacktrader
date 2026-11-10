@@ -34,7 +34,7 @@ function Body({ target, close }: { target: NonNullable<Target>; close: () => voi
           }
         />
       )}
-      <AssetDetailView key={`${target.asset.kind}:${target.asset.symbol}:${target.horizon}`} asset={target.asset} initialHorizon={target.horizon} />
+      <AssetDetailView key={`${target.asset.kind}:${target.asset.symbol}:${target.horizon}`} asset={target.asset} initialHorizon={target.horizon} hideTake={!!target.withEntry} />
     </div>
   );
 }

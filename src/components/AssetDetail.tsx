@@ -31,7 +31,8 @@ type DetailAsset = ResolvedAsset & { id?: string };
  * Kein Zeitraum-Umschalter mehr: Blacktrader zeigt den Zeitraum des aktuellen Einstiegs
  * (Aktien und Krypto nie kurzfristig).
  */
-export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset; initialHorizon?: Horizon }) {
+/** `hideTake`: oben steht schon die Kachel mit „übernehmen“ – unten keinen zweiten Knopf zeigen */
+export function AssetDetailView({ asset, initialHorizon, hideTake = false }: { asset: DetailAsset; initialHorizon?: Horizon; hideTake?: boolean }) {
   const settings = useAppData((d) => d.settings);
   const live = useLive(asset);
   const scan = useScan();
@@ -215,13 +216,13 @@ export function AssetDetailView({ asset, initialHorizon }: { asset: DetailAsset;
 
       {analysis ? (
         <>
-          {showTradePlan && <SignalCard a={analysis} onTrade={() => setTrade(true)} shortAllowed={scan.ctx.spBear === true} main={mainColor === "gruen" || mainColor === "rot" || mainColor === "gelb" ? mainColor : undefined} />}
+          {showTradePlan && <SignalCard a={analysis} onTrade={hideTake ? undefined : () => setTrade(true)} shortAllowed={scan.ctx.spBear === true} main={mainColor === "gruen" || mainColor === "rot" || mainColor === "gelb" ? mainColor : undefined} />}
           {!showTradePlan && <LongTermSignalCard a={analysis} zone={ltZone} currency={currency} />}
           {showLongTerm && <LongTermCard
             zone={ltZone}
             currency={currency}
             position={myLt ? (filledTranches(myLt).length ? `Deine Position: ${filledTranches(myLt).length} von 3 Teilen, Ø ${money(avgEntry(myLt), tradeCurrency(myLt))}${myLt.stop ? `, Stop ${money(myLt.stop, tradeCurrency(myLt))}` : ", kein Stop"}.` : "Deine Teil-Orders warten im Bereich.") : null}
-            onTake={ltZone && !myLt && !openLongTerm(asset.symbol) ? () => openLongTermTrade({ ...asset, currency: asset.currency ?? currency }, ltZone, horizon, interval, chartCandles[chartCandles.length - 1]?.close ?? ltZone.zoneTop) : undefined}
+            onTake={!hideTake && ltZone && !myLt && !openLongTerm(asset.symbol) ? () => openLongTermTrade({ ...asset, currency: asset.currency ?? currency }, ltZone, horizon, interval, chartCandles[chartCandles.length - 1]?.close ?? ltZone.zoneTop) : undefined}
           />}
           {showTradePlan && <Commentary a={analysis} item={asset} />}
           <FundamentalsPanel a={analysis} f={fundamentals} note={fundNote} kind={asset.kind} />

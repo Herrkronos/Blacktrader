@@ -20,7 +20,7 @@ import { ScoreBar, SignalBadge } from "./ui";
  *  Rot  = Short (Punkte umgedreht: 100 − Wert, über 50 = guter Short)
  *  Gelb = Abwarten (neutral, kein Einstieg, kein Order-Knopf)
  */
-export function SignalCard({ a, onTrade, shortAllowed = true, main }: { a: AnalysisResult; onTrade: () => void; shortAllowed?: boolean; main?: "gruen" | "rot" | "gelb" }) {
+export function SignalCard({ a, onTrade, shortAllowed = true, main }: { a: AnalysisResult; onTrade?: () => void; shortAllowed?: boolean; main?: "gruen" | "rot" | "gelb" }) {
   const w = a.weights;
   const sum = w.elliott + w.fundamental + w.volume || 1;
   const expert = useAppData((d) => d.settings.expertMode);
@@ -89,8 +89,9 @@ export function SignalCard({ a, onTrade, shortAllowed = true, main }: { a: Analy
       ) : (
         <p className="text-sm text-stone-400">Aktuell kein Einstieg geplant.</p>
       )}
+      {/* Ohne onTrade (z. B. Kachel mit „übernehmen“ steht schon oben) kein zweiter Knopf */}
       {active ? (
-        <button className="btn-primary w-full" onClick={onTrade}>
+        onTrade && <button className="btn-primary w-full" onClick={onTrade}>
           {a.plan!.orderType === "limit" ? "Order in die Zone legen (Papier-Trade)" : "Als Papier-Trade übernehmen"}
         </button>
       ) : (
