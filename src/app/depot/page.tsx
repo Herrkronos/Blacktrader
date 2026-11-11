@@ -4,7 +4,7 @@ import { NachkaufBox } from "@/components/NachkaufBox";
 import { runScan, useScan } from "@/lib/client/scanner";
 import { TaxOverview } from "@/components/TaxOverview";
 import { brokerStop } from "@/lib/client/brokerStop";
-import { closeLongTerm } from "@/lib/client/longterm";
+import { closeLongTerm, trancheRows } from "@/lib/client/longterm";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EquityChart } from "@/components/EquityChart";
@@ -16,8 +16,7 @@ import { eurPerUnit } from "@/lib/fx";
 import { instrumentKey, useMarket } from "@/lib/client/market";
 import { actions, useAppData, type Trade } from "@/lib/store/store";
 import { HORIZON_LABEL } from "@/lib/types";
-import { ACCOUNT, ADD, computeAccount } from "@/lib/client/account";
-import { makeOrderSlip } from "@/lib/client/orderSlip";
+import { ACCOUNT, computeAccount } from "@/lib/client/account";
 import { BuyHold } from "@/components/BuyHold";
 import { useAssetSheet } from "@/components/AssetSheet";
 import { ProposalBox } from "@/components/ProposalBox";
@@ -153,9 +152,7 @@ function TradeCard({ t, price, onAction, onOpenAsset, nachkauf }: { t: Trade; pr
 function TrancheList({ t }: { t: Trade }) {
   const tr = t.tranches ?? [];
   if (!tr.length) return <p>Teile: –</p>;
-  // Ältere Trades ohne gespeicherte Stückzahl: wie auf dem Order-Zettel nachrechnen
-  const slip = tr.some((x) => x.qty == null) ? makeOrderSlip({ kind: t.kind, symbol: t.symbol, name: t.name, currency: t.currency, direction: "long", entry: tr[0].price, tranches: tr.map((x) => x.price), budget: t.nachkauf ? ADD.stake : ACCOUNT.stake }) : null;
-  const rows = tr.map((x, i) => ({ ...x, qty: x.qty ?? slip?.orders[i]?.qty ?? 0, eur: x.eur ?? slip?.orders[i]?.amountEur ?? 0 }));
+  const rows = trancheRows(t);
   const qty = (q: number) => q.toLocaleString("de-DE", { maximumFractionDigits: 4 });
   const sum = rows.reduce((a, x) => a + x.eur, 0);
   const done = rows.filter((x) => x.filledAt);
@@ -165,7 +162,7 @@ function TrancheList({ t }: { t: Trade }) {
         <div key={i} className="grid grid-cols-[2.75rem_1fr_auto] items-baseline gap-x-1.5 whitespace-nowrap py-0.5 text-[12px] max-[370px]:grid-cols-[2.4rem_1fr_auto] max-[370px]:gap-x-1 max-[370px]:text-[11px]">
           <span className="text-sky-300">Teil {i + 1}</span>
           <span>
-            {money(x.price, tradeCurrency(t))} · {qty(x.qty)} Stück · {eur(x.eur)}
+            {x.filledAt && x.qty > 0 ? eur(x.eur / x.qty) : money(x.price, tradeCurrency(t))} · {qty(x.qty)} Stück · {eur(x.eur)}
           </span>
           <span className={x.filledAt ? "text-up" : "text-stone-400"}>{x.filledAt ? "✓" : "wartet"}</span>
         </div>

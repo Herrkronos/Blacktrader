@@ -24,6 +24,8 @@ export interface SlipInput {
   limit?: boolean;
   /** Einsatz in € (Standard 500 €, Nachkauf 250 €); erlaubter Aufschlag anteilig (500 € → 50 €, 250 € → 25 €) */
   budget?: number;
+  /** Teile, die keine weiteren Stück bekommen dürfen (schon gekauft) */
+  fixed?: boolean[];
 }
 
 export interface OrderSlip {
@@ -54,6 +56,31 @@ export function qtyFor(kind: string, budget: number, priceEur: number, cap = bud
   return lo;
 }
 
+/**
+ * Ganze Stück über alle Teile auffüllen: solange ein weiteres Stück die Summe näher an den Einsatz bringt und
+ * höchstens Einsatz + Aufschlag (500 € → 550 €) ergibt, kommt es in den Teil, mit dem die Summe am nächsten am Einsatz liegt.
+ * Die 50 € gelten für den ganzen Trade, nicht je Teil (Nutzerfund T-Mobile: 3 × 1 Stück = 389,55 € statt ~500 €).
+ */
+export function fillShares(parts: { priceEur: number; qty: number; fixed?: boolean }[], budget: number, cap: number): number[] {
+  const qty = parts.map((p) => p.qty);
+  let total = parts.reduce((a, p, i) => a + qty[i] * p.priceEur, 0);
+  for (let guard = 0; guard < 1000; guard++) {
+    let best = -1;
+    let bestDiff = Math.abs(total - budget);
+    parts.forEach((p, i) => {
+      if (p.fixed || !(p.priceEur > 0)) return;
+      const t = total + p.priceEur;
+      if (t > cap + 1e-9) return;
+      const d = Math.abs(t - budget);
+      if (d < bestDiff - 1e-9) (bestDiff = d), (best = i);
+    });
+    if (best < 0) break;
+    qty[best]++;
+    total += parts[best].priceEur;
+  }
+  return qty;
+}
+
 export function makeOrderSlip(i: SlipInput): OrderSlip {
   const fx = eurPerUnit(tradeCurrency({ symbol: i.symbol, kind: i.kind as never, currency: i.currency })) ?? 1;
   const e = (x: number) => x * fx;
@@ -61,10 +88,15 @@ export function makeOrderSlip(i: SlipInput): OrderSlip {
   const total = i.budget ?? ACCOUNT.stake;
   const budget = total / prices.length;
   const over = (OVER_BUDGET * total) / ACCOUNT.stake;
-  const orders = prices.map((p) => {
+  let orders = prices.map((p) => {
     const qty = qtyFor(i.kind, budget, e(p), budget + over / prices.length);
     return { qty, limitEur: e(p), amountEur: qty * e(p) };
   });
+  // Mehrere Teile (Aktien/Rohstoffe): restliches Geld bis Einsatz + Aufschlag mit ganzen Stück auffüllen
+  if (prices.length > 1 && i.kind !== "crypto") {
+    const q = fillShares(orders.map((o, k) => ({ priceEur: o.limitEur, qty: o.qty, fixed: i.fixed?.[k] })), total, total + over);
+    orders = orders.map((o, k) => ({ ...o, qty: q[k], amountEur: q[k] * o.limitEur }));
+  }
   const stopEur = i.stop != null && i.stop > 0 ? e(i.stop) : undefined;
   const targetEur = i.targets?.[0] != null ? e(i.targets[0]) : undefined;
   const verb = i.direction === "long" ? "Kauf" : "Verkauf (Short)";

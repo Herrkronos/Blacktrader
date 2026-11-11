@@ -131,7 +131,7 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
                   {/* „Teil“ nur im Zentraldepot (mehrere Teil-Orders); 2., 3. … Kauf ist eine einzige Order */}
                   <span className="text-sky-300">{rows.length > 1 ? `Teil ${entryNo.get(`${t.id}:${i}`) ?? i + 1}` : "Kauf"}</span>
                   <span>
-                    {money(x.price, cur)} · {qtyStr(x.qty)} {unit} · {eur(x.eur)}
+                    {x.filledAt && x.qty > 0 ? eur(x.eur / x.qty) : money(x.price, cur)} · {qtyStr(x.qty)} {unit} · {eur(x.eur)}
                   </span>
                   <span className={x.filledAt ? "text-up" : "text-stone-400"}>{x.filledAt ? "✓" : "wartet"}</span>
                 </div>

@@ -415,6 +415,10 @@ export const actions = {
       return watchlist.length === d.watchlist.length ? d : { ...d, watchlist };
     });
   },
+  /** Einmalige Umstellung als erledigt merken */
+  addMigration(key: string) {
+    update((d) => (d.migrations.includes(key) ? d : { ...d, migrations: [...d.migrations, key] }));
+  },
   updateTrade(id: string, patch: Partial<Trade>) {
     update((d) => ({ ...d, trades: d.trades.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
   },

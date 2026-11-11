@@ -35,7 +35,7 @@ describe("Order-Zettel für flatex", () => {
     expect(s.text).toContain("Limit-Kauf 2 Stück zu 200,00 €");
     expect(s.text).toContain("Stop-Loss: 180,00 €");
     const lt = makeOrderSlip({ kind: "stock", symbol: "SAP.DE", name: "SAP", currency: "EUR", direction: "long", entry: 100, tranches: [100, 90, 80], invalidation: 70, targets: [150] });
-    expect(lt.orders.map((o) => o.qty)).toEqual([1, 2, 2]);
+    expect(lt.orders.map((o) => o.qty)).toEqual([1, 2, 3]); // 520 € (bis 550 € je Trade) statt 440 €
     expect(lt.text).toContain("ungültig unter 70,00 €");
   });
 });
