@@ -162,12 +162,12 @@ function TrancheList({ t }: { t: Trade }) {
   return (
     <div className="num">
       {rows.map((x, i) => (
-        <div key={i} className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-2 py-0.5">
+        <div key={i} className="grid grid-cols-[2.75rem_1fr_auto] items-baseline gap-x-1.5 whitespace-nowrap py-0.5 text-[12px]">
           <span className="text-sky-300">Teil {i + 1}</span>
           <span>
             {money(x.price, tradeCurrency(t))} · {qty(x.qty)} Stück · {eur(x.eur)}
           </span>
-          <span className={x.filledAt ? "text-up" : "text-stone-400"}>{x.filledAt ? "✓ gekauft" : "wartet"}</span>
+          <span className={x.filledAt ? "text-up" : "text-stone-400"}>{x.filledAt ? "✓" : "wartet"}</span>
         </div>
       ))}
       <div className="mt-1 flex justify-between border-t border-sky-400/20 pt-1 font-semibold">

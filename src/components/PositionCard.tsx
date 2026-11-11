@@ -127,13 +127,13 @@ export function PositionCard({ group, price, onOpen, onAction, nachkauf }: { gro
                 </span>
               </div>
               {rows.map((x, i) => (
-                <div key={i} className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-2 py-0.5">
+                <div key={i} className="grid grid-cols-[2.75rem_1fr_auto] items-baseline gap-x-1.5 whitespace-nowrap py-0.5 text-[12px]">
                   {/* „Teil“ nur im Zentraldepot (mehrere Teil-Orders); 2., 3. … Kauf ist eine einzige Order */}
                   <span className="text-sky-300">{rows.length > 1 ? `Teil ${entryNo.get(`${t.id}:${i}`) ?? i + 1}` : "Kauf"}</span>
                   <span>
                     {money(x.price, cur)} · {qtyStr(x.qty)} {unit} · {eur(x.eur)}
                   </span>
-                  <span className={x.filledAt ? "text-up" : "text-stone-400"}>{x.filledAt ? "✓ gekauft" : "wartet"}</span>
+                  <span className={x.filledAt ? "text-up" : "text-stone-400"}>{x.filledAt ? "✓" : "wartet"}</span>
                 </div>
               ))}
               {(t.partials ?? []).map((p, i) => (
